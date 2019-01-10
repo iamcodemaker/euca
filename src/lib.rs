@@ -663,4 +663,81 @@ mod tests {
             ]
         );
     }
+
+    //
+    // wasm tests
+    //
+
+    use wasm_bindgen_test::*;
+    use wasm_bindgen_test::wasm_bindgen_test_configure;
+    wasm_bindgen_test_configure!(run_in_browser);
+
+    fn e(name: &str) -> web_sys::Element {
+        web_sys::window().expect("expected window")
+            .document().expect("expected document")
+            .create_element(name).expect("expected element")
+    }
+
+    #[wasm_bindgen_test]
+    fn null_diff_with_element() {
+        let mut old: Dom<Msg> = Dom {
+            element: "div".into(),
+            attributes: vec!(),
+            events: vec!(),
+            children: vec!(),
+            node: Some(e("div")),
+        };
+
+        let mut new: Dom<Msg> = Dom {
+            element: "div".into(),
+            attributes: vec!(),
+            events: vec!(),
+            children: vec!(),
+            node: None,
+        };
+
+        let mut o = old.dom().into_iter();
+        let mut n = new.dom().into_iter();
+        let patch_set = diff(&mut o, &mut n);
+
+        compare!(
+            patch_set,
+            [
+                Patch::CopyNode { store: Box::new(|_|()), node: e("div") },
+                Patch::Up,
+            ]
+        );
+    }
+
+    #[wasm_bindgen_test]
+    fn basic_diff_with_element() {
+        let mut old: Dom<Msg> = Dom {
+            element: "div".into(),
+            attributes: vec!(),
+            events: vec!(),
+            children: vec!(),
+            node: Some(e("div")),
+        };
+
+        let mut new: Dom<Msg> = Dom {
+            element: "span".into(),
+            attributes: vec!(),
+            events: vec!(),
+            children: vec!(),
+            node: None,
+        };
+
+        let mut o = old.dom().into_iter();
+        let mut n = new.dom().into_iter();
+        let patch_set = diff(&mut o, &mut n);
+
+        compare!(
+            patch_set,
+            [
+                Patch::RemoveNode(e("div")),
+                Patch::CreateNode { store: Box::new(|_|()), element: "span".to_owned() },
+                Patch::Up,
+            ]
+        );
+    }
 }
