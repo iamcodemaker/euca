@@ -1,0 +1,13 @@
+[package]
+name = "euca"
+version = "0.1.0"
+authors = ["Matthew Nicholson <matt@matt-land.com>"]
+edition = "2018"
+
+[dependencies.web-sys]
+version = "0.3.6"
+features = [
+    "Node",
+    "Element",
+    "Event",
+]
