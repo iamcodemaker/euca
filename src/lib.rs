@@ -107,12 +107,12 @@ trait DomTree<'a, Message> {
 
 enum Patch<'new, Message> {
     RemoveNode(web_sys::Element),
-    CreateNode { store: Box<FnMut(web_sys::Element) + 'new>, element: String },
+    CreateNode { store: Box<FnMut(web_sys::Element) + 'new>, element: &'new str },
     CopyNode { store: Box<FnMut(web_sys::Element) + 'new>, node: web_sys::Element },
-    AddAttribute { name: String, value: String },
-    RemoveAttribute(String),
-    AddListener { trigger: String, handler: EventHandler<'new, Message> },
-    RemoveListener(String),
+    AddAttribute { name: &'new str, value: &'new str },
+    RemoveAttribute(&'new str),
+    AddListener { trigger: &'new str, handler: EventHandler<'new, Message> },
+    RemoveListener(&'new str),
     Up,
 }
 
@@ -241,13 +241,13 @@ where
             (None, Some(n)) => { // create remaining new nodes
                 match n {
                     DomItem::Node { node: _, element, store } => {
-                        patch_set.push(Patch::CreateNode { store, element: element.to_owned() });
+                        patch_set.push(Patch::CreateNode { store, element });
                     }
                     DomItem::Attr { name, value } => {
-                        patch_set.push(Patch::AddAttribute { name: name.to_owned(), value: value.to_owned() });
+                        patch_set.push(Patch::AddAttribute { name, value });
                     }
                     DomItem::Event { trigger, handler } => {
-                        patch_set.push(Patch::AddListener { trigger: trigger.to_owned(), handler: handler.clone() });
+                        patch_set.push(Patch::AddListener { trigger, handler: handler.clone() });
                     }
                     DomItem::Up => {
                         patch_set.push(Patch::Up);
@@ -291,7 +291,7 @@ where
                             // create or copy the node if necessary
                             match (o_node, n_node) {
                                 (None, None) => {
-                                    patch_set.push(Patch::CreateNode { store, element: n_element.to_owned() });
+                                    patch_set.push(Patch::CreateNode { store, element: n_element });
                                     state.push(NodeState::Create);
                                 }
                                 (Some(o_elem), None) => {
@@ -314,7 +314,7 @@ where
                             if let Some(n_elem) = n_node {
                                 patch_set.push(Patch::RemoveNode(n_elem.clone()));
                             }
-                            patch_set.push(Patch::CreateNode { store, element: n_element.to_owned() });
+                            patch_set.push(Patch::CreateNode { store, element: n_element });
                             state.push(NodeState::Create);
                             
                             // skip the rest of the items in the old tree for this element, this
@@ -344,16 +344,16 @@ where
                     ) => { // compare attributes
                         if state.is_create() {
                             // add attribute
-                            patch_set.push(Patch::AddAttribute { name: n_name.to_owned(), value: n_value.to_owned() });
+                            patch_set.push(Patch::AddAttribute { name: n_name, value: n_value });
                         }
                         if o_name != n_name || o_value != n_value {
                             if state.is_copy() {
                                 // remove old attribute
-                                patch_set.push(Patch::RemoveAttribute(o_name.to_owned()));
+                                patch_set.push(Patch::RemoveAttribute(o_name));
                             }
                             if !state.is_create() {
                                 // add new attribute
-                                patch_set.push(Patch::AddAttribute { name: n_name.to_owned(), value: n_value.to_owned() });
+                                patch_set.push(Patch::AddAttribute { name: n_name, value: n_value });
                             }
                         }
                         o_item = old.next();
@@ -365,16 +365,16 @@ where
                     ) => { // compare event listeners
                         if state.is_create() {
                             // add listener
-                            patch_set.push(Patch::AddListener { trigger: n_trigger.to_owned(), handler: n_handler.clone() });
+                            patch_set.push(Patch::AddListener { trigger: n_trigger, handler: n_handler.clone() });
                         }
                         if o_trigger != n_trigger || o_handler != n_handler {
                             if state.is_copy() {
                                 // remove old listener
-                                patch_set.push(Patch::RemoveListener(o_trigger.to_owned()));
+                                patch_set.push(Patch::RemoveListener(o_trigger));
                             }
                             if !state.is_create() {
                                 // add new listener
-                                patch_set.push(Patch::AddListener { trigger: n_trigger.to_owned(), handler: n_handler.clone() });
+                                patch_set.push(Patch::AddListener { trigger: n_trigger, handler: n_handler.clone() });
                             }
                         }
                         o_item = old.next();
@@ -401,20 +401,20 @@ where
                     }
                     // add a new child node
                     (o, DomItem::Node { node: _, element, store }) => {
-                        patch_set.push(Patch::CreateNode { store, element: element.to_owned() });
+                        patch_set.push(Patch::CreateNode { store, element });
                         state.push(NodeState::NewChild);
                         o_item = Some(o);
                         n_item = new.next();
                     }
                     // add attribute to new node
                     (o, DomItem::Attr { name, value }) => {
-                        patch_set.push(Patch::AddAttribute { name: name.to_owned(), value: value.to_owned() });
+                        patch_set.push(Patch::AddAttribute { name, value });
                         o_item = Some(o);
                         n_item = new.next();
                     }
                     // add event to new node
                     (o, DomItem::Event { trigger, handler }) => {
-                        patch_set.push(Patch::AddListener { trigger: trigger.to_owned(), handler: handler.clone() });
+                        patch_set.push(Patch::AddListener { trigger, handler: handler.clone() });
                         o_item = Some(o);
                         n_item = new.next();
                     }
@@ -436,7 +436,7 @@ where
                     // remove attribute from old node
                     (DomItem::Attr { name, value: _ }, n) => {
                         if state.is_copy() {
-                            patch_set.push(Patch::RemoveAttribute(name.to_owned()));
+                            patch_set.push(Patch::RemoveAttribute(name));
                         }
                         o_item = old.next();
                         n_item = Some(n);
@@ -444,7 +444,7 @@ where
                     // remove event from old node
                     (DomItem::Event { trigger, handler: _ }, n) => {
                         if state.is_copy() {
-                            patch_set.push(Patch::RemoveListener(trigger.to_owned()));
+                            patch_set.push(Patch::RemoveListener(trigger));
                         }
                         o_item = old.next();
                         n_item = Some(n);
@@ -595,7 +595,7 @@ mod tests {
         compare!(
             patch_set,
             [
-                Patch::CreateNode { store: Box::new(|_|()), element: "div".to_owned() },
+                Patch::CreateNode { store: Box::new(|_|()), element: "div" },
                 Patch::Up,
             ]
         );
@@ -626,7 +626,7 @@ mod tests {
         compare!(
             patch_set,
             [
-                Patch::CreateNode { store: Box::new(|_|()), element: "span".to_owned() },
+                Patch::CreateNode { store: Box::new(|_|()), element: "span" },
                 Patch::Up,
             ]
         );
@@ -682,7 +682,7 @@ mod tests {
         compare!(
             patch_set,
             [
-                Patch::CreateNode { store: Box::new(|_|()), element: "div".to_owned() },
+                Patch::CreateNode { store: Box::new(|_|()), element: "div" },
                 Patch::Up,
             ]
         );
@@ -738,16 +738,16 @@ mod tests {
         compare!(
             patch_set,
             [
-                Patch::CreateNode { store: Box::new(|_|()), element: "div".to_owned() },
-                Patch::CreateNode { store: Box::new(|_|()), element: "b".to_owned() },
-                Patch::AddAttribute { name: "class".to_owned(), value: "item".to_owned() },
-                Patch::AddAttribute { name: "id".to_owned(), value: "id1".to_owned() },
-                Patch::AddListener { trigger: "onclick".to_owned(), handler: super::EventHandler::Msg(&Msg {}) },
+                Patch::CreateNode { store: Box::new(|_|()), element: "div" },
+                Patch::CreateNode { store: Box::new(|_|()), element: "b" },
+                Patch::AddAttribute { name: "class", value: "item" },
+                Patch::AddAttribute { name: "id", value: "id1" },
+                Patch::AddListener { trigger: "onclick", handler: super::EventHandler::Msg(&Msg {}) },
                 Patch::Up,
-                Patch::CreateNode { store: Box::new(|_|()), element: "i".to_owned() },
-                Patch::AddAttribute { name: "class".to_owned(), value: "item".to_owned() },
-                Patch::AddAttribute { name: "id".to_owned(), value: "id2".to_owned() },
-                Patch::AddListener { trigger: "onclick".to_owned(), handler: super::EventHandler::Msg(&Msg {}) },
+                Patch::CreateNode { store: Box::new(|_|()), element: "i" },
+                Patch::AddAttribute { name: "class", value: "item" },
+                Patch::AddAttribute { name: "id", value: "id2" },
+                Patch::AddListener { trigger: "onclick", handler: super::EventHandler::Msg(&Msg {}) },
                 Patch::Up,
                 Patch::Up,
             ]
@@ -804,7 +804,7 @@ mod tests {
         compare!(
             patch_set,
             [
-                Patch::CreateNode { store: Box::new(|_|()), element: "div".to_owned() },
+                Patch::CreateNode { store: Box::new(|_|()), element: "div" },
                 Patch::Up,
             ]
         );
@@ -881,7 +881,7 @@ mod tests {
             patch_set,
             [
                 Patch::RemoveNode(e("div")),
-                Patch::CreateNode { store: Box::new(|_|()), element: "span".to_owned() },
+                Patch::CreateNode { store: Box::new(|_|()), element: "span" },
                 Patch::Up,
             ]
         );
@@ -996,7 +996,7 @@ mod tests {
             patch_set,
             [
                 Patch::RemoveNode(e("span")),
-                Patch::CreateNode { store: Box::new(|_|()), element: "div".to_owned() },
+                Patch::CreateNode { store: Box::new(|_|()), element: "div" },
                 Patch::Up,
             ]
         );
