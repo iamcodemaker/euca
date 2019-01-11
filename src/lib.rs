@@ -36,7 +36,7 @@ enum DomItem<'a, Message> {
     /// An attribute of the last node we saw.
     Attr { name: &'a str, value: &'a str },
     /// An event handler from the last node we saw.
-    Event { trigger: &'a str, handler: EventHandler<'a, Message>  },
+    Event { trigger: &'a str, handler: EventHandler<'a, Message> },
     /// We are finished processing children nodes, the next node is a sibling.
     Up,
 }
