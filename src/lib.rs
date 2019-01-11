@@ -184,8 +184,6 @@ where
     Message: PartialEq + Clone + fmt::Debug,
     I: Iterator<Item = DomItem<'a, Message>>,
 {
-    let mut patch_set = PatchSet::new();
-
     #[derive(PartialEq)]
     enum NodeState {
         Create,
@@ -227,6 +225,8 @@ where
                 .map_or(false, |ns| *ns == NodeState::NewChild)
         }
     }
+
+    let mut patch_set = PatchSet::new();
 
     let mut state = State::new();
 
