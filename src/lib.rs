@@ -471,7 +471,7 @@ mod tests {
                     }
                     (Patch::RemoveNode(_), Patch::RemoveNode(_)) => {}
                     (Patch::Up, Patch::Up) => {}
-                    (i1, i2) => unreachable!("patch items don't match: {:?} {:?}", i1, i2),
+                    (i1, i2) => panic!("patch items don't match: {:?} {:?}", i1, i2),
                 }
             }
         };
