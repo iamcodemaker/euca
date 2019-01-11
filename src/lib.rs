@@ -186,19 +186,59 @@ where
 {
     let mut patch_set = PatchSet::new();
 
+    #[derive(PartialEq)]
+    enum NodeState {
+        Create,
+        Copy,
+        NewChild,
+        OldChild,
+    }
+
+    struct State(Vec<NodeState>);
+
+    impl State {
+        fn new() -> Self {
+            State(vec![])
+        }
+        fn push(&mut self, state: NodeState) {
+            self.0.push(state)
+        }
+        fn pop(&mut self) -> Option<NodeState> {
+            self.0.pop()
+        }
+        fn is_create(&self) -> bool {
+            self.0.last()
+                .map_or(false, |ns| *ns == NodeState::Create)
+        }
+        fn is_copy(&self) -> bool {
+            self.0.last()
+                .map_or(false, |ns| *ns == NodeState::Copy)
+        }
+        fn is_child(&self) -> bool {
+            self.0.last()
+                .map_or(false, |ns| *ns == NodeState::NewChild || *ns == NodeState::OldChild)
+        }
+        fn is_old_child(&self) -> bool {
+            self.0.last()
+                .map_or(false, |ns| *ns == NodeState::OldChild)
+        }
+        fn is_new_child(&self) -> bool {
+            self.0.last()
+                .map_or(false, |ns| *ns == NodeState::NewChild)
+        }
+    }
+
+    let mut state = State::new();
+
     let mut o_item = old.next();
     let mut n_item = new.next();
-    let mut new_node = false;
-    let mut old_node = false;
 
     loop {
         match (o_item.take(), n_item.take()) {
             (None, None) => { // return patch set
                 break;
             }
-            (o @ None, Some(n))
-            | (o @ Some(DomItem::Up), Some(n))
-            => { // create remaining new nodes
+            (None, Some(n)) => { // create remaining new nodes
                 match n {
                     DomItem::Node { node: _, element, store } => {
                         patch_set.push(Patch::CreateNode { store, element: element.to_owned() });
@@ -215,25 +255,30 @@ where
                 }
 
                 n_item = new.next();
-
-                if o.is_some() {
-                    o_item = old.next();
-                }
             }
-            (Some(o), n @ None)
-            | (Some(o), n @ Some(DomItem::Up))
-            => { // delete remaining old nodes
-                // XXX need to only remove the top level nodes
-                if let DomItem::Node { node: Some(n), element: _, store: _ } = o {
-                    patch_set.push(Patch::RemoveNode(n.clone()));
+            (Some(o), None) => { // delete remaining old nodes
+                match o {
+                    DomItem::Node { node: None, element: _, store: _ } => {
+                        state.push(NodeState::OldChild);
+                    }
+                    DomItem::Node { node: Some(node), element: _, store: _ } => {
+                        // ignore child nodes
+                        if !state.is_child() {
+                            patch_set.push(Patch::RemoveNode(node.clone()));
+                        }
+
+                        state.push(NodeState::OldChild);
+                    }
+                    DomItem::Up => {
+                        state.pop();
+                    }
+                    // XXX do we need to remove events?
+                    DomItem::Event { trigger: _, handler: _ } => {}
+                    // ignore attributes
+                    DomItem::Attr { name: _, value: _ } => {}
                 }
 
                 o_item = old.next();
-
-                if n.is_some() {
-                    patch_set.push(Patch::Up);
-                    n_item = new.next();
-                }
             }
             (Some(o), Some(n)) => { // compare nodes
                 match (o, n) {
@@ -247,14 +292,16 @@ where
                             match (o_node, n_node) {
                                 (None, None) => {
                                     patch_set.push(Patch::CreateNode { store, element: n_element.to_owned() });
-                                    new_node = true;
+                                    state.push(NodeState::Create);
                                 }
                                 (Some(o_elem), None) => {
                                     patch_set.push(Patch::CopyNode { store: store, node: o_elem.clone() });
-                                    old_node = true;
+                                    state.push(NodeState::Copy);
                                 }
+                                // just diff the existing nodes
+                                (Some(_), Some(_)) => {}
                                 // this shouldn't happen, but is harmless if it does
-                                (_, Some(_)) => {}
+                                (None, Some(_)) => {}
                             }
                             o_item = old.next();
                             n_item = new.next();
@@ -268,15 +315,24 @@ where
                                 patch_set.push(Patch::RemoveNode(n_elem.clone()));
                             }
                             patch_set.push(Patch::CreateNode { store, element: n_element.to_owned() });
-                            new_node = true;
+                            state.push(NodeState::Create);
                             
                             // skip the rest of the items in the old tree for this element, this
                             // will cause attributes and such to be created on the new element
                             loop {
                                 o_item = old.next();
                                 match o_item.take() {
-                                    Some(DomItem::Up) | None => break,
-                                    _ => o_item = old.next(),
+                                    Some(DomItem::Node { node: _, element: _, store: _ }) => {
+                                        state.push(NodeState::OldChild);
+                                    }
+                                    Some(DomItem::Up) if state.is_child() => {
+                                        state.pop();
+                                    }
+                                    o @ Some(DomItem::Up) | o @ None => {
+                                        o_item = o;
+                                        break;
+                                    }
+                                    _ => {}
                                 }
                             }
                             n_item = new.next();
@@ -286,16 +342,16 @@ where
                         DomItem::Attr { name: o_name, value: o_value },
                         DomItem::Attr { name: n_name, value: n_value }
                     ) => { // compare attributes
-                        if new_node {
+                        if state.is_create() {
                             // add attribute
                             patch_set.push(Patch::AddAttribute { name: n_name.to_owned(), value: n_value.to_owned() });
                         }
                         if o_name != n_name || o_value != n_value {
-                            if old_node {
+                            if state.is_copy() {
                                 // remove old attribute
                                 patch_set.push(Patch::RemoveAttribute(o_name.to_owned()));
                             }
-                            if !new_node {
+                            if !state.is_create() {
                                 // add new attribute
                                 patch_set.push(Patch::AddAttribute { name: n_name.to_owned(), value: n_value.to_owned() });
                             }
@@ -307,16 +363,16 @@ where
                         DomItem::Event { trigger: o_trigger, handler: o_handler },
                         DomItem::Event { trigger: n_trigger, handler: n_handler }
                     ) => { // compare event listeners
-                        if new_node {
+                        if state.is_create() {
                             // add listener
                             patch_set.push(Patch::AddListener { trigger: n_trigger.to_owned(), handler: n_handler.clone() });
                         }
                         if o_trigger != n_trigger || o_handler != n_handler {
-                            if old_node {
+                            if state.is_copy() {
                                 // remove old listener
                                 patch_set.push(Patch::RemoveListener(o_trigger.to_owned()));
                             }
-                            if !new_node {
+                            if !state.is_create() {
                                 // add new listener
                                 patch_set.push(Patch::AddListener { trigger: n_trigger.to_owned(), handler: n_handler.clone() });
                             }
@@ -324,41 +380,75 @@ where
                         o_item = old.next();
                         n_item = new.next();
                     }
-                    (DomItem::Up, DomItem::Up) => { // end of two items
-                        patch_set.push(Patch::Up);
+                    (o @ DomItem::Up, n @ DomItem::Up) => { // end of two items
+                        // don't advance old if we are iterating through new's children
+                        if !state.is_new_child() {
+                            o_item = old.next();
+                        }
+                        else {
+                            o_item = Some(o);
+                        }
+                        // don't advance new if we are iterating through old's children
+                        if !state.is_old_child() {
+                            patch_set.push(Patch::Up);
+                            n_item = new.next();
+                        }
+                        else {
+                            n_item = Some(n);
+                        }
 
-                        new_node = false;
-                        old_node = false;
-
-                        o_item = old.next();
+                        state.pop();
+                    }
+                    // add a new child node
+                    (o, DomItem::Node { node: _, element, store }) => {
+                        patch_set.push(Patch::CreateNode { store, element: element.to_owned() });
+                        state.push(NodeState::NewChild);
+                        o_item = Some(o);
                         n_item = new.next();
                     }
                     // add attribute to new node
-                    (_, DomItem::Attr { name, value }) => {
+                    (o, DomItem::Attr { name, value }) => {
                         patch_set.push(Patch::AddAttribute { name: name.to_owned(), value: value.to_owned() });
+                        o_item = Some(o);
                         n_item = new.next();
                     }
                     // add event to new node
-                    (_, DomItem::Event { trigger, handler }) => {
+                    (o, DomItem::Event { trigger, handler }) => {
                         patch_set.push(Patch::AddListener { trigger: trigger.to_owned(), handler: handler.clone() });
+                        o_item = Some(o);
                         n_item = new.next();
                     }
+                    // remove the old node if present
+                    (DomItem::Node { node: Some(node), element: _, store: _ }, n) => {
+                        if !state.is_child() {
+                            patch_set.push(Patch::RemoveNode(node.clone()));
+                        }
+                        state.push(NodeState::OldChild);
+                        o_item = old.next();
+                        n_item = Some(n);
+                    }
+                    // just iterate through the old node
+                    (DomItem::Node { node: None, element: _, store: _ }, n) => {
+                        state.push(NodeState::OldChild);
+                        o_item = old.next();
+                        n_item = Some(n);
+                    }
                     // remove attribute from old node
-                    (DomItem::Attr { name, value: _ }, _) => {
-                        if old_node {
+                    (DomItem::Attr { name, value: _ }, n) => {
+                        if state.is_copy() {
                             patch_set.push(Patch::RemoveAttribute(name.to_owned()));
                         }
                         o_item = old.next();
+                        n_item = Some(n);
                     }
                     // remove event from old node
-                    (DomItem::Event { trigger, handler: _ }, _) => {
-                        if old_node {
+                    (DomItem::Event { trigger, handler: _ }, n) => {
+                        if state.is_copy() {
                             patch_set.push(Patch::RemoveListener(trigger.to_owned()));
                         }
                         o_item = old.next();
+                        n_item = Some(n);
                     }
-                    // all other combinations should be unreachable
-                    (a, b) => unreachable!("({:?}, {:?})", a, b),
                 }
             }
         }
@@ -736,6 +826,64 @@ mod tests {
             [
                 Patch::RemoveNode(e("div")),
                 Patch::CreateNode { store: Box::new(|_|()), element: "span".to_owned() },
+                Patch::Up,
+            ]
+        );
+    }
+
+    #[wasm_bindgen_test]
+    fn old_child_nodes_with_element() {
+        let mut old: Dom<Msg> = Dom {
+            element: "div".into(),
+            attributes: vec!(),
+            events: vec!(),
+            children: vec![
+                Dom {
+                    element: "b".into(),
+                    attributes: vec![
+                        Attr { name: "class".into(), value: "item".into() },
+                        Attr { name: "id".into(), value: "id".into() },
+                    ],
+                    events: vec![
+                        Event { trigger: "onclick".into(), handler: EventHandler::Msg(Msg {}) },
+                    ],
+                    children: vec![],
+                    node: Some(e("b")),
+                },
+                Dom {
+                    element: "i".into(),
+                    attributes: vec![
+                        Attr { name: "class".into(), value: "item".into() },
+                        Attr { name: "id".into(), value: "id".into() },
+                    ],
+                    events: vec![
+                        Event { trigger: "onclick".into(), handler: EventHandler::Msg(Msg {}) },
+                    ],
+                    children: vec![],
+                    node: Some(e("i")),
+                },
+            ],
+            node: Some(e("div")),
+        };
+
+        let mut new: Dom<Msg> = Dom {
+            element: "div".into(),
+            attributes: vec!(),
+            events: vec!(),
+            children: vec!(),
+            node: None,
+        };
+
+        let mut o = old.dom().into_iter();
+        let mut n = new.dom().into_iter();
+        let patch_set = diff(&mut o, &mut n);
+
+        compare!(
+            patch_set,
+            [
+                Patch::CopyNode { store: Box::new(|_|()), node: e("div") },
+                Patch::RemoveNode(e("b")),
+                Patch::RemoveNode(e("i")),
                 Patch::Up,
             ]
         );
