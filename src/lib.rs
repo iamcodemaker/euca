@@ -754,6 +754,62 @@ mod tests {
         );
     }
 
+    #[test]
+    fn diff_old_child_nodes() {
+        let mut old: Dom<Msg> = Dom {
+            element: "span".into(),
+            attributes: vec!(),
+            events: vec!(),
+            children: vec![
+                Dom {
+                    element: "b".into(),
+                    attributes: vec![
+                        Attr { name: "class".into(), value: "item".into() },
+                        Attr { name: "id".into(), value: "id".into() },
+                    ],
+                    events: vec![
+                        Event { trigger: "onclick".into(), handler: EventHandler::Msg(Msg {}) },
+                    ],
+                    children: vec![],
+                    node: None,
+                },
+                Dom {
+                    element: "i".into(),
+                    attributes: vec![
+                        Attr { name: "class".into(), value: "item".into() },
+                        Attr { name: "id".into(), value: "id".into() },
+                    ],
+                    events: vec![
+                        Event { trigger: "onclick".into(), handler: EventHandler::Msg(Msg {}) },
+                    ],
+                    children: vec![],
+                    node: None,
+                },
+            ],
+            node: None,
+        };
+
+        let mut new: Dom<Msg> = Dom {
+            element: "div".into(),
+            attributes: vec!(),
+            events: vec!(),
+            children: vec!(),
+            node: None,
+        };
+
+        let mut o = old.dom().into_iter();
+        let mut n = new.dom().into_iter();
+        let patch_set = diff(&mut o, &mut n);
+
+        compare!(
+            patch_set,
+            [
+                Patch::CreateNode { store: Box::new(|_|()), element: "div".to_owned() },
+                Patch::Up,
+            ]
+        );
+    }
+
     //
     // wasm tests
     //
@@ -888,4 +944,62 @@ mod tests {
             ]
         );
     }
+
+    #[wasm_bindgen_test]
+    fn diff_old_child_nodes_with_element() {
+        let mut old: Dom<Msg> = Dom {
+            element: "span".into(),
+            attributes: vec!(),
+            events: vec!(),
+            children: vec![
+                Dom {
+                    element: "b".into(),
+                    attributes: vec![
+                        Attr { name: "class".into(), value: "item".into() },
+                        Attr { name: "id".into(), value: "id".into() },
+                    ],
+                    events: vec![
+                        Event { trigger: "onclick".into(), handler: EventHandler::Msg(Msg {}) },
+                    ],
+                    children: vec![],
+                    node: Some(e("b")),
+                },
+                Dom {
+                    element: "i".into(),
+                    attributes: vec![
+                        Attr { name: "class".into(), value: "item".into() },
+                        Attr { name: "id".into(), value: "id".into() },
+                    ],
+                    events: vec![
+                        Event { trigger: "onclick".into(), handler: EventHandler::Msg(Msg {}) },
+                    ],
+                    children: vec![],
+                    node: Some(e("i")),
+                },
+            ],
+            node: Some(e("span")),
+        };
+
+        let mut new: Dom<Msg> = Dom {
+            element: "div".into(),
+            attributes: vec!(),
+            events: vec!(),
+            children: vec!(),
+            node: None,
+        };
+
+        let mut o = old.dom().into_iter();
+        let mut n = new.dom().into_iter();
+        let patch_set = diff(&mut o, &mut n);
+
+        compare!(
+            patch_set,
+            [
+                Patch::RemoveNode(e("span")),
+                Patch::CreateNode { store: Box::new(|_|()), element: "div".to_owned() },
+                Patch::Up,
+            ]
+        );
+    }
+
 }
