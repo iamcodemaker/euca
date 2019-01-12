@@ -457,9 +457,56 @@ where
     patch_set
 }
 
-fn patch(/* IntoIterator<Patch> */) {
-    // how to patch? Go through patch set and store nodes as necessary? PatchSet holds mut refs
-    // back to the tree and updates new when you run through the set?
+fn patch<'a, Message>(parent: web_sys::Element, patch_set: PatchSet<'a, Message>) {
+    let mut node_stack = vec![parent];
+
+    let document = web_sys::window().expect("expected window")
+        .document().expect("expected document");
+
+    for p in patch_set.into_iter() {
+        match p {
+            Patch::RemoveNode(node) => {
+                node_stack.last()
+                    .unwrap()
+                    .remove_child(&node)
+                    .expect("failed to remove child node");
+            }
+            Patch::CreateNode { mut store, element } => {
+                let node = document.create_element(element).expect("failed to create element");
+                store(node.clone());
+                node_stack.last()
+                    .unwrap()
+                    .append_child(&node)
+                    .expect("failed to append child node");
+                node_stack.push(node);
+            }
+            Patch::CopyNode { mut store, node } => {
+                store(node.clone());
+                node_stack.push(node);
+            }
+            Patch::AddAttribute { name, value } => {
+                node_stack.last()
+                    .unwrap()
+                    .set_attribute(name, value)
+                    .expect("failed to set attribute");
+            }
+            Patch::RemoveAttribute(name) => {
+                node_stack.last()
+                    .unwrap()
+                    .remove_attribute(name)
+                    .expect("failed to remove attribute");
+            }
+            Patch::AddListener { trigger, handler } => {
+                // XXX call add_event_listener_with_callback()
+            }
+            Patch::RemoveListener(trigger) => {
+                // XXX call remove_event_listener_with_callback()
+            }
+            Patch::Up => {
+                node_stack.pop();
+            }
+        }
+    }
 }
 
 #[cfg(test)]
