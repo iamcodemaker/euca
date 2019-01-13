@@ -708,19 +708,7 @@ mod tests {
 
     impl<Message> Dom<Message> {
 
-        fn old_dom(&mut self) -> Vec<DomItem<Message>>
-        where
-            Message: Clone,
-        {
-            return self.dom(true);
-        }
-        fn new_dom(&mut self) -> Vec<DomItem<Message>>
-        where
-            Message: Clone,
-        {
-            return self.dom(false);
-        }
-        fn dom(&mut self, old: bool) -> Vec<DomItem<Message>>
+        fn dom(&mut self) -> Vec<DomItem<Message>>
         where
             Message: Clone,
         {
@@ -757,7 +745,7 @@ mod tests {
                  )
             )
             .chain(self.children.iter_mut()
-               .flat_map(|c| Dom::dom(c, old))
+               .flat_map(|c| Dom::dom(c))
             )
             .chain(self.text.iter_mut()
                .flat_map(|t|
@@ -766,7 +754,6 @@ mod tests {
                            text: t.text.clone(),
                            node: match t.node {
                                Some(_) => Storage::Read(t.node.clone()),
-                               None if old => Storage::Read(None),
                                None => Storage::Write(Box::new(move |n| t.node = Some(n))),
                            },
                        },
@@ -870,7 +857,7 @@ mod tests {
         };
 
         let mut o = old.into_iter();
-        let mut n = new.new_dom().into_iter();
+        let mut n = new.dom().into_iter();
         let patch_set = diff(&mut o, &mut n);
 
         compare!(
@@ -899,7 +886,7 @@ mod tests {
         };
 
         let mut o = old.into_iter();
-        let mut n = new.new_dom().into_iter();
+        let mut n = new.dom().into_iter();
         let patch_set = diff(&mut o, &mut n);
 
         compare!(
@@ -960,8 +947,8 @@ mod tests {
             node: None,
         };
 
-        let mut o = old.old_dom().into_iter();
-        let mut n = new.new_dom().into_iter();
+        let mut o = old.dom().into_iter();
+        let mut n = new.dom().into_iter();
         let patch_set = diff(&mut o, &mut n);
 
         compare!(
@@ -1003,8 +990,8 @@ mod tests {
             node: None,
         };
 
-        let mut o = old.old_dom().into_iter();
-        let mut n = new.new_dom().into_iter();
+        let mut o = old.dom().into_iter();
+        let mut n = new.dom().into_iter();
         let patch_set = diff(&mut o, &mut n);
 
         compare!(
@@ -1036,8 +1023,8 @@ mod tests {
             node: None,
         };
 
-        let mut o = old.old_dom().into_iter();
-        let mut n = new.new_dom().into_iter();
+        let mut o = old.dom().into_iter();
+        let mut n = new.dom().into_iter();
         let patch_set = diff(&mut o, &mut n);
 
         compare!(
@@ -1096,8 +1083,8 @@ mod tests {
             node: None,
         };
 
-        let mut o = old.old_dom().into_iter();
-        let mut n = new.new_dom().into_iter();
+        let mut o = old.dom().into_iter();
+        let mut n = new.dom().into_iter();
         let patch_set = diff(&mut o, &mut n);
 
         compare!(
@@ -1158,8 +1145,8 @@ mod tests {
             node: None,
         };
 
-        let mut o = old.old_dom().into_iter();
-        let mut n = new.new_dom().into_iter();
+        let mut o = old.dom().into_iter();
+        let mut n = new.dom().into_iter();
         let patch_set = diff(&mut o, &mut n);
 
         compare!(
@@ -1192,8 +1179,8 @@ mod tests {
             node: None,
         };
 
-        let mut o = old.old_dom().into_iter();
-        let mut n = new.new_dom().into_iter();
+        let mut o = old.dom().into_iter();
+        let mut n = new.dom().into_iter();
         let patch_set = diff(&mut o, &mut n);
 
         let parent = e("div");
@@ -1229,15 +1216,15 @@ mod tests {
         {
             // first gen create element
             let mut o = gen1.into_iter();
-            let mut n = gen2.new_dom().into_iter();
+            let mut n = gen2.dom().into_iter();
             let patch_set = diff(&mut o, &mut n);
             patch(parent.clone(), patch_set, dispatch.clone());
         }
 
         {
             // second gen remove and replace element
-            let mut o = gen2.old_dom().into_iter();
-            let mut n = gen3.new_dom().into_iter();
+            let mut o = gen2.dom().into_iter();
+            let mut n = gen3.dom().into_iter();
             let patch_set = diff(&mut o, &mut n);
             patch(parent.clone(), patch_set, dispatch.clone());
         }
