@@ -74,6 +74,11 @@ where
             )
             => e1 == e2,
             (
+                DomItem::Text { node: _, text: t1 },
+                DomItem::Text { node: _, text: t2 }
+            )
+            => t1 == t2,
+            (
                 DomItem::Attr { name: n1, value: v1 },
                 DomItem::Attr { name: n2, value: v2 }
             )
