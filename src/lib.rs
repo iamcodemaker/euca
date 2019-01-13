@@ -566,7 +566,7 @@ where
     patch_set
 }
 
-fn patch<'a, Message>(parent: web_sys::Element, patch_set: PatchSet<'a, Message>, dispatch: Rc<Box<Fn(Message) + 'static>>)
+fn patch<'a, Message>(parent: web_sys::Element, patch_set: PatchSet<'a, Message>, dispatch: Rc<Fn(Message) + 'static>)
 where
     Message: 'static + Clone,
     EventHandler<Message>: Clone,
@@ -1180,7 +1180,7 @@ mod tests {
             let patch_set = diff(&mut o, &mut n);
 
             let parent = e("div");
-            let dispatch = Rc::new(Box::new(move |_|()) as Box<Fn(Msg)>);
+            let dispatch = Rc::new(move |_|());
             patch(parent.clone(), patch_set, dispatch.clone());
         }
 
@@ -1210,7 +1210,7 @@ mod tests {
         };
 
         let parent = e("div");
-        let dispatch = Rc::new(Box::new(move |_|()) as Box<Fn(Msg)>);
+        let dispatch = Rc::new(move |_|());
 
         {
             // first gen create element
