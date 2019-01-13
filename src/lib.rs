@@ -1174,13 +1174,17 @@ mod tests {
             node: None,
         };
 
-        let mut o = old.dom().into_iter();
-        let mut n = new.dom().into_iter();
-        let patch_set = diff(&mut o, &mut n);
+        {
+            let mut o = old.dom().into_iter();
+            let mut n = new.dom().into_iter();
+            let patch_set = diff(&mut o, &mut n);
 
-        let parent = e("div");
-        let dispatch = Rc::new(Box::new(move |_|()) as Box<Fn(Msg)>);
-        patch(parent.clone(), patch_set, dispatch.clone());
+            let parent = e("div");
+            let dispatch = Rc::new(Box::new(move |_|()) as Box<Fn(Msg)>);
+            patch(parent.clone(), patch_set, dispatch.clone());
+        }
+
+        assert!(new.node.is_some(), "expected node to be copied");
     }
 
     #[wasm_bindgen_test]
