@@ -52,6 +52,8 @@ impl<'a, T> fmt::Debug for Storage<'a, T> {
 enum DomItem<'a, Message> {
     /// An element in the tree.
     Element { element: &'a str, node: Storage<'a, web_sys::Element> },
+    /// A text node in the tree.
+    Text { text: String, node: Storage<'a, web_sys::Text> },
     /// An attribute of the last node we saw.
     Attr { name: &'a str, value: &'a str },
     /// An event handler from the last node we saw.
@@ -113,6 +115,9 @@ enum Patch<'a, Message> {
     RemoveElement(web_sys::Element),
     CreateElement { store: Box<FnMut(web_sys::Element) + 'a>, element: &'a str },
     CopyElement { store: Box<FnMut(web_sys::Element) + 'a>, node: web_sys::Element },
+    RemoveText(web_sys::Text),
+    CreateText { store: Box<FnMut(web_sys::Text) + 'a>, text: String },
+    CopyText { store: Box<FnMut(web_sys::Text) + 'a>, node: web_sys::Text },
     AddAttribute { name: &'a str, value: &'a str },
     RemoveAttribute(&'a str),
     AddListener { trigger: String, handler: EventHandler<Message>, store: Box<FnMut(Closure<FnMut(web_sys::Event)>) + 'a> },
@@ -129,6 +134,9 @@ where
             Patch::RemoveElement(_) => write!(f, "RemoveElement(_)"),
             Patch::CreateElement { store: _, element: s } => write!(f, "CreateElement {{ store: _, element: {:?} }}", s),
             Patch::CopyElement { store: _, node: _ } => write!(f, "CopyElement {{ store: _, node: _ }}"),
+            Patch::RemoveText(_) => write!(f, "RemoveText(_)"),
+            Patch::CreateText { store: _, text: t } => write!(f, "CreateText {{ store: _, text: {:?} }}", t),
+            Patch::CopyText { store: _, node: _ } => write!(f, "CopyText {{ store: _, node: _ }}"),
             Patch::AddAttribute { name: n, value: v } => write!(f, "AddAttribute {{ name: {:?}, value: {:?} }}", n, v),
             Patch::RemoveAttribute(s) => write!(f, "RemoveAttribute({:?})", s),
             Patch::AddListener { trigger: t, handler: h, store: _ } => write!(f, "AddListener {{ trigger: {:?}, handler: {:?}, store: _ }}", t, h),
@@ -247,6 +255,9 @@ where
                     DomItem::Element { node: Storage::Write(store), element } => {
                         patch_set.push(Patch::CreateElement { store, element });
                     }
+                    DomItem::Text { node: Storage::Write(store), text } => {
+                        patch_set.push(Patch::CreateText { store, text });
+                    }
                     DomItem::Attr { name, value } => {
                         patch_set.push(Patch::AddAttribute { name, value });
                     }
@@ -261,6 +272,9 @@ where
                     }
                     DomItem::Event { closure: Storage::Read(_), .. } => {
                         panic!("new event should not have Storage::Read(_)");
+                    }
+                    DomItem::Text { node: Storage::Read(_), .. } => {
+                        panic!("new text should not have Storage::Read(_)");
                     }
                 }
 
@@ -281,6 +295,20 @@ where
                     }
                     DomItem::Element { node: Storage::Write(_), .. } => {
                         panic!("old node should not have Storage::Write(_)");
+                    }
+                    DomItem::Text { node: Storage::Read(None), .. } => {
+                        state.push(NodeState::OldChild);
+                    }
+                    DomItem::Text { node: Storage::Read(Some(node)), .. } => {
+                        // ignore child nodes
+                        if !state.is_child() {
+                            patch_set.push(Patch::RemoveText(node.clone()));
+                        }
+
+                        state.push(NodeState::OldChild);
+                    }
+                    DomItem::Text { node: Storage::Write(_), .. } => {
+                        panic!("old text should not have Storage::Write(_)");
                     }
                     DomItem::Up => {
                         state.pop();
@@ -334,6 +362,49 @@ where
                                     Some(DomItem::Up) if state.is_child() => {
                                         state.pop();
                                     }
+                                    o @ Some(DomItem::Up) | o @ None => {
+                                        o_item = o;
+                                        break;
+                                    }
+                                    _ => {}
+                                }
+                            }
+                            n_item = new.next();
+                        }
+                    }
+                    (
+                        DomItem::Text { node: Storage::Read(node), text: o_text },
+                        DomItem::Text { node: Storage::Write(store), text: n_text }
+                    ) => { // compare text
+                        // if the text matches, use the web_sys::Text
+                        if o_text == n_text {
+                            // create or copy the node if necessary
+                            match node {
+                                None => {
+                                    patch_set.push(Patch::CreateText { store, text: n_text });
+                                    state.push(NodeState::Create);
+                                }
+                                Some(o_elem) => {
+                                    patch_set.push(Patch::CopyText { store: store, node: o_elem.clone() });
+                                    state.push(NodeState::Copy);
+                                }
+                            }
+                            o_item = old.next();
+                            n_item = new.next();
+                        }
+                        // elements don't match, remove the old and make a new one
+                        else {
+                            if let Some(o_elem) = node {
+                                patch_set.push(Patch::RemoveText(o_elem.clone()));
+                            }
+                            patch_set.push(Patch::CreateText { store, text: n_text });
+                            state.push(NodeState::Create);
+                            
+                            // skip the rest of the items in the old tree for this element, this
+                            // will cause attributes and such to be created on the new element
+                            loop {
+                                o_item = old.next();
+                                match o_item.take() {
                                     o @ Some(DomItem::Up) | o @ None => {
                                         o_item = o;
                                         break;
@@ -414,6 +485,17 @@ where
                     (_, DomItem::Element { node: Storage::Read(_), .. }) => {
                         panic!("new node should not have Storage::Read(_)");
                     }
+                    // add a new text node
+                    (o, DomItem::Text { node: Storage::Write(store), text }) => {
+                        patch_set.push(Patch::CreateText { store, text });
+                        state.push(NodeState::NewChild);
+                        o_item = Some(o);
+                        n_item = new.next();
+                    }
+                    // invalid
+                    (_, DomItem::Text { node: Storage::Read(_), .. }) => {
+                        panic!("new text should not have Storage::Read(_)");
+                    }
                     // add attribute to new node
                     (o, DomItem::Attr { name, value }) => {
                         patch_set.push(Patch::AddAttribute { name, value });
@@ -448,6 +530,25 @@ where
                     // invalid
                     (DomItem::Element { node: Storage::Write(_), .. }, _) => {
                         panic!("old node should not have Storage::Write(_)");
+                    }
+                    // remove the old text if present
+                    (DomItem::Text { node: Storage::Read(Some(node)), .. }, n) => {
+                        if !state.is_child() {
+                            patch_set.push(Patch::RemoveText(node.clone()));
+                        }
+                        state.push(NodeState::OldChild);
+                        o_item = old.next();
+                        n_item = Some(n);
+                    }
+                    // just iterate through the old node
+                    (DomItem::Text { node: Storage::Read(None), .. }, n) => {
+                        state.push(NodeState::OldChild);
+                        o_item = old.next();
+                        n_item = Some(n);
+                    }
+                    // invalid
+                    (DomItem::Text { node: Storage::Write(_), .. }, _) => {
+                        panic!("old text should not have Storage::Write(_)");
                     }
                     // remove attribute from old node
                     (DomItem::Attr { name, value: _ }, n) => {
@@ -487,7 +588,7 @@ where
     EventHandler<Message>: Clone,
 {
 
-    let mut node_stack = vec![parent];
+    let mut node_stack: Vec<web_sys::Node> = vec![parent.unchecked_into()];
 
     let document = web_sys::window().expect("expected window")
         .document().expect("expected document");
@@ -507,20 +608,43 @@ where
                     .unwrap()
                     .append_child(&node)
                     .expect("failed to append child node");
-                node_stack.push(node);
+                node_stack.push(node.into());
             }
             Patch::CopyElement { mut store, node } => {
                 store(node.clone());
-                node_stack.push(node);
+                node_stack.push(node.into());
+            }
+            Patch::RemoveText(node) => {
+                node_stack.last()
+                    .unwrap()
+                    .remove_child(&node)
+                    .expect("failed to remove child node");
+            }
+            Patch::CreateText { mut store, text } => {
+                let node = document.create_text_node(&text);
+                store(node.clone());
+                node_stack.last()
+                    .unwrap()
+                    .append_child(&node)
+                    .expect("failed to append child node");
+                node_stack.push(node.into());
+            }
+            Patch::CopyText { mut store, node } => {
+                store(node.clone());
+                node_stack.push(node.into());
             }
             Patch::AddAttribute { name, value } => {
                 node_stack.last()
+                    .unwrap()
+                    .dyn_ref::<web_sys::Element>()
                     .unwrap()
                     .set_attribute(name, value)
                     .expect("failed to set attribute");
             }
             Patch::RemoveAttribute(name) => {
                 node_stack.last()
+                    .unwrap()
+                    .dyn_ref::<web_sys::Element>()
                     .unwrap()
                     .remove_attribute(name)
                     .expect("failed to remove attribute");
@@ -584,11 +708,17 @@ mod tests {
         closure: Option<Closure<FnMut(web_sys::Event)>>,
     }
 
+    struct Text {
+        text: String,
+        node: Option<web_sys::Text>,
+    }
+
     struct Dom<Message> {
         element: String,
         attributes: Vec<Attr>,
         events: Vec<Event<Message>>,
         children: Vec<Dom<Message>>,
+        text: Option<Text>,
         node: Option<web_sys::Element>,
     }
 
@@ -647,6 +777,22 @@ mod tests {
             .chain(self.children.iter_mut()
                .flat_map(|c| Dom::dom(c, old))
             )
+            .chain(self.text.iter_mut()
+               .flat_map(|t|
+                   vec![
+                       DomItem::Text {
+                           text: t.text.clone(),
+                           node: match t.node {
+                               Some(_) => Storage::Read(t.node.clone()),
+                               None if old => Storage::Read(None),
+                               None => Storage::Write(Box::new(move |n| t.node = Some(n))),
+                           },
+                       },
+                       // this is necessary because text nodes can have events associated with them
+                       DomItem::Up,
+                   ]
+               )
+            )
             .chain(iter::once(DomItem::Up))
             .collect()
         }
@@ -699,6 +845,7 @@ mod tests {
             attributes: vec!(),
             events: vec!(),
             children: vec!(),
+            text: None,
             node: None,
         };
 
@@ -707,6 +854,7 @@ mod tests {
             attributes: vec!(),
             events: vec!(),
             children: vec!(),
+            text: None,
             node: None,
         };
 
@@ -730,6 +878,7 @@ mod tests {
             attributes: vec!(),
             events: vec!(),
             children: vec!(),
+            text: None,
             node: None,
         };
 
@@ -738,6 +887,7 @@ mod tests {
             attributes: vec!(),
             events: vec!(),
             children: vec!(),
+            text: None,
             node: None,
         };
 
@@ -775,6 +925,7 @@ mod tests {
                         },
                     ],
                     children: vec![],
+                    text: None,
                     node: None,
                 },
                 Dom {
@@ -787,9 +938,11 @@ mod tests {
                         Event { trigger: "onclick".into(), handler: EventHandler::Msg(Msg {}), closure: None },
                     ],
                     children: vec![],
+                    text: None,
                     node: None,
                 },
             ],
+            text: None,
             node: None,
         };
 
@@ -798,6 +951,7 @@ mod tests {
             attributes: vec!(),
             events: vec!(),
             children: vec!(),
+            text: None,
             node: None,
         };
 
@@ -821,6 +975,7 @@ mod tests {
             attributes: vec!(),
             events: vec!(),
             children: vec![],
+            text: None,
             node: None,
         };
 
@@ -839,6 +994,7 @@ mod tests {
                         Event { trigger: "onclick".into(), handler: EventHandler::Msg(Msg {}), closure: None },
                     ],
                     children: vec![],
+                    text: None,
                     node: None,
                 },
                 Dom {
@@ -851,9 +1007,11 @@ mod tests {
                         Event { trigger: "onclick".into(), handler: EventHandler::Msg(Msg {}), closure: None },
                     ],
                     children: vec![],
+                    text: None,
                     node: None,
                 },
             ],
+            text: None,
             node: None,
         };
 
@@ -897,6 +1055,7 @@ mod tests {
                         Event { trigger: "onclick".into(), handler: EventHandler::Msg(Msg {}), closure: None },
                     ],
                     children: vec![],
+                    text: None,
                     node: None,
                 },
                 Dom {
@@ -909,9 +1068,11 @@ mod tests {
                         Event { trigger: "onclick".into(), handler: EventHandler::Msg(Msg {}), closure: None },
                     ],
                     children: vec![],
+                    text: None,
                     node: None,
                 },
             ],
+            text: None,
             node: None,
         };
 
@@ -920,6 +1081,7 @@ mod tests {
             attributes: vec!(),
             events: vec!(),
             children: vec!(),
+            text: None,
             node: None,
         };
 
@@ -973,6 +1135,7 @@ mod tests {
             attributes: vec!(),
             events: vec!(),
             children: vec!(),
+            text: None,
             node: Some(e("div")),
         };
 
@@ -981,6 +1144,7 @@ mod tests {
             attributes: vec!(),
             events: vec!(),
             children: vec!(),
+            text: None,
             node: None,
         };
 
@@ -1004,6 +1168,7 @@ mod tests {
             attributes: vec!(),
             events: vec!(),
             children: vec!(),
+            text: None,
             node: Some(e("div")),
         };
 
@@ -1012,6 +1177,7 @@ mod tests {
             attributes: vec!(),
             events: vec!(),
             children: vec!(),
+            text: None,
             node: None,
         };
 
@@ -1047,6 +1213,7 @@ mod tests {
                         Event { trigger: "onclick".into(), handler: EventHandler::Msg(Msg {}), closure: Some(closure) },
                     ],
                     children: vec![],
+                    text: None,
                     node: Some(elem),
                 },
                 Dom {
@@ -1059,9 +1226,11 @@ mod tests {
                         Event { trigger: "onclick".into(), handler: EventHandler::Msg(Msg {}), closure: None },
                     ],
                     children: vec![],
+                    text: None,
                     node: Some(e("i")),
                 },
             ],
+            text: None,
             node: Some(e("div")),
         };
 
@@ -1070,6 +1239,7 @@ mod tests {
             attributes: vec!(),
             events: vec!(),
             children: vec!(),
+            text: None,
             node: None,
         };
 
@@ -1105,6 +1275,7 @@ mod tests {
                         Event { trigger: "onclick".into(), handler: EventHandler::Msg(Msg {}), closure: None },
                     ],
                     children: vec![],
+                    text: None,
                     node: Some(e("b")),
                 },
                 Dom {
@@ -1117,9 +1288,11 @@ mod tests {
                         Event { trigger: "onclick".into(), handler: EventHandler::Msg(Msg {}), closure: None },
                     ],
                     children: vec![],
+                    text: None,
                     node: Some(e("i")),
                 },
             ],
+            text: None,
             node: Some(e("span")),
         };
 
@@ -1128,6 +1301,7 @@ mod tests {
             attributes: vec!(),
             events: vec!(),
             children: vec!(),
+            text: None,
             node: None,
         };
 

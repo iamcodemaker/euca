@@ -19,6 +19,7 @@ features = [
     "Element",
     "Event",
     "EventTarget",
+    "Text",
 ]
 
 [dev-dependencies]
