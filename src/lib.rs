@@ -674,6 +674,32 @@ where
 mod tests {
     use super::*;
 
+    use wasm_bindgen_test::*;
+    use wasm_bindgen_test::wasm_bindgen_test_configure;
+    wasm_bindgen_test_configure!(run_in_browser);
+
+    fn e(name: &str) -> web_sys::Element {
+        web_sys::window().expect("expected window")
+            .document().expect("expected document")
+            .create_element(name).expect("expected element")
+    }
+
+    fn c(elem: &web_sys::Element, trigger: &str) -> Closure<FnMut(web_sys::Event)> {
+        let closure = Closure::wrap(
+            Box::new(|_|()) as Box<FnMut(web_sys::Event)>
+        );
+        (elem.as_ref() as &web_sys::EventTarget)
+            .add_event_listener_with_callback(trigger, closure.as_ref().unchecked_ref())
+            .expect("failed to add event listener");
+        closure
+    }
+
+    fn element_with_closure(name: &str, trigger: &str) -> (web_sys::Element, Closure<FnMut(web_sys::Event)>) {
+        let elem = e(name);
+        let closure = c(&elem, trigger);
+        (elem, closure)
+    }
+
     #[derive(PartialEq)]
     struct Attr {
         name: String,
@@ -811,37 +837,6 @@ mod tests {
 
     #[derive(Debug, Clone, PartialEq)]
     struct Msg {}
-
-    //
-    // wasm tests
-    //
-
-    use wasm_bindgen_test::*;
-    use wasm_bindgen_test::wasm_bindgen_test_configure;
-    wasm_bindgen_test_configure!(run_in_browser);
-
-    fn e(name: &str) -> web_sys::Element {
-        web_sys::window().expect("expected window")
-            .document().expect("expected document")
-            .create_element(name).expect("expected element")
-    }
-
-    fn c(elem: &web_sys::Element, trigger: &str) -> Closure<FnMut(web_sys::Event)> {
-        let closure = Closure::wrap(
-            Box::new(|_|()) as Box<FnMut(web_sys::Event)>
-        );
-        (elem.as_ref() as &web_sys::EventTarget)
-            .add_event_listener_with_callback(trigger, closure.as_ref().unchecked_ref())
-            .expect("failed to add event listener");
-        closure
-    }
-
-    fn element_with_closure(name: &str, trigger: &str) -> (web_sys::Element, Closure<FnMut(web_sys::Event)>) {
-        let elem = e(name);
-        let closure = c(&elem, trigger);
-        (elem, closure)
-    }
-
 
     #[test]
     fn basic_diff() {
