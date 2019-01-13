@@ -950,6 +950,22 @@ mod tests {
             .create_element(name).expect("expected element")
     }
 
+    fn c(elem: &web_sys::Element, trigger: &str) -> Closure<FnMut(web_sys::Event)> {
+        let closure = Closure::wrap(
+            Box::new(|_|()) as Box<FnMut(web_sys::Event)>
+        );
+        (elem.as_ref() as &web_sys::EventTarget)
+            .add_event_listener_with_callback(trigger, closure.as_ref().unchecked_ref())
+            .expect("failed to add event listener");
+        closure
+    }
+
+    fn element_with_closure(name: &str, trigger: &str) -> (web_sys::Element, Closure<FnMut(web_sys::Event)>) {
+        let elem = e(name);
+        let closure = c(&elem, trigger);
+        (elem, closure)
+    }
+
     #[wasm_bindgen_test]
     fn null_diff_with_element() {
         let mut old: Dom<Msg> = Dom {
@@ -1015,6 +1031,7 @@ mod tests {
 
     #[wasm_bindgen_test]
     fn old_child_nodes_with_element() {
+        let (elem, closure) = element_with_closure("b", "onclick");
         let mut old: Dom<Msg> = Dom {
             element: "div".into(),
             attributes: vec!(),
@@ -1027,11 +1044,10 @@ mod tests {
                         Attr { name: "id".into(), value: "id".into() },
                     ],
                     events: vec![
-                        // XXX register this with the element
-                        Event { trigger: "onclick".into(), handler: EventHandler::Msg(Msg {}), closure: None },
+                        Event { trigger: "onclick".into(), handler: EventHandler::Msg(Msg {}), closure: Some(closure) },
                     ],
                     children: vec![],
-                    node: Some(e("b")),
+                    node: Some(elem),
                 },
                 Dom {
                     element: "i".into(),
