@@ -109,13 +109,13 @@ trait DomTree<'a, Message> {
 //    fn children() -> Iterator<Item = DomTree<'a, Message>>;
 }
 
-enum Patch<'new, Message> {
+enum Patch<'a, Message> {
     RemoveNode(web_sys::Element),
-    CreateNode { store: Box<FnMut(web_sys::Element) + 'new>, element: &'new str },
-    CopyNode { store: Box<FnMut(web_sys::Element) + 'new>, node: web_sys::Element },
-    AddAttribute { name: &'new str, value: &'new str },
-    RemoveAttribute(&'new str),
-    AddListener { trigger: String, handler: EventHandler<Message>, store: Box<FnMut(Closure<FnMut(web_sys::Event)>) + 'new> },
+    CreateNode { store: Box<FnMut(web_sys::Element) + 'a>, element: &'a str },
+    CopyNode { store: Box<FnMut(web_sys::Element) + 'a>, node: web_sys::Element },
+    AddAttribute { name: &'a str, value: &'a str },
+    RemoveAttribute(&'a str),
+    AddListener { trigger: String, handler: EventHandler<Message>, store: Box<FnMut(Closure<FnMut(web_sys::Event)>) + 'a> },
     RemoveListener { trigger: String, closure: Closure<FnMut(web_sys::Event)> },
     Up,
 }
