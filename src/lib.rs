@@ -1319,4 +1319,74 @@ mod tests {
         );
     }
 
+    #[wasm_bindgen_test]
+    fn null_patch_with_element() {
+        let mut old: Dom<Msg> = Dom {
+            element: "div".into(),
+            attributes: vec!(),
+            events: vec!(),
+            children: vec!(),
+            text: None,
+            node: Some(e("div")),
+        };
+
+        let mut new: Dom<Msg> = Dom {
+            element: "div".into(),
+            attributes: vec!(),
+            events: vec!(),
+            children: vec!(),
+            text: None,
+            node: None,
+        };
+
+        let mut o = old.old_dom().into_iter();
+        let mut n = new.new_dom().into_iter();
+        let patch_set = diff(&mut o, &mut n);
+
+        let parent = e("div");
+        let dispatch = Rc::new(Box::new(move |_|()) as Box<Fn(Msg)>);
+        patch(parent.clone(), patch_set, dispatch.clone());
+    }
+
+    #[wasm_bindgen_test]
+    fn basic_patch_with_element() {
+        let gen1: Vec<DomItem<Msg>> = vec![];
+
+        let mut gen2: Dom<Msg> = Dom {
+            element: "div".into(),
+            attributes: vec!(),
+            events: vec!(),
+            children: vec!(),
+            text: None,
+            node: None,
+        };
+
+        let mut gen3: Dom<Msg> = Dom {
+            element: "span".into(),
+            attributes: vec!(),
+            events: vec!(),
+            children: vec!(),
+            text: None,
+            node: None,
+        };
+
+        let parent = e("div");
+        let dispatch = Rc::new(Box::new(move |_|()) as Box<Fn(Msg)>);
+
+        {
+            // first gen create element
+            let mut o = gen1.into_iter();
+            let mut n = gen2.new_dom().into_iter();
+            let patch_set = diff(&mut o, &mut n);
+            patch(parent.clone(), patch_set, dispatch.clone());
+        }
+
+        {
+            // second gen remove and replace element
+            let mut o = gen2.old_dom().into_iter();
+            let mut n = gen3.new_dom().into_iter();
+            let patch_set = diff(&mut o, &mut n);
+            patch(parent.clone(), patch_set, dispatch.clone());
+        }
+    }
 }
