@@ -817,6 +817,10 @@ mod tests {
                         assert_eq!(n1, n2, "attribute names don't match");
                         assert_eq!(v1, v2, "attribute values don't match");
                     }
+                    (Patch::CreateText { store: _, text: t1 }, Patch::CreateText { store: _, text: t2 }) => {
+                        assert_eq!(t1, t2, "unexpected CreateText");
+                    }
+                    (Patch::CopyText { store: _, node: _ }, Patch::CopyText { store: _, node: _ }) => {}
                     (Patch::RemoveAttribute(a1), Patch::RemoveAttribute(a2)) => {
                         assert_eq!(a1, a2, "attribute names don't match");
                     }
@@ -828,6 +832,7 @@ mod tests {
                         assert_eq!(t1, t2, "trigger names don't match");
                     }
                     (Patch::RemoveElement(_), Patch::RemoveElement(_)) => {}
+                    (Patch::RemoveText(_), Patch::RemoveText(_)) => {}
                     (Patch::Up, Patch::Up) => {}
                     (i1, i2) => panic!("patch items don't match: {:?} {:?}", i1, i2),
                 }
@@ -899,6 +904,44 @@ mod tests {
             patch_set,
             [
                 Patch::CreateElement { store: Box::new(|_|()), element: "span" },
+                Patch::Up,
+            ]
+        );
+    }
+
+    #[test]
+    fn diff_add_text() {
+        let mut old: Dom<Msg> = Dom {
+            element: "div".into(),
+            attributes: vec!(),
+            events: vec!(),
+            children: vec!(),
+            text: None,
+            node: None,
+        };
+
+        let mut new: Dom<Msg> = Dom {
+            element: "div".into(),
+            attributes: vec!(),
+            events: vec!(),
+            children: vec!(),
+            text: Some(Text {
+                text: "text".to_owned(),
+                node: None,
+            }),
+            node: None,
+        };
+
+        let mut o = old.old_dom().into_iter();
+        let mut n = new.new_dom().into_iter();
+        let patch_set = diff(&mut o, &mut n);
+
+        compare!(
+            patch_set,
+            [
+                Patch::CreateElement { store: Box::new(|_|()), element: "div" },
+                Patch::CreateText { store: Box::new(|_|()), text: "text".into() },
+                Patch::Up,
                 Patch::Up,
             ]
         );
