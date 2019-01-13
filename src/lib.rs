@@ -34,9 +34,8 @@ enum Storage<'a, T> {
 impl<'a, T> fmt::Debug for Storage<'a, T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            Storage::Read(Some(_)) => write!(f, "Storage(Read(Some(_)))"),
-            Storage::Read(None) => write!(f, "Storage(Read(None))"),
-            Storage::Write(_) => write!(f, "Storage(Write)"),
+            Storage::Read(_) => write!(f, "Read(_)"),
+            Storage::Write(_) => write!(f, "Write(_)"),
         }
     }
 }
@@ -287,13 +286,10 @@ where
             }
             (Some(o), None) => { // delete remaining old nodes
                 match o {
-                    DomItem::Element { node: Storage::Read(None), .. } => {
-                        state.push(NodeState::OldChild);
-                    }
-                    DomItem::Element { node: Storage::Read(Some(node)), .. } => {
+                    DomItem::Element { node: Storage::Read(mut node @ Some(_)), .. } => {
                         // ignore child nodes
                         if !state.is_child() {
-                            patch_set.push(Patch::RemoveElement(node.clone()));
+                            patch_set.push(Patch::RemoveElement(node.take().unwrap()));
                         }
 
                         state.push(NodeState::OldChild);
@@ -301,13 +297,10 @@ where
                     DomItem::Element { node: Storage::Write(_), .. } => {
                         panic!("old node should not have Storage::Write(_)");
                     }
-                    DomItem::Text { node: Storage::Read(None), .. } => {
-                        state.push(NodeState::OldChild);
-                    }
-                    DomItem::Text { node: Storage::Read(Some(node)), .. } => {
+                    DomItem::Text { node: Storage::Read(mut node @ Some(_)), .. } => {
                         // ignore child nodes
                         if !state.is_child() {
-                            patch_set.push(Patch::RemoveText(node.clone()));
+                            patch_set.push(Patch::RemoveText(node.take().unwrap()));
                         }
 
                         state.push(NodeState::OldChild);
@@ -322,6 +315,14 @@ where
                     DomItem::Event { .. } => {}
                     // ignore attributes
                     DomItem::Attr { .. } => {}
+                    // this shouldn't happen
+                    DomItem::Element { node: Storage::Read(None), .. } => {
+                        panic!("Storage::Read should never be None");
+                    }
+                    // this shouldn't happen
+                    DomItem::Text { node: Storage::Read(None), .. } => {
+                        panic!("Storage::Read should never be None");
+                    }
                 }
 
                 o_item = old.next();
@@ -329,30 +330,21 @@ where
             (Some(o), Some(n)) => { // compare nodes
                 match (o, n) {
                     (
-                        DomItem::Element { node: Storage::Read(node), element: o_element },
+                        DomItem::Element { node: Storage::Read(mut node @ Some(_)), element: o_element },
                         DomItem::Element { node: Storage::Write(store), element: n_element }
                     ) => { // compare elements
                         // if the elements match, use the web_sys::Element
                         if o_element == n_element {
-                            // create or copy the node if necessary
-                            match node {
-                                None => {
-                                    patch_set.push(Patch::CreateElement { store, element: n_element });
-                                    state.push(NodeState::Create);
-                                }
-                                Some(o_elem) => {
-                                    patch_set.push(Patch::CopyElement { store: store, node: o_elem.clone() });
-                                    state.push(NodeState::Copy);
-                                }
-                            }
+                            // copy the node
+                            patch_set.push(Patch::CopyElement { store: store, node: node.take().unwrap() });
+                            state.push(NodeState::Copy);
+
                             o_item = old.next();
                             n_item = new.next();
                         }
                         // elements don't match, remove the old and make a new one
                         else {
-                            if let Some(o_elem) = node {
-                                patch_set.push(Patch::RemoveElement(o_elem.clone()));
-                            }
+                            patch_set.push(Patch::RemoveElement(node.take().unwrap()));
                             patch_set.push(Patch::CreateElement { store, element: n_element });
                             state.push(NodeState::Create);
                             
@@ -378,30 +370,21 @@ where
                         }
                     }
                     (
-                        DomItem::Text { node: Storage::Read(node), text: o_text },
+                        DomItem::Text { node: Storage::Read(mut node @ Some(_)), text: o_text },
                         DomItem::Text { node: Storage::Write(store), text: n_text }
                     ) => { // compare text
                         // if the text matches, use the web_sys::Text
                         if o_text == n_text {
-                            // create or copy the node if necessary
-                            match node {
-                                None => {
-                                    patch_set.push(Patch::CreateText { store, text: n_text });
-                                    state.push(NodeState::Create);
-                                }
-                                Some(o_elem) => {
-                                    patch_set.push(Patch::CopyText { store: store, node: o_elem.clone() });
-                                    state.push(NodeState::Copy);
-                                }
-                            }
+                            // copy the node
+                            patch_set.push(Patch::CopyText { store: store, node: node.take().unwrap() });
+                            state.push(NodeState::Copy);
+
                             o_item = old.next();
                             n_item = new.next();
                         }
                         // elements don't match, remove the old and make a new one
                         else {
-                            if let Some(o_elem) = node {
-                                patch_set.push(Patch::RemoveText(o_elem.clone()));
-                            }
+                            patch_set.push(Patch::RemoveText(node.take().unwrap()));
                             patch_set.push(Patch::CreateText { store, text: n_text });
                             state.push(NodeState::Create);
                             
@@ -446,7 +429,7 @@ where
                         DomItem::Event { trigger: n_trigger, handler: n_handler, closure: Storage::Write(store) }
                     ) => { // compare event listeners
                         if o_trigger != n_trigger || o_handler != n_handler {
-                            if state.is_copy() && closure.is_some() {
+                            if state.is_copy() {
                                 // remove old listener
                                 patch_set.push(Patch::RemoveListener { trigger: o_trigger, closure: closure.take().unwrap() });
                             }
@@ -518,16 +501,10 @@ where
                         panic!("new event should not have Storage::Read(_)");
                     }
                     // remove the old node if present
-                    (DomItem::Element { node: Storage::Read(Some(node)), .. }, n) => {
+                    (DomItem::Element { node: Storage::Read(mut node @ Some(_)), .. }, n) => {
                         if !state.is_child() {
-                            patch_set.push(Patch::RemoveElement(node.clone()));
+                            patch_set.push(Patch::RemoveElement(node.take().unwrap()));
                         }
-                        state.push(NodeState::OldChild);
-                        o_item = old.next();
-                        n_item = Some(n);
-                    }
-                    // just iterate through the old node
-                    (DomItem::Element { node: Storage::Read(None), .. }, n) => {
                         state.push(NodeState::OldChild);
                         o_item = old.next();
                         n_item = Some(n);
@@ -536,17 +513,15 @@ where
                     (DomItem::Element { node: Storage::Write(_), .. }, _) => {
                         panic!("old node should not have Storage::Write(_)");
                     }
-                    // remove the old text if present
-                    (DomItem::Text { node: Storage::Read(Some(node)), .. }, n) => {
-                        if !state.is_child() {
-                            patch_set.push(Patch::RemoveText(node.clone()));
-                        }
-                        state.push(NodeState::OldChild);
-                        o_item = old.next();
-                        n_item = Some(n);
+                    // invalid
+                    (DomItem::Element { node: Storage::Read(None), .. }, _) => {
+                        panic!("Storage::Read should never be None");
                     }
-                    // just iterate through the old node
-                    (DomItem::Text { node: Storage::Read(None), .. }, n) => {
+                    // remove the old text if present
+                    (DomItem::Text { node: Storage::Read(mut node @ Some(_)), .. }, n) => {
+                        if !state.is_child() {
+                            patch_set.push(Patch::RemoveText(node.take().unwrap()));
+                        }
                         state.push(NodeState::OldChild);
                         o_item = old.next();
                         n_item = Some(n);
@@ -554,6 +529,10 @@ where
                     // invalid
                     (DomItem::Text { node: Storage::Write(_), .. }, _) => {
                         panic!("old text should not have Storage::Write(_)");
+                    }
+                    // invalid
+                    (DomItem::Text { node: Storage::Read(None), .. }, _) => {
+                        panic!("Storage::Read should never be None");
                     }
                     // remove attribute from old node
                     (DomItem::Attr { name, value: _ }, n) => {
@@ -564,20 +543,20 @@ where
                         n_item = Some(n);
                     }
                     // remove event from old node
-                    (DomItem::Event { trigger, closure: Storage::Read(Some(closure)), .. }, n) => {
+                    (DomItem::Event { trigger, closure: Storage::Read(mut closure @ Some(_)), .. }, n) => {
                         if state.is_copy() {
-                            patch_set.push(Patch::RemoveListener { trigger, closure: closure });
+                            patch_set.push(Patch::RemoveListener { trigger, closure: closure.take().unwrap() });
                         }
                         o_item = old.next();
                         n_item = Some(n);
                     }
-                    // just ignore the event from old node
-                    (DomItem::Event {closure: Storage::Read(None), .. }, n) => {
-                        o_item = old.next();
-                        n_item = Some(n);
-                    }
-                    (DomItem::Event {closure: Storage::Write(_), .. }, _) => {
+                    // invalid
+                    (DomItem::Event { closure: Storage::Write(_), .. }, _) => {
                         panic!("old event should not have Storage::Write(_)");
+                    }
+                    // invalid
+                    (DomItem::Event { closure: Storage::Read(None), .. }, _) => {
+                        panic!("Storage::Read should never be None");
                     }
                 }
             }
@@ -753,7 +732,6 @@ mod tests {
                     element: element,
                     node: match node {
                         Some(_) => Storage::Read(node.clone()),
-                        None if old => Storage::Read(None),
                         None => Storage::Write(Box::new(move |n| *node = Some(n))),
                     },
                 })
@@ -773,7 +751,6 @@ mod tests {
                          },
                          closure: match e.closure {
                              Some(_) => Storage::Read(e.closure.take()),
-                             None if old => Storage::Read(None),
                              None => Storage::Write(Box::new(move |c| e.closure = Some(c))),
                          },
                      }
@@ -848,49 +825,40 @@ mod tests {
     #[derive(Debug, Clone, PartialEq)]
     struct Msg {}
 
-    #[test]
-    fn null_diff() {
-        let mut old: Dom<Msg> = Dom {
-            element: "div".into(),
-            attributes: vec!(),
-            events: vec!(),
-            children: vec!(),
-            text: None,
-            node: None,
-        };
+    //
+    // wasm tests
+    //
 
-        let mut new: Dom<Msg> = Dom {
-            element: "div".into(),
-            attributes: vec!(),
-            events: vec!(),
-            children: vec!(),
-            text: None,
-            node: None,
-        };
+    use wasm_bindgen_test::*;
+    use wasm_bindgen_test::wasm_bindgen_test_configure;
+    wasm_bindgen_test_configure!(run_in_browser);
 
-        let mut o = old.old_dom().into_iter();
-        let mut n = new.new_dom().into_iter();
-        let patch_set = diff(&mut o, &mut n);
-
-        compare!(
-            patch_set,
-            [
-                Patch::CreateElement { store: Box::new(|_|()), element: "div" },
-                Patch::Up,
-            ]
-        );
+    fn e(name: &str) -> web_sys::Element {
+        web_sys::window().expect("expected window")
+            .document().expect("expected document")
+            .create_element(name).expect("expected element")
     }
+
+    fn c(elem: &web_sys::Element, trigger: &str) -> Closure<FnMut(web_sys::Event)> {
+        let closure = Closure::wrap(
+            Box::new(|_|()) as Box<FnMut(web_sys::Event)>
+        );
+        (elem.as_ref() as &web_sys::EventTarget)
+            .add_event_listener_with_callback(trigger, closure.as_ref().unchecked_ref())
+            .expect("failed to add event listener");
+        closure
+    }
+
+    fn element_with_closure(name: &str, trigger: &str) -> (web_sys::Element, Closure<FnMut(web_sys::Event)>) {
+        let elem = e(name);
+        let closure = c(&elem, trigger);
+        (elem, closure)
+    }
+
 
     #[test]
     fn basic_diff() {
-        let mut old: Dom<Msg> = Dom {
-            element: "div".into(),
-            attributes: vec!(),
-            events: vec!(),
-            children: vec!(),
-            text: None,
-            node: None,
-        };
+        let old: Vec<DomItem<Msg>> = vec![];
 
         let mut new: Dom<Msg> = Dom {
             element: "span".into(),
@@ -901,7 +869,7 @@ mod tests {
             node: None,
         };
 
-        let mut o = old.old_dom().into_iter();
+        let mut o = old.into_iter();
         let mut n = new.new_dom().into_iter();
         let patch_set = diff(&mut o, &mut n);
 
@@ -916,14 +884,7 @@ mod tests {
 
     #[test]
     fn diff_add_text() {
-        let mut old: Dom<Msg> = Dom {
-            element: "div".into(),
-            attributes: vec!(),
-            events: vec!(),
-            children: vec!(),
-            text: None,
-            node: None,
-        };
+        let old: Vec<DomItem<Msg>> = vec![];
 
         let mut new: Dom<Msg> = Dom {
             element: "div".into(),
@@ -937,7 +898,7 @@ mod tests {
             node: None,
         };
 
-        let mut o = old.old_dom().into_iter();
+        let mut o = old.into_iter();
         let mut n = new.new_dom().into_iter();
         let patch_set = diff(&mut o, &mut n);
 
@@ -952,71 +913,7 @@ mod tests {
         );
     }
 
-    #[test]
-    fn old_child_nodes() {
-        let mut old: Dom<Msg> = Dom {
-            element: "div".into(),
-            attributes: vec!(),
-            events: vec!(),
-            children: vec![
-                Dom {
-                    element: "b".into(),
-                    attributes: vec![
-                        Attr { name: "class".into(), value: "item".into() },
-                        Attr { name: "id".into(), value: "id".into() },
-                    ],
-                    events: vec![
-                        Event {
-                            trigger: "onclick".into(),
-                            handler: EventHandler::Msg(Msg {}),
-                            closure: None,
-                        },
-                    ],
-                    children: vec![],
-                    text: None,
-                    node: None,
-                },
-                Dom {
-                    element: "i".into(),
-                    attributes: vec![
-                        Attr { name: "class".into(), value: "item".into() },
-                        Attr { name: "id".into(), value: "id".into() },
-                    ],
-                    events: vec![
-                        Event { trigger: "onclick".into(), handler: EventHandler::Msg(Msg {}), closure: None },
-                    ],
-                    children: vec![],
-                    text: None,
-                    node: None,
-                },
-            ],
-            text: None,
-            node: None,
-        };
-
-        let mut new: Dom<Msg> = Dom {
-            element: "div".into(),
-            attributes: vec!(),
-            events: vec!(),
-            children: vec!(),
-            text: None,
-            node: None,
-        };
-
-        let mut o = old.old_dom().into_iter();
-        let mut n = new.new_dom().into_iter();
-        let patch_set = diff(&mut o, &mut n);
-
-        compare!(
-            patch_set,
-            [
-                Patch::CreateElement { store: Box::new(|_|()), element: "div" },
-                Patch::Up,
-            ]
-        );
-    }
-
-    #[test]
+    #[wasm_bindgen_test]
     fn new_child_nodes() {
         let mut old: Dom<Msg> = Dom {
             element: "div".into(),
@@ -1024,7 +921,7 @@ mod tests {
             events: vec!(),
             children: vec![],
             text: None,
-            node: None,
+            node: Some(e("div")),
         };
 
         let mut new: Dom<Msg> = Dom {
@@ -1070,7 +967,7 @@ mod tests {
         compare!(
             patch_set,
             [
-                Patch::CreateElement { store: Box::new(|_|()), element: "div" },
+                Patch::CopyElement { store: Box::new(|_|()), node: e("div") },
                 Patch::CreateElement { store: Box::new(|_|()), element: "b" },
                 Patch::AddAttribute { name: "class", value: "item" },
                 Patch::AddAttribute { name: "id", value: "id1" },
@@ -1086,98 +983,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn diff_old_child_nodes() {
-        let mut old: Dom<Msg> = Dom {
-            element: "span".into(),
-            attributes: vec!(),
-            events: vec!(),
-            children: vec![
-                Dom {
-                    element: "b".into(),
-                    attributes: vec![
-                        Attr { name: "class".into(), value: "item".into() },
-                        Attr { name: "id".into(), value: "id".into() },
-                    ],
-                    events: vec![
-                        Event { trigger: "onclick".into(), handler: EventHandler::Msg(Msg {}), closure: None },
-                    ],
-                    children: vec![],
-                    text: None,
-                    node: None,
-                },
-                Dom {
-                    element: "i".into(),
-                    attributes: vec![
-                        Attr { name: "class".into(), value: "item".into() },
-                        Attr { name: "id".into(), value: "id".into() },
-                    ],
-                    events: vec![
-                        Event { trigger: "onclick".into(), handler: EventHandler::Msg(Msg {}), closure: None },
-                    ],
-                    children: vec![],
-                    text: None,
-                    node: None,
-                },
-            ],
-            text: None,
-            node: None,
-        };
-
-        let mut new: Dom<Msg> = Dom {
-            element: "div".into(),
-            attributes: vec!(),
-            events: vec!(),
-            children: vec!(),
-            text: None,
-            node: None,
-        };
-
-        let mut o = old.old_dom().into_iter();
-        let mut n = new.new_dom().into_iter();
-        let patch_set = diff(&mut o, &mut n);
-
-        compare!(
-            patch_set,
-            [
-                Patch::CreateElement { store: Box::new(|_|()), element: "div" },
-                Patch::Up,
-            ]
-        );
-    }
-
-    //
-    // wasm tests
-    //
-
-    use wasm_bindgen_test::*;
-    use wasm_bindgen_test::wasm_bindgen_test_configure;
-    wasm_bindgen_test_configure!(run_in_browser);
-
-    fn e(name: &str) -> web_sys::Element {
-        web_sys::window().expect("expected window")
-            .document().expect("expected document")
-            .create_element(name).expect("expected element")
-    }
-
-    fn c(elem: &web_sys::Element, trigger: &str) -> Closure<FnMut(web_sys::Event)> {
-        let closure = Closure::wrap(
-            Box::new(|_|()) as Box<FnMut(web_sys::Event)>
-        );
-        (elem.as_ref() as &web_sys::EventTarget)
-            .add_event_listener_with_callback(trigger, closure.as_ref().unchecked_ref())
-            .expect("failed to add event listener");
-        closure
-    }
-
-    fn element_with_closure(name: &str, trigger: &str) -> (web_sys::Element, Closure<FnMut(web_sys::Event)>) {
-        let elem = e(name);
-        let closure = c(&elem, trigger);
-        (elem, closure)
-    }
-
     #[wasm_bindgen_test]
-    fn null_diff_with_element() {
+    fn no_difference() {
         let mut old: Dom<Msg> = Dom {
             element: "div".into(),
             attributes: vec!(),
@@ -1270,9 +1077,7 @@ mod tests {
                         Attr { name: "class".into(), value: "item".into() },
                         Attr { name: "id".into(), value: "id".into() },
                     ],
-                    events: vec![
-                        Event { trigger: "onclick".into(), handler: EventHandler::Msg(Msg {}), closure: None },
-                    ],
+                    events: vec![],
                     children: vec![],
                     text: None,
                     node: Some(e("i")),
