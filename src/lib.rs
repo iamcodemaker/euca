@@ -50,8 +50,8 @@ impl<'a, T> fmt::Debug for Storage<'a, T> {
 /// various attributes and events.
 #[derive(Debug)]
 enum DomItem<'a, Message> {
-    /// A node in the tree.
-    Node { element: &'a str, node: Storage<'a, web_sys::Element> },
+    /// An element in the tree.
+    Element { element: &'a str, node: Storage<'a, web_sys::Element> },
     /// An attribute of the last node we saw.
     Attr { name: &'a str, value: &'a str },
     /// An event handler from the last node we saw.
@@ -67,8 +67,8 @@ where
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
             (
-                DomItem::Node { node: _, element: e1 },
-                DomItem::Node { node: _, element: e2 }
+                DomItem::Element { node: _, element: e1 },
+                DomItem::Element { node: _, element: e2 }
             )
             => e1 == e2,
             (
@@ -110,9 +110,9 @@ trait DomTree<'a, Message> {
 }
 
 enum Patch<'a, Message> {
-    RemoveNode(web_sys::Element),
-    CreateNode { store: Box<FnMut(web_sys::Element) + 'a>, element: &'a str },
-    CopyNode { store: Box<FnMut(web_sys::Element) + 'a>, node: web_sys::Element },
+    RemoveElement(web_sys::Element),
+    CreateElement { store: Box<FnMut(web_sys::Element) + 'a>, element: &'a str },
+    CopyElement { store: Box<FnMut(web_sys::Element) + 'a>, node: web_sys::Element },
     AddAttribute { name: &'a str, value: &'a str },
     RemoveAttribute(&'a str),
     AddListener { trigger: String, handler: EventHandler<Message>, store: Box<FnMut(Closure<FnMut(web_sys::Event)>) + 'a> },
@@ -126,9 +126,9 @@ where
 {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            Patch::RemoveNode(_) => write!(f, "RemoveNode(_)"),
-            Patch::CreateNode { store: _, element: s } => write!(f, "CreateNode {{ store: _, element: {:?} }}", s),
-            Patch::CopyNode { store: _, node: _ } => write!(f, "CopyNode {{ store: _, node: _ }}"),
+            Patch::RemoveElement(_) => write!(f, "RemoveElement(_)"),
+            Patch::CreateElement { store: _, element: s } => write!(f, "CreateElement {{ store: _, element: {:?} }}", s),
+            Patch::CopyElement { store: _, node: _ } => write!(f, "CopyElement {{ store: _, node: _ }}"),
             Patch::AddAttribute { name: n, value: v } => write!(f, "AddAttribute {{ name: {:?}, value: {:?} }}", n, v),
             Patch::RemoveAttribute(s) => write!(f, "RemoveAttribute({:?})", s),
             Patch::AddListener { trigger: t, handler: h, store: _ } => write!(f, "AddListener {{ trigger: {:?}, handler: {:?}, store: _ }}", t, h),
@@ -144,15 +144,15 @@ where
 {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
-            (Patch::RemoveNode(_), Patch::RemoveNode(_)) => true,
+            (Patch::RemoveElement(_), Patch::RemoveElement(_)) => true,
             (
-                Patch::CreateNode { store: _, element: e1 },
-                Patch::CreateNode { store: _, element: e2 },
+                Patch::CreateElement { store: _, element: e1 },
+                Patch::CreateElement { store: _, element: e2 },
             )
             => e1 == e2,
             (
-                Patch::CopyNode { store: _, node: _ },
-                Patch::CopyNode { store: _, node: _ },
+                Patch::CopyElement { store: _, node: _ },
+                Patch::CopyElement { store: _, node: _ },
             )
             => true,
             (
@@ -244,8 +244,8 @@ where
             }
             (None, Some(n)) => { // create remaining new nodes
                 match n {
-                    DomItem::Node { node: Storage::Write(store), element } => {
-                        patch_set.push(Patch::CreateNode { store, element });
+                    DomItem::Element { node: Storage::Write(store), element } => {
+                        patch_set.push(Patch::CreateElement { store, element });
                     }
                     DomItem::Attr { name, value } => {
                         patch_set.push(Patch::AddAttribute { name, value });
@@ -256,7 +256,7 @@ where
                     DomItem::Up => {
                         patch_set.push(Patch::Up);
                     }
-                    DomItem::Node { node: Storage::Read(_), .. } => {
+                    DomItem::Element { node: Storage::Read(_), .. } => {
                         panic!("new node should not have Storage::Read(_)");
                     }
                     DomItem::Event { closure: Storage::Read(_), .. } => {
@@ -268,18 +268,18 @@ where
             }
             (Some(o), None) => { // delete remaining old nodes
                 match o {
-                    DomItem::Node { node: Storage::Read(None), .. } => {
+                    DomItem::Element { node: Storage::Read(None), .. } => {
                         state.push(NodeState::OldChild);
                     }
-                    DomItem::Node { node: Storage::Read(Some(node)), .. } => {
+                    DomItem::Element { node: Storage::Read(Some(node)), .. } => {
                         // ignore child nodes
                         if !state.is_child() {
-                            patch_set.push(Patch::RemoveNode(node.clone()));
+                            patch_set.push(Patch::RemoveElement(node.clone()));
                         }
 
                         state.push(NodeState::OldChild);
                     }
-                    DomItem::Node { node: Storage::Write(_), .. } => {
+                    DomItem::Element { node: Storage::Write(_), .. } => {
                         panic!("old node should not have Storage::Write(_)");
                     }
                     DomItem::Up => {
@@ -296,19 +296,19 @@ where
             (Some(o), Some(n)) => { // compare nodes
                 match (o, n) {
                     (
-                        DomItem::Node { node: Storage::Read(node), element: o_element },
-                        DomItem::Node { node: Storage::Write(store), element: n_element }
+                        DomItem::Element { node: Storage::Read(node), element: o_element },
+                        DomItem::Element { node: Storage::Write(store), element: n_element }
                     ) => { // compare elements
                         // if the elements match, use the web_sys::Element
                         if o_element == n_element {
                             // create or copy the node if necessary
                             match node {
                                 None => {
-                                    patch_set.push(Patch::CreateNode { store, element: n_element });
+                                    patch_set.push(Patch::CreateElement { store, element: n_element });
                                     state.push(NodeState::Create);
                                 }
                                 Some(o_elem) => {
-                                    patch_set.push(Patch::CopyNode { store: store, node: o_elem.clone() });
+                                    patch_set.push(Patch::CopyElement { store: store, node: o_elem.clone() });
                                     state.push(NodeState::Copy);
                                 }
                             }
@@ -318,9 +318,9 @@ where
                         // elements don't match, remove the old and make a new one
                         else {
                             if let Some(o_elem) = node {
-                                patch_set.push(Patch::RemoveNode(o_elem.clone()));
+                                patch_set.push(Patch::RemoveElement(o_elem.clone()));
                             }
-                            patch_set.push(Patch::CreateNode { store, element: n_element });
+                            patch_set.push(Patch::CreateElement { store, element: n_element });
                             state.push(NodeState::Create);
                             
                             // skip the rest of the items in the old tree for this element, this
@@ -328,7 +328,7 @@ where
                             loop {
                                 o_item = old.next();
                                 match o_item.take() {
-                                    Some(DomItem::Node { .. }) => {
+                                    Some(DomItem::Element { .. }) => {
                                         state.push(NodeState::OldChild);
                                     }
                                     Some(DomItem::Up) if state.is_child() => {
@@ -404,14 +404,14 @@ where
                         state.pop();
                     }
                     // add a new child node
-                    (o, DomItem::Node { node: Storage::Write(store), element }) => {
-                        patch_set.push(Patch::CreateNode { store, element });
+                    (o, DomItem::Element { node: Storage::Write(store), element }) => {
+                        patch_set.push(Patch::CreateElement { store, element });
                         state.push(NodeState::NewChild);
                         o_item = Some(o);
                         n_item = new.next();
                     }
                     // invalid
-                    (_, DomItem::Node { node: Storage::Read(_), .. }) => {
+                    (_, DomItem::Element { node: Storage::Read(_), .. }) => {
                         panic!("new node should not have Storage::Read(_)");
                     }
                     // add attribute to new node
@@ -431,22 +431,22 @@ where
                         panic!("new event should not have Storage::Read(_)");
                     }
                     // remove the old node if present
-                    (DomItem::Node { node: Storage::Read(Some(node)), .. }, n) => {
+                    (DomItem::Element { node: Storage::Read(Some(node)), .. }, n) => {
                         if !state.is_child() {
-                            patch_set.push(Patch::RemoveNode(node.clone()));
+                            patch_set.push(Patch::RemoveElement(node.clone()));
                         }
                         state.push(NodeState::OldChild);
                         o_item = old.next();
                         n_item = Some(n);
                     }
                     // just iterate through the old node
-                    (DomItem::Node { node: Storage::Read(None), .. }, n) => {
+                    (DomItem::Element { node: Storage::Read(None), .. }, n) => {
                         state.push(NodeState::OldChild);
                         o_item = old.next();
                         n_item = Some(n);
                     }
                     // invalid
-                    (DomItem::Node { node: Storage::Write(_), .. }, _) => {
+                    (DomItem::Element { node: Storage::Write(_), .. }, _) => {
                         panic!("old node should not have Storage::Write(_)");
                     }
                     // remove attribute from old node
@@ -494,13 +494,13 @@ where
 
     for p in patch_set.into_iter() {
         match p {
-            Patch::RemoveNode(node) => {
+            Patch::RemoveElement(node) => {
                 node_stack.last()
                     .unwrap()
                     .remove_child(&node)
                     .expect("failed to remove child node");
             }
-            Patch::CreateNode { mut store, element } => {
+            Patch::CreateElement { mut store, element } => {
                 let node = document.create_element(element).expect("failed to create element");
                 store(node.clone());
                 node_stack.last()
@@ -509,7 +509,7 @@ where
                     .expect("failed to append child node");
                 node_stack.push(node);
             }
-            Patch::CopyNode { mut store, node } => {
+            Patch::CopyElement { mut store, node } => {
                 store(node.clone());
                 node_stack.push(node);
             }
@@ -614,7 +614,7 @@ mod tests {
 
             // until generators are stable, this is the best we can do
             iter::once((&mut self.node, &self.element))
-                .map(|(node, element)| DomItem::Node {
+                .map(|(node, element)| DomItem::Element {
                     element: element,
                     node: match node {
                         Some(_) => Storage::Read(node.clone()),
@@ -663,10 +663,10 @@ mod tests {
 
             for (l, r) in $patch_set.into_iter().zip(cmp) {
                 match (l, r) {
-                    (Patch::CreateNode { store: _, element: e1 }, Patch::CreateNode { store: _, element: e2 }) => {
-                        assert_eq!(e1, e2, "unexpected CreateNode");
+                    (Patch::CreateElement { store: _, element: e1 }, Patch::CreateElement { store: _, element: e2 }) => {
+                        assert_eq!(e1, e2, "unexpected CreateElement");
                     }
-                    (Patch::CopyNode { store: _, node: _ }, Patch::CopyNode { store: _, node: _ }) => {}
+                    (Patch::CopyElement { store: _, node: _ }, Patch::CopyElement { store: _, node: _ }) => {}
                     (Patch::AddAttribute { name: n1, value: v1 }, Patch::AddAttribute { name: n2, value: v2 }) => {
                         assert_eq!(n1, n2, "attribute names don't match");
                         assert_eq!(v1, v2, "attribute values don't match");
@@ -681,7 +681,7 @@ mod tests {
                     (Patch::RemoveListener { trigger: t1, closure: _ }, Patch::RemoveListener { trigger: t2, closure: _ }) => {
                         assert_eq!(t1, t2, "trigger names don't match");
                     }
-                    (Patch::RemoveNode(_), Patch::RemoveNode(_)) => {}
+                    (Patch::RemoveElement(_), Patch::RemoveElement(_)) => {}
                     (Patch::Up, Patch::Up) => {}
                     (i1, i2) => panic!("patch items don't match: {:?} {:?}", i1, i2),
                 }
@@ -717,7 +717,7 @@ mod tests {
         compare!(
             patch_set,
             [
-                Patch::CreateNode { store: Box::new(|_|()), element: "div" },
+                Patch::CreateElement { store: Box::new(|_|()), element: "div" },
                 Patch::Up,
             ]
         );
@@ -748,7 +748,7 @@ mod tests {
         compare!(
             patch_set,
             [
-                Patch::CreateNode { store: Box::new(|_|()), element: "span" },
+                Patch::CreateElement { store: Box::new(|_|()), element: "span" },
                 Patch::Up,
             ]
         );
@@ -808,7 +808,7 @@ mod tests {
         compare!(
             patch_set,
             [
-                Patch::CreateNode { store: Box::new(|_|()), element: "div" },
+                Patch::CreateElement { store: Box::new(|_|()), element: "div" },
                 Patch::Up,
             ]
         );
@@ -864,13 +864,13 @@ mod tests {
         compare!(
             patch_set,
             [
-                Patch::CreateNode { store: Box::new(|_|()), element: "div" },
-                Patch::CreateNode { store: Box::new(|_|()), element: "b" },
+                Patch::CreateElement { store: Box::new(|_|()), element: "div" },
+                Patch::CreateElement { store: Box::new(|_|()), element: "b" },
                 Patch::AddAttribute { name: "class", value: "item" },
                 Patch::AddAttribute { name: "id", value: "id1" },
                 Patch::AddListener { trigger: "onclick".to_owned(), handler: super::EventHandler::Msg(Msg {}), store: Box::new(|_|()) },
                 Patch::Up,
-                Patch::CreateNode { store: Box::new(|_|()), element: "i" },
+                Patch::CreateElement { store: Box::new(|_|()), element: "i" },
                 Patch::AddAttribute { name: "class", value: "item" },
                 Patch::AddAttribute { name: "id", value: "id2" },
                 Patch::AddListener { trigger: "onclick".to_owned(), handler: super::EventHandler::Msg(Msg {}), store: Box::new(|_|()) },
@@ -930,7 +930,7 @@ mod tests {
         compare!(
             patch_set,
             [
-                Patch::CreateNode { store: Box::new(|_|()), element: "div" },
+                Patch::CreateElement { store: Box::new(|_|()), element: "div" },
                 Patch::Up,
             ]
         );
@@ -991,7 +991,7 @@ mod tests {
         compare!(
             patch_set,
             [
-                Patch::CopyNode { store: Box::new(|_|()), node: e("div") },
+                Patch::CopyElement { store: Box::new(|_|()), node: e("div") },
                 Patch::Up,
             ]
         );
@@ -1022,8 +1022,8 @@ mod tests {
         compare!(
             patch_set,
             [
-                Patch::RemoveNode(e("div")),
-                Patch::CreateNode { store: Box::new(|_|()), element: "span" },
+                Patch::RemoveElement(e("div")),
+                Patch::CreateElement { store: Box::new(|_|()), element: "span" },
                 Patch::Up,
             ]
         );
@@ -1080,9 +1080,9 @@ mod tests {
         compare!(
             patch_set,
             [
-                Patch::CopyNode { store: Box::new(|_|()), node: e("div") },
-                Patch::RemoveNode(e("b")),
-                Patch::RemoveNode(e("i")),
+                Patch::CopyElement { store: Box::new(|_|()), node: e("div") },
+                Patch::RemoveElement(e("b")),
+                Patch::RemoveElement(e("i")),
                 Patch::Up,
             ]
         );
@@ -1138,8 +1138,8 @@ mod tests {
         compare!(
             patch_set,
             [
-                Patch::RemoveNode(e("span")),
-                Patch::CreateNode { store: Box::new(|_|()), element: "div" },
+                Patch::RemoveElement(e("span")),
+                Patch::CreateElement { store: Box::new(|_|()), element: "div" },
                 Patch::Up,
             ]
         );
