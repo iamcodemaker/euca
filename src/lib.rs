@@ -602,7 +602,7 @@ where
         match p {
             Patch::RemoveElement(node) => {
                 node_stack.last()
-                    .unwrap()
+                    .expect("no previous node")
                     .remove_child(&node)
                     .expect("failed to remove child node");
             }
@@ -610,7 +610,7 @@ where
                 let node = document.create_element(element).expect("failed to create element");
                 store(node.clone());
                 node_stack.last()
-                    .unwrap()
+                    .expect("no previous node")
                     .append_child(&node)
                     .expect("failed to append child node");
                 node_stack.push(node.into());
@@ -621,7 +621,7 @@ where
             }
             Patch::RemoveText(node) => {
                 node_stack.last()
-                    .unwrap()
+                    .expect("no previous node")
                     .remove_child(&node)
                     .expect("failed to remove child node");
             }
@@ -629,7 +629,7 @@ where
                 let node = document.create_text_node(&text);
                 store(node.clone());
                 node_stack.last()
-                    .unwrap()
+                    .expect("no previous node")
                     .append_child(&node)
                     .expect("failed to append child node");
                 node_stack.push(node.into());
@@ -640,17 +640,17 @@ where
             }
             Patch::AddAttribute { name, value } => {
                 node_stack.last()
-                    .unwrap()
+                    .expect("no previous node")
                     .dyn_ref::<web_sys::Element>()
-                    .unwrap()
+                    .expect("attributes can only be added to elements")
                     .set_attribute(name, value)
                     .expect("failed to set attribute");
             }
             Patch::RemoveAttribute(name) => {
                 node_stack.last()
-                    .unwrap()
+                    .expect("no previous node")
                     .dyn_ref::<web_sys::Element>()
-                    .unwrap()
+                    .expect("attributes can only be removed from elements")
                     .remove_attribute(name)
                     .expect("failed to remove attribute");
             }
@@ -672,14 +672,14 @@ where
                         )
                     }
                 };
-                let node = node_stack.last().unwrap();
+                let node = node_stack.last().expect("no previous node");
                 (node.as_ref() as &web_sys::EventTarget)
                     .add_event_listener_with_callback(&trigger, closure.as_ref().unchecked_ref())
                     .expect("failed to add event listener");
                 store(closure);
             }
             Patch::RemoveListener { trigger, closure } => {
-                let node = node_stack.last().unwrap();
+                let node = node_stack.last().expect("no previous node");
                 (node.as_ref() as &web_sys::EventTarget)
                     .remove_event_listener_with_callback(&trigger, closure.as_ref().unchecked_ref())
                     .expect("failed to remove event listener");
