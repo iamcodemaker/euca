@@ -7,6 +7,9 @@ edition = "2018"
 [lib]
 crate-type = ["cdylib", "rlib"]
 
+[dependencies]
+wasm-bindgen = "0.2.29"
+
 [dependencies.web-sys]
 version = "0.3.6"
 features = [
@@ -15,6 +18,7 @@ features = [
     "Node",
     "Element",
     "Event",
+    "EventTarget",
 ]
 
 [dev-dependencies]

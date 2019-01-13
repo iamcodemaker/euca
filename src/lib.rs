@@ -1,8 +1,11 @@
 #[deny(missing_docs)]
 
 use web_sys;
+use wasm_bindgen::prelude::*;
+use wasm_bindgen::JsCast;
 use std::fmt;
 use std::cmp;
+use std::rc::Rc;
 
 struct Dom<Message> {
     m: Message,
@@ -18,8 +21,8 @@ trait Render<Message> {
 }
 
 #[derive(Debug, PartialEq, Copy, Clone)]
-enum EventHandler<'a, Message> {
-    Msg(&'a Message),
+enum EventHandler<Message> {
+    Msg(Message),
     Fn(fn(web_sys::Event) -> Message),
 }
 
@@ -36,7 +39,7 @@ enum DomItem<'a, Message> {
     /// An attribute of the last node we saw.
     Attr { name: &'a str, value: &'a str },
     /// An event handler from the last node we saw.
-    Event { trigger: &'a str, handler: EventHandler<'a, Message> },
+    Event { trigger: String, handler: EventHandler<Message>, closure: Option<Closure<FnMut(web_sys::Event)>>, store: Box<FnMut(Closure<FnMut(web_sys::Event)>) + 'a> },
     /// We are finished processing children nodes, the next node is a sibling.
     Up,
 }
@@ -50,7 +53,8 @@ where
             DomItem::Node { node: Some(_), element: e, store: _ } => write!(f, "Node {{ node: Some(_), element: {:?}, store: _ }}", e),
             DomItem::Node { node: None, element: e, store: _ } => write!(f, "Node {{ node: None, element: {:?}, store: _ }}", e),
             DomItem::Attr { name: n, value: v } => write!(f, "Attr {{ name: {:?}, value: {:?} }}", n, v),
-            DomItem::Event { trigger: t, handler: h } => write!(f, "Event {{ trigger: {:?}, handler: {:?} }}", t, h),
+            DomItem::Event { trigger: t, handler: h, closure: Some(_), store: _ } => write!(f, "Event {{ trigger: {:?}, handler: {:?}, closure: Some(_), store: _ }}", t, h),
+            DomItem::Event { trigger: t, handler: h, closure: None, store: _ } => write!(f, "Event {{ trigger: {:?}, handler: {:?}, closure: None, store: _ }}", t, h),
             DomItem::Up => write!(f, "Up"),
         }
     }
@@ -73,8 +77,8 @@ where
             )
             => n1 == n2 && v1 == v2,
             (
-                DomItem::Event { trigger: t1, handler: h1 },
-                DomItem::Event { trigger: t2, handler: h2 }
+                DomItem::Event { trigger: t1, handler: h1, closure: _, store: _ },
+                DomItem::Event { trigger: t2, handler: h2, closure: _, store: _ }
             )
             => t1 == t2 && h1 == h2,
             (DomItem::Up, DomItem::Up) => true,
@@ -95,7 +99,7 @@ struct Attr<'a> {
 
 struct Event<'a, Message> {
     trigger: &'a str,
-    handler: EventHandler<'a, Message>,
+    handler: EventHandler<Message>,
 }
 
 trait DomTree<'a, Message> {
@@ -111,8 +115,8 @@ enum Patch<'new, Message> {
     CopyNode { store: Box<FnMut(web_sys::Element) + 'new>, node: web_sys::Element },
     AddAttribute { name: &'new str, value: &'new str },
     RemoveAttribute(&'new str),
-    AddListener { trigger: &'new str, handler: EventHandler<'new, Message> },
-    RemoveListener(&'new str),
+    AddListener { trigger: String, handler: EventHandler<Message>, store: Box<FnMut(Closure<FnMut(web_sys::Event)>) + 'new> },
+    RemoveListener { trigger: String, closure: Closure<FnMut(web_sys::Event)> },
     Up,
 }
 
@@ -127,8 +131,8 @@ where
             Patch::CopyNode { store: _, node: _ } => write!(f, "CopyNode {{ store: _, node: _ }}"),
             Patch::AddAttribute { name: n, value: v } => write!(f, "AddAttribute {{ name: {:?}, value: {:?} }}", n, v),
             Patch::RemoveAttribute(s) => write!(f, "RemoveAttribute({:?})", s),
-            Patch::AddListener { trigger: t, handler: h } => write!(f, "AddListener {{ trigger: {:?}, handler: {:?} }}", t, h),
-            Patch::RemoveListener(s) => write!(f, "RemoveListener({:?})", s),
+            Patch::AddListener { trigger: t, handler: h, store: _ } => write!(f, "AddListener {{ trigger: {:?}, handler: {:?}, store: _ }}", t, h),
+            Patch::RemoveListener { trigger: t, closure: _ } => write!(f, "RemoveListener {{ trigger: {:?}), closure: _ }}", t),
             Patch::Up => write!(f, "Up"),
         }
     }
@@ -162,15 +166,15 @@ where
             )
             => s1 == s2,
             (
-                Patch::AddListener { trigger: t1, handler: h1 },
-                Patch::AddListener { trigger: t2, handler: h2 },
+                Patch::AddListener { trigger: t1, handler: h1, .. },
+                Patch::AddListener { trigger: t2, handler: h2, .. },
             )
             => t1 == t2 && h1 == h2,
             (
-                Patch::RemoveListener(s1),
-                Patch::RemoveListener(s2),
+                Patch::RemoveListener { trigger: t1, .. },
+                Patch::RemoveListener { trigger: t2, .. },
             )
-            => s1 == s2,
+            => t1 == t2,
             (Patch::Up, Patch::Up) => true,
             (_, _) => false,
         }
@@ -181,7 +185,7 @@ type PatchSet<'a, Message> = Vec<Patch<'a, Message>>;
 
 fn diff<'a, Message, I>(old: &mut I, new: &mut I) -> PatchSet<'a, Message>
 where
-    Message: PartialEq + Clone + fmt::Debug,
+    Message: 'a + PartialEq + Clone + fmt::Debug,
     I: Iterator<Item = DomItem<'a, Message>>,
 {
     #[derive(PartialEq)]
@@ -246,8 +250,9 @@ where
                     DomItem::Attr { name, value } => {
                         patch_set.push(Patch::AddAttribute { name, value });
                     }
-                    DomItem::Event { trigger, handler } => {
-                        patch_set.push(Patch::AddListener { trigger, handler: handler.clone() });
+                    DomItem::Event { trigger, handler, closure, store } => {
+                        assert!(closure.is_none(), "closure should be empty here");
+                        patch_set.push(Patch::AddListener { trigger, handler: handler.into(), store });
                     }
                     DomItem::Up => {
                         patch_set.push(Patch::Up);
@@ -258,10 +263,10 @@ where
             }
             (Some(o), None) => { // delete remaining old nodes
                 match o {
-                    DomItem::Node { node: None, element: _, store: _ } => {
+                    DomItem::Node { node: None, .. } => {
                         state.push(NodeState::OldChild);
                     }
-                    DomItem::Node { node: Some(node), element: _, store: _ } => {
+                    DomItem::Node { node: Some(node), .. } => {
                         // ignore child nodes
                         if !state.is_child() {
                             patch_set.push(Patch::RemoveNode(node.clone()));
@@ -273,9 +278,9 @@ where
                         state.pop();
                     }
                     // XXX do we need to remove events?
-                    DomItem::Event { trigger: _, handler: _ } => {}
+                    DomItem::Event { .. } => {}
                     // ignore attributes
-                    DomItem::Attr { name: _, value: _ } => {}
+                    DomItem::Attr { .. } => {}
                 }
 
                 o_item = old.next();
@@ -322,7 +327,7 @@ where
                             loop {
                                 o_item = old.next();
                                 match o_item.take() {
-                                    Some(DomItem::Node { node: _, element: _, store: _ }) => {
+                                    Some(DomItem::Node { .. }) => {
                                         state.push(NodeState::OldChild);
                                     }
                                     Some(DomItem::Up) if state.is_child() => {
@@ -360,22 +365,20 @@ where
                         n_item = new.next();
                     }
                     (
-                        DomItem::Event { trigger: o_trigger, handler: o_handler },
-                        DomItem::Event { trigger: n_trigger, handler: n_handler }
+                        DomItem::Event { trigger: o_trigger, handler: o_handler, mut closure, store: _ },
+                        DomItem::Event { trigger: n_trigger, handler: n_handler, closure: _, store }
                     ) => { // compare event listeners
-                        if state.is_create() {
-                            // add listener
-                            patch_set.push(Patch::AddListener { trigger: n_trigger, handler: n_handler.clone() });
-                        }
                         if o_trigger != n_trigger || o_handler != n_handler {
-                            if state.is_copy() {
+                            if state.is_copy() && closure.is_some() {
                                 // remove old listener
-                                patch_set.push(Patch::RemoveListener(o_trigger));
+                                patch_set.push(Patch::RemoveListener { trigger: o_trigger, closure: closure.take().unwrap() });
                             }
-                            if !state.is_create() {
-                                // add new listener
-                                patch_set.push(Patch::AddListener { trigger: n_trigger, handler: n_handler.clone() });
-                            }
+                            // add new listener
+                            patch_set.push(Patch::AddListener { trigger: n_trigger, handler: n_handler.into(), store });
+                        }
+                        else if state.is_create() {
+                            // add listener
+                            patch_set.push(Patch::AddListener { trigger: n_trigger, handler: n_handler.into(), store });
                         }
                         o_item = old.next();
                         n_item = new.next();
@@ -413,13 +416,13 @@ where
                         n_item = new.next();
                     }
                     // add event to new node
-                    (o, DomItem::Event { trigger, handler }) => {
-                        patch_set.push(Patch::AddListener { trigger, handler: handler.clone() });
+                    (o, DomItem::Event { trigger, handler, closure: _, store }) => {
+                        patch_set.push(Patch::AddListener { trigger, handler: handler.into(), store });
                         o_item = Some(o);
                         n_item = new.next();
                     }
                     // remove the old node if present
-                    (DomItem::Node { node: Some(node), element: _, store: _ }, n) => {
+                    (DomItem::Node { node: Some(node), .. }, n) => {
                         if !state.is_child() {
                             patch_set.push(Patch::RemoveNode(node.clone()));
                         }
@@ -428,7 +431,7 @@ where
                         n_item = Some(n);
                     }
                     // just iterate through the old node
-                    (DomItem::Node { node: None, element: _, store: _ }, n) => {
+                    (DomItem::Node { node: None, .. }, n) => {
                         state.push(NodeState::OldChild);
                         o_item = old.next();
                         n_item = Some(n);
@@ -442,10 +445,15 @@ where
                         n_item = Some(n);
                     }
                     // remove event from old node
-                    (DomItem::Event { trigger, handler: _ }, n) => {
+                    (DomItem::Event { trigger, closure: mut closure @ Some(_), .. }, n) => {
                         if state.is_copy() {
-                            patch_set.push(Patch::RemoveListener(trigger));
+                            patch_set.push(Patch::RemoveListener { trigger, closure: closure.take().unwrap() });
                         }
+                        o_item = old.next();
+                        n_item = Some(n);
+                    }
+                    // just ignore the event from old node
+                    (DomItem::Event {closure: None, .. }, n) => {
                         o_item = old.next();
                         n_item = Some(n);
                     }
@@ -457,7 +465,12 @@ where
     patch_set
 }
 
-fn patch<'a, Message>(parent: web_sys::Element, patch_set: PatchSet<'a, Message>) {
+fn patch<'a, Message>(parent: web_sys::Element, patch_set: PatchSet<'a, Message>, dispatch: Rc<Box<Fn(Message) + 'static>>)
+where
+    Message: 'static + Clone,
+    EventHandler<Message>: Clone,
+{
+
     let mut node_stack = vec![parent];
 
     let document = web_sys::window().expect("expected window")
@@ -496,11 +509,35 @@ fn patch<'a, Message>(parent: web_sys::Element, patch_set: PatchSet<'a, Message>
                     .remove_attribute(name)
                     .expect("failed to remove attribute");
             }
-            Patch::AddListener { trigger, handler } => {
-                // XXX call add_event_listener_with_callback()
+            Patch::AddListener { trigger, handler, mut store } => {
+                let dispatch = dispatch.clone();
+                let closure = match handler {
+                    EventHandler::Msg(msg) => {
+                        Closure::wrap(
+                            Box::new(move |_| {
+                                dispatch(msg.clone())
+                            }) as Box<FnMut(web_sys::Event)>
+                        )
+                    }
+                    EventHandler::Fn(fun) => {
+                        Closure::wrap(
+                            Box::new(move |event| {
+                                dispatch(fun(event))
+                            }) as Box<FnMut(web_sys::Event)>
+                        )
+                    }
+                };
+                let node = node_stack.last().unwrap();
+                (node.as_ref() as &web_sys::EventTarget)
+                    .add_event_listener_with_callback(&trigger, closure.as_ref().unchecked_ref())
+                    .expect("failed to add event listener");
+                store(closure);
             }
-            Patch::RemoveListener(trigger) => {
-                // XXX call remove_event_listener_with_callback()
+            Patch::RemoveListener { trigger, closure } => {
+                let node = node_stack.last().unwrap();
+                (node.as_ref() as &web_sys::EventTarget)
+                    .remove_event_listener_with_callback(&trigger, closure.as_ref().unchecked_ref())
+                    .expect("failed to remove event listener");
             }
             Patch::Up => {
                 node_stack.pop();
@@ -525,10 +562,10 @@ mod tests {
         Map(fn(web_sys::Event) -> Message),
     }
 
-    #[derive(PartialEq)]
     struct Event<Message> {
         trigger: String,
         handler: EventHandler<Message>,
+        closure: Option<Closure<FnMut(web_sys::Event)>>,
     }
 
     struct Dom<Message> {
@@ -560,14 +597,31 @@ mod tests {
                     value: &attr.value
                 })
             )
-            .chain(self.events.iter()
-                .map(|e| DomItem::Event {
-                    trigger: &e.trigger,
-                    handler: match e.handler {
-                        EventHandler::Msg(ref m) => super::EventHandler::Msg(m),
-                        EventHandler::Map(f) => super::EventHandler::Fn(f),
-                    }
-                })
+            .chain(self.events.iter_mut()
+                .map(|e|
+                     if e.closure.is_some() {
+                         DomItem::Event {
+                             trigger: e.trigger.to_owned(),
+                             handler: match e.handler {
+                                 EventHandler::Msg(ref m) => super::EventHandler::Msg(m.clone()),
+                                 EventHandler::Map(f) => super::EventHandler::Fn(f),
+                             },
+                             closure: e.closure.take(),
+                             store: Box::new(|_|()),
+                         }
+                     }
+                     else {
+                         DomItem::Event {
+                             trigger: e.trigger.to_owned(),
+                             handler: match e.handler {
+                                 EventHandler::Msg(ref m) => super::EventHandler::Msg(m.clone()),
+                                 EventHandler::Map(f) => super::EventHandler::Fn(f),
+                             },
+                             closure: None,
+                             store: Box::new(move |c| e.closure = Some(c)),
+                         }
+                     }
+                 )
             )
             .chain(self.children.iter_mut()
                .flat_map(|c| Dom::dom(c))
@@ -599,12 +653,12 @@ mod tests {
                     (Patch::RemoveAttribute(a1), Patch::RemoveAttribute(a2)) => {
                         assert_eq!(a1, a2, "attribute names don't match");
                     }
-                    (Patch::AddListener { trigger: t1, handler: h1 }, Patch::AddListener { trigger: t2, handler: h2 }) => {
+                    (Patch::AddListener { trigger: t1, handler: h1, store: _ }, Patch::AddListener { trigger: t2, handler: h2, store: _ }) => {
                         assert_eq!(t1, t2, "trigger names don't match");
                         assert_eq!(h1, h2, "handlers don't match");
                     }
-                    (Patch::RemoveListener(l1), Patch::RemoveListener(l2)) => {
-                        assert_eq!(l1, l2, "listner names don't match");
+                    (Patch::RemoveListener { trigger: t1, closure: _ }, Patch::RemoveListener { trigger: t2, closure: _ }) => {
+                        assert_eq!(t1, t2, "trigger names don't match");
                     }
                     (Patch::RemoveNode(_), Patch::RemoveNode(_)) => {}
                     (Patch::Up, Patch::Up) => {}
@@ -693,7 +747,11 @@ mod tests {
                         Attr { name: "id".into(), value: "id".into() },
                     ],
                     events: vec![
-                        Event { trigger: "onclick".into(), handler: EventHandler::Msg(Msg {}) },
+                        Event {
+                            trigger: "onclick".into(),
+                            handler: EventHandler::Msg(Msg {}),
+                            closure: None,
+                        },
                     ],
                     children: vec![],
                     node: None,
@@ -705,7 +763,7 @@ mod tests {
                         Attr { name: "id".into(), value: "id".into() },
                     ],
                     events: vec![
-                        Event { trigger: "onclick".into(), handler: EventHandler::Msg(Msg {}) },
+                        Event { trigger: "onclick".into(), handler: EventHandler::Msg(Msg {}), closure: None },
                     ],
                     children: vec![],
                     node: None,
@@ -757,7 +815,7 @@ mod tests {
                         Attr { name: "id".into(), value: "id1".into() },
                     ],
                     events: vec![
-                        Event { trigger: "onclick".into(), handler: EventHandler::Msg(Msg {}) },
+                        Event { trigger: "onclick".into(), handler: EventHandler::Msg(Msg {}), closure: None },
                     ],
                     children: vec![],
                     node: None,
@@ -769,7 +827,7 @@ mod tests {
                         Attr { name: "id".into(), value: "id2".into() },
                     ],
                     events: vec![
-                        Event { trigger: "onclick".into(), handler: EventHandler::Msg(Msg {}) },
+                        Event { trigger: "onclick".into(), handler: EventHandler::Msg(Msg {}), closure: None },
                     ],
                     children: vec![],
                     node: None,
@@ -789,12 +847,12 @@ mod tests {
                 Patch::CreateNode { store: Box::new(|_|()), element: "b" },
                 Patch::AddAttribute { name: "class", value: "item" },
                 Patch::AddAttribute { name: "id", value: "id1" },
-                Patch::AddListener { trigger: "onclick", handler: super::EventHandler::Msg(&Msg {}) },
+                Patch::AddListener { trigger: "onclick".to_owned(), handler: super::EventHandler::Msg(Msg {}), store: Box::new(|_|()) },
                 Patch::Up,
                 Patch::CreateNode { store: Box::new(|_|()), element: "i" },
                 Patch::AddAttribute { name: "class", value: "item" },
                 Patch::AddAttribute { name: "id", value: "id2" },
-                Patch::AddListener { trigger: "onclick", handler: super::EventHandler::Msg(&Msg {}) },
+                Patch::AddListener { trigger: "onclick".to_owned(), handler: super::EventHandler::Msg(Msg {}), store: Box::new(|_|()) },
                 Patch::Up,
                 Patch::Up,
             ]
@@ -815,7 +873,7 @@ mod tests {
                         Attr { name: "id".into(), value: "id".into() },
                     ],
                     events: vec![
-                        Event { trigger: "onclick".into(), handler: EventHandler::Msg(Msg {}) },
+                        Event { trigger: "onclick".into(), handler: EventHandler::Msg(Msg {}), closure: None },
                     ],
                     children: vec![],
                     node: None,
@@ -827,7 +885,7 @@ mod tests {
                         Attr { name: "id".into(), value: "id".into() },
                     ],
                     events: vec![
-                        Event { trigger: "onclick".into(), handler: EventHandler::Msg(Msg {}) },
+                        Event { trigger: "onclick".into(), handler: EventHandler::Msg(Msg {}), closure: None },
                     ],
                     children: vec![],
                     node: None,
@@ -948,7 +1006,8 @@ mod tests {
                         Attr { name: "id".into(), value: "id".into() },
                     ],
                     events: vec![
-                        Event { trigger: "onclick".into(), handler: EventHandler::Msg(Msg {}) },
+                        // XXX register this with the element
+                        Event { trigger: "onclick".into(), handler: EventHandler::Msg(Msg {}), closure: None },
                     ],
                     children: vec![],
                     node: Some(e("b")),
@@ -960,7 +1019,7 @@ mod tests {
                         Attr { name: "id".into(), value: "id".into() },
                     ],
                     events: vec![
-                        Event { trigger: "onclick".into(), handler: EventHandler::Msg(Msg {}) },
+                        Event { trigger: "onclick".into(), handler: EventHandler::Msg(Msg {}), closure: None },
                     ],
                     children: vec![],
                     node: Some(e("i")),
@@ -1006,7 +1065,7 @@ mod tests {
                         Attr { name: "id".into(), value: "id".into() },
                     ],
                     events: vec![
-                        Event { trigger: "onclick".into(), handler: EventHandler::Msg(Msg {}) },
+                        Event { trigger: "onclick".into(), handler: EventHandler::Msg(Msg {}), closure: None },
                     ],
                     children: vec![],
                     node: Some(e("b")),
@@ -1018,7 +1077,7 @@ mod tests {
                         Attr { name: "id".into(), value: "id".into() },
                     ],
                     events: vec![
-                        Event { trigger: "onclick".into(), handler: EventHandler::Msg(Msg {}) },
+                        Event { trigger: "onclick".into(), handler: EventHandler::Msg(Msg {}), closure: None },
                     ],
                     children: vec![],
                     node: Some(e("i")),
