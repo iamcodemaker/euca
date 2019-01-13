@@ -1220,6 +1220,8 @@ mod tests {
             patch(parent.clone(), patch_set, dispatch.clone());
         }
 
+        assert!(gen2.node.is_some(), "expected node to be created");
+
         {
             // second gen remove and replace element
             let mut o = gen2.dom().into_iter();
@@ -1227,5 +1229,7 @@ mod tests {
             let patch_set = diff(&mut o, &mut n);
             patch(parent.clone(), patch_set, dispatch.clone());
         }
+
+        assert!(gen3.node.is_some(), "expected node to be created");
     }
 }
