@@ -1232,4 +1232,46 @@ mod tests {
 
         assert!(gen3.node.is_some(), "expected node to be created");
     }
+
+    #[wasm_bindgen_test]
+    fn basic_event_test() {
+        use std::cell::RefCell;
+
+        let counter: Rc<RefCell<_>> = Rc::new(RefCell::new(0));
+
+        let gen1: Vec<DomItem<Msg>> = vec![];
+
+        let mut gen2: Dom<Msg> = Dom {
+            element: "button".into(),
+            attributes: vec!(),
+            events: vec![
+                Event { trigger: "click".into(), handler: EventHandler::Msg(Msg {}), closure: None },
+            ],
+            children: vec!(),
+            text: None,
+            node: None,
+        };
+
+        let parent = e("div");
+        let dispatch_counter = counter.clone();
+        let dispatch = Rc::new(move |_| {
+             let mut count = dispatch_counter.borrow_mut();
+             *count += 1;
+        });
+
+        {
+            let mut o = gen1.into_iter();
+            let mut n = gen2.dom().into_iter();
+            let patch_set = diff(&mut o, &mut n);
+            patch(parent.clone(), patch_set, dispatch.clone());
+        }
+
+        gen2.node
+            .expect("expected node to be created")
+            .dyn_ref::<web_sys::HtmlElement>()
+            .expect("expected html element")
+            .click();
+
+        assert_eq!(*counter.borrow(), 1);
+    }
 }
