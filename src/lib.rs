@@ -7,19 +7,6 @@ use std::fmt;
 use std::cmp;
 use std::rc::Rc;
 
-struct Dom<Message> {
-    m: Message,
-}
-
-trait Update {
-    //fn update(&mut self) -> Command
-    fn update(&mut self);
-}
-
-trait Render<Message> {
-    fn render(&self) -> Dom<Message>;
-}
-
 #[derive(Debug, PartialEq, Copy, Clone)]
 pub enum EventHandler<Message> {
     Msg(Message),
@@ -91,28 +78,6 @@ where
             (_, _) => false,
         }
     }
-}
-
-type DomIter<'a, Message> = Iterator<Item = DomItem<'a, Message>>;
-
-// make nodes as part of the patch step, but store the links back to store them here? Then we'll
-// have refs twice though?
-
-struct Attr<'a> {
-    name: &'a str,
-    value: &'a str,
-}
-
-struct Event<'a, Message> {
-    trigger: &'a str,
-    handler: EventHandler<Message>,
-}
-
-trait DomTree<'a, Message> {
-    fn element() -> &'a str;
-    fn attributes() -> Iterator<Item = Attr<'a>>;
-    fn events() -> Iterator<Item = Event<'a, Message>>;
-//    fn children() -> Iterator<Item = DomTree<'a, Message>>;
 }
 
 pub enum Patch<'a, Message> {
