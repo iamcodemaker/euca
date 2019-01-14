@@ -125,6 +125,7 @@ pub enum Patch<'a, Message> {
     AddAttribute { name: &'a str, value: &'a str },
     RemoveAttribute(&'a str),
     AddListener { trigger: String, handler: EventHandler<Message>, store: Box<FnMut(Closure<FnMut(web_sys::Event)>) + 'a> },
+    CopyListener { store: Box<FnMut(Closure<FnMut(web_sys::Event)>) + 'a>, closure: Closure<FnMut(web_sys::Event)> },
     RemoveListener { trigger: String, closure: Closure<FnMut(web_sys::Event)> },
     Up,
 }
@@ -144,6 +145,7 @@ where
             Patch::AddAttribute { name: n, value: v } => write!(f, "AddAttribute {{ name: {:?}, value: {:?} }}", n, v),
             Patch::RemoveAttribute(s) => write!(f, "RemoveAttribute({:?})", s),
             Patch::AddListener { trigger: t, handler: h, store: _ } => write!(f, "AddListener {{ trigger: {:?}, handler: {:?}, store: _ }}", t, h),
+            Patch::CopyListener { store: _, closure: _ } => write!(f, "CopyListener {{ store: _, closure: _ }}"),
             Patch::RemoveListener { trigger: t, closure: _ } => write!(f, "RemoveListener {{ trigger: {:?}), closure: _ }}", t),
             Patch::Up => write!(f, "Up"),
         }
@@ -441,6 +443,10 @@ where
                             // add listener
                             patch_set.push(Patch::AddListener { trigger: n_trigger, handler: n_handler.into(), store });
                         }
+                        else {
+                            // just copy the existing listener
+                            patch_set.push(Patch::CopyListener { store, closure: closure.take().unwrap() });
+                        }
                         o_item = old.next();
                         n_item = new.next();
                     }
@@ -656,6 +662,9 @@ where
                 (node.as_ref() as &web_sys::EventTarget)
                     .add_event_listener_with_callback(&trigger, closure.as_ref().unchecked_ref())
                     .expect("failed to add event listener");
+                store(closure);
+            }
+            Patch::CopyListener { mut store, closure } => {
                 store(closure);
             }
             Patch::RemoveListener { trigger, closure } => {
@@ -1274,5 +1283,75 @@ mod tests {
             .click();
 
         assert_eq!(*counter.borrow(), 1);
+    }
+
+    #[wasm_bindgen_test]
+    fn listener_copy() {
+        use std::cell::RefCell;
+
+        let counter: Rc<RefCell<_>> = Rc::new(RefCell::new(0));
+
+        let gen1: Vec<DomItem<Msg>> = vec![];
+
+        let mut gen2: Dom<Msg> = Dom {
+            element: "button".into(),
+            attributes: vec!(),
+            events: vec![
+                Event { trigger: "click".into(), handler: EventHandler::Msg(Msg {}), closure: None },
+            ],
+            children: vec!(),
+            text: None,
+            node: None,
+        };
+
+        let parent = e("div");
+        let dispatch_counter = counter.clone();
+        let dispatch = Rc::new(move |_| {
+             let mut count = dispatch_counter.borrow_mut();
+             *count += 1;
+        });
+
+        {
+            let mut o = gen1.into_iter();
+            let mut n = gen2.dom().into_iter();
+            let patch_set = diff(&mut o, &mut n);
+            patch(parent.clone(), patch_set, dispatch.clone());
+        }
+
+        let node = gen2.node
+            .expect("expected node to be created");
+        gen2.node = Some(node.clone());
+
+        node.dyn_ref::<web_sys::HtmlElement>()
+            .expect("expected html element")
+            .click();
+
+        let mut gen3: Dom<Msg> = Dom {
+            element: "button".into(),
+            attributes: vec!(),
+            events: vec![
+                Event { trigger: "click".into(), handler: EventHandler::Msg(Msg {}), closure: None },
+            ],
+            children: vec!(),
+            text: None,
+            node: None,
+        };
+
+        {
+            let mut o = gen2.dom().into_iter();
+            let mut n = gen3.dom().into_iter();
+            let patch_set = diff(&mut o, &mut n);
+            patch(parent.clone(), patch_set, dispatch.clone());
+        }
+
+        let node = gen3.node
+            .expect("expected node to be created");
+        gen3.node = Some(node.clone());
+
+        node.dyn_ref::<web_sys::HtmlElement>()
+            .expect("expected html element")
+            .click();
+
+        assert_eq!(*counter.borrow(), 2);
     }
 }
