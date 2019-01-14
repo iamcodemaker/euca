@@ -21,6 +21,7 @@ features = [
     "EventTarget",
     "Text",
     "HtmlElement",
+    "CharacterData",
 ]
 
 [dev-dependencies]

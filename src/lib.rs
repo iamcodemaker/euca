@@ -120,6 +120,7 @@ pub enum Patch<'a, Message> {
     CreateElement { store: Box<FnMut(web_sys::Element) + 'a>, element: String },
     CopyElement { store: Box<FnMut(web_sys::Element) + 'a>, node: web_sys::Element },
     RemoveText(web_sys::Text),
+    ReplaceText { store: Box<FnMut(web_sys::Text) + 'a>, node: web_sys::Text, text: String },
     CreateText { store: Box<FnMut(web_sys::Text) + 'a>, text: String },
     CopyText { store: Box<FnMut(web_sys::Text) + 'a>, node: web_sys::Text },
     AddAttribute { name: &'a str, value: &'a str },
@@ -140,6 +141,7 @@ where
             Patch::CreateElement { store: _, element: s } => write!(f, "CreateElement {{ store: _, element: {:?} }}", s),
             Patch::CopyElement { store: _, node: _ } => write!(f, "CopyElement {{ store: _, node: _ }}"),
             Patch::RemoveText(_) => write!(f, "RemoveText(_)"),
+            Patch::ReplaceText { store: _, node: _, text: t }  => write!(f, "ReplaceText {{ store: _, node: _, text: {:?} }}", t),
             Patch::CreateText { store: _, text: t } => write!(f, "CreateText {{ store: _, text: {:?} }}", t),
             Patch::CopyText { store: _, node: _ } => write!(f, "CopyText {{ store: _, node: _ }}"),
             Patch::AddAttribute { name: n, value: v } => write!(f, "AddAttribute {{ name: {:?}, value: {:?} }}", n, v),
@@ -381,30 +383,14 @@ where
                             // copy the node
                             patch_set.push(Patch::CopyText { store: store, node: node.take().unwrap() });
                             state.push(NodeState::Copy);
-
-                            o_item = old.next();
-                            n_item = new.next();
                         }
-                        // elements don't match, remove the old and make a new one
+                        // text doesn't match, update it
                         else {
-                            patch_set.push(Patch::RemoveText(node.take().unwrap()));
-                            patch_set.push(Patch::CreateText { store, text: n_text });
-                            state.push(NodeState::Create);
-                            
-                            // skip the rest of the items in the old tree for this element, this
-                            // will cause attributes and such to be created on the new element
-                            loop {
-                                o_item = old.next();
-                                match o_item.take() {
-                                    o @ Some(DomItem::Up) | o @ None => {
-                                        o_item = o;
-                                        break;
-                                    }
-                                    _ => {}
-                                }
-                            }
-                            n_item = new.next();
+                            patch_set.push(Patch::ReplaceText { store, node: node.take().unwrap(), text: n_text });
+                            state.push(NodeState::Copy);
                         }
+                        o_item = old.next();
+                        n_item = new.next();
                     }
                     (
                         DomItem::Attr { name: o_name, value: o_value },
@@ -610,6 +596,11 @@ where
                     .expect("no previous node")
                     .remove_child(&node)
                     .expect("failed to remove child node");
+            }
+            Patch::ReplaceText { mut store, node, text } => {
+                node.set_data(&text);
+                store(node.clone());
+                node_stack.push(node.into());
             }
             Patch::CreateText { mut store, text } => {
                 let node = document.create_text_node(&text);
@@ -821,6 +812,9 @@ mod tests {
                     (Patch::AddAttribute { name: n1, value: v1 }, Patch::AddAttribute { name: n2, value: v2 }) => {
                         assert_eq!(n1, n2, "attribute names don't match");
                         assert_eq!(v1, v2, "attribute values don't match");
+                    }
+                    (Patch::ReplaceText { store: _, node: _, text: t1 }, Patch::ReplaceText { store: _, node: _, text: t2 }) => {
+                        assert_eq!(t1, t2, "unexpected ReplaceText");
                     }
                     (Patch::CreateText { store: _, text: t1 }, Patch::CreateText { store: _, text: t2 }) => {
                         assert_eq!(t1, t2, "unexpected CreateText");
