@@ -21,12 +21,12 @@ trait Render<Message> {
 }
 
 #[derive(Debug, PartialEq, Copy, Clone)]
-enum EventHandler<Message> {
+pub enum EventHandler<Message> {
     Msg(Message),
     Fn(fn(web_sys::Event) -> Message),
 }
 
-enum Storage<'a, T> {
+pub enum Storage<'a, T> {
     Read(Option<T>),
     Write(Box<FnMut(T) + 'a>),
 }
@@ -48,7 +48,7 @@ impl<'a, T> fmt::Debug for Storage<'a, T> {
 /// things seen if we were to walk the DOM tree depth first going through all nodes and their
 /// various attributes and events.
 #[derive(Debug)]
-enum DomItem<'a, Message> {
+pub enum DomItem<'a, Message> {
     /// An element in the tree.
     Element { element: String, node: Storage<'a, web_sys::Element> },
     /// A text node in the tree.
@@ -115,7 +115,7 @@ trait DomTree<'a, Message> {
 //    fn children() -> Iterator<Item = DomTree<'a, Message>>;
 }
 
-enum Patch<'a, Message> {
+pub enum Patch<'a, Message> {
     RemoveElement(web_sys::Element),
     CreateElement { store: Box<FnMut(web_sys::Element) + 'a>, element: String },
     CopyElement { store: Box<FnMut(web_sys::Element) + 'a>, node: web_sys::Element },
@@ -193,12 +193,13 @@ where
     }
 }
 
-type PatchSet<'a, Message> = Vec<Patch<'a, Message>>;
+pub type PatchSet<'a, Message> = Vec<Patch<'a, Message>>;
 
-fn diff<'a, Message, I>(old: &mut I, new: &mut I) -> PatchSet<'a, Message>
+pub fn diff<'a, Message, I1, I2>(old: &mut I1, new: &mut I2) -> PatchSet<'a, Message>
 where
     Message: 'a + PartialEq + Clone + fmt::Debug,
-    I: Iterator<Item = DomItem<'a, Message>>,
+    I1: Iterator<Item = DomItem<'a, Message>>,
+    I2: Iterator<Item = DomItem<'a, Message>>,
 {
     #[derive(PartialEq)]
     enum NodeState {
@@ -566,7 +567,7 @@ where
     patch_set
 }
 
-fn patch<'a, Message>(parent: web_sys::Element, patch_set: PatchSet<'a, Message>, dispatch: Rc<Fn(Message) + 'static>)
+pub fn patch<'a, Message>(parent: web_sys::Element, patch_set: PatchSet<'a, Message>, dispatch: Rc<Fn(Message) + 'static>)
 where
     Message: 'static + Clone,
     EventHandler<Message>: Clone,
