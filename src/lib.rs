@@ -50,7 +50,7 @@ impl<'a, T> fmt::Debug for Storage<'a, T> {
 #[derive(Debug)]
 enum DomItem<'a, Message> {
     /// An element in the tree.
-    Element { element: &'a str, node: Storage<'a, web_sys::Element> },
+    Element { element: String, node: Storage<'a, web_sys::Element> },
     /// A text node in the tree.
     Text { text: String, node: Storage<'a, web_sys::Text> },
     /// An attribute of the last node we saw.
@@ -117,7 +117,7 @@ trait DomTree<'a, Message> {
 
 enum Patch<'a, Message> {
     RemoveElement(web_sys::Element),
-    CreateElement { store: Box<FnMut(web_sys::Element) + 'a>, element: &'a str },
+    CreateElement { store: Box<FnMut(web_sys::Element) + 'a>, element: String },
     CopyElement { store: Box<FnMut(web_sys::Element) + 'a>, node: web_sys::Element },
     RemoveText(web_sys::Text),
     CreateText { store: Box<FnMut(web_sys::Text) + 'a>, text: String },
@@ -586,7 +586,7 @@ where
                     .expect("failed to remove child node");
             }
             Patch::CreateElement { mut store, element } => {
-                let node = document.create_element(element).expect("failed to create element");
+                let node = document.create_element(&element).expect("failed to create element");
                 store(node.clone());
                 node_stack.last()
                     .expect("no previous node")
@@ -743,7 +743,7 @@ mod tests {
             // until generators are stable, this is the best we can do
             iter::once((&mut self.node, &self.element))
                 .map(|(node, element)| DomItem::Element {
-                    element: element,
+                    element: element.clone(),
                     node: match node {
                         Some(_) => Storage::Read(node.clone()),
                         None => Storage::Write(Box::new(move |n| *node = Some(n))),
@@ -771,7 +771,7 @@ mod tests {
                  )
             )
             .chain(self.children.iter_mut()
-               .flat_map(|c| Dom::dom(c))
+               .flat_map(|c| c.dom())
             )
             .chain(self.text.iter_mut()
                .flat_map(|t|
@@ -858,7 +858,7 @@ mod tests {
         compare!(
             patch_set,
             [
-                Patch::CreateElement { store: Box::new(|_|()), element: "span" },
+                Patch::CreateElement { store: Box::new(|_|()), element: "span".into() },
                 Patch::Up,
             ]
         );
@@ -887,7 +887,7 @@ mod tests {
         compare!(
             patch_set,
             [
-                Patch::CreateElement { store: Box::new(|_|()), element: "div" },
+                Patch::CreateElement { store: Box::new(|_|()), element: "div".into() },
                 Patch::CreateText { store: Box::new(|_|()), text: "text".into() },
                 Patch::Up,
                 Patch::Up,
@@ -950,12 +950,12 @@ mod tests {
             patch_set,
             [
                 Patch::CopyElement { store: Box::new(|_|()), node: e("div") },
-                Patch::CreateElement { store: Box::new(|_|()), element: "b" },
+                Patch::CreateElement { store: Box::new(|_|()), element: "b".into() },
                 Patch::AddAttribute { name: "class", value: "item" },
                 Patch::AddAttribute { name: "id", value: "id1" },
                 Patch::AddListener { trigger: "onclick".to_owned(), handler: super::EventHandler::Msg(Msg {}), store: Box::new(|_|()) },
                 Patch::Up,
-                Patch::CreateElement { store: Box::new(|_|()), element: "i" },
+                Patch::CreateElement { store: Box::new(|_|()), element: "i".into() },
                 Patch::AddAttribute { name: "class", value: "item" },
                 Patch::AddAttribute { name: "id", value: "id2" },
                 Patch::AddListener { trigger: "onclick".to_owned(), handler: super::EventHandler::Msg(Msg {}), store: Box::new(|_|()) },
@@ -1026,7 +1026,7 @@ mod tests {
             patch_set,
             [
                 Patch::RemoveElement(e("div")),
-                Patch::CreateElement { store: Box::new(|_|()), element: "span" },
+                Patch::CreateElement { store: Box::new(|_|()), element: "span".into() },
                 Patch::Up,
             ]
         );
@@ -1148,7 +1148,7 @@ mod tests {
             patch_set,
             [
                 Patch::RemoveElement(e("span")),
-                Patch::CreateElement { store: Box::new(|_|()), element: "div" },
+                Patch::CreateElement { store: Box::new(|_|()), element: "div".into() },
                 Patch::Up,
             ]
         );
