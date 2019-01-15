@@ -12,8 +12,8 @@ pub trait DomIter<'a, Message: Clone> {
 }
 
 #[derive(Debug, PartialEq, Copy, Clone)]
-pub enum EventHandler<Message> {
-    Msg(Message),
+pub enum EventHandler<'a, Message> {
+    Msg(&'a Message),
     Fn(fn(web_sys::Event) -> Message),
 }
 
@@ -41,13 +41,13 @@ impl<'a, T> fmt::Debug for Storage<'a, T> {
 #[derive(Debug)]
 pub enum DomItem<'a, Message> {
     /// An element in the tree.
-    Element { element: String, node: Storage<'a, web_sys::Element> },
+    Element { element: &'a str, node: Storage<'a, web_sys::Element> },
     /// A text node in the tree.
-    Text { text: String, node: Storage<'a, web_sys::Text> },
+    Text { text: &'a str, node: Storage<'a, web_sys::Text> },
     /// An attribute of the last node we saw.
     Attr { name: &'a str, value: &'a str },
     /// An event handler from the last node we saw.
-    Event { trigger: String, handler: EventHandler<Message>, closure: Storage<'a, Closure<FnMut(web_sys::Event)>> },
+    Event { trigger: &'a str, handler: EventHandler<'a, Message>, closure: Storage<'a, Closure<FnMut(web_sys::Event)>> },
     /// We are finished processing children nodes, the next node is a sibling.
     Up,
 }
@@ -86,17 +86,17 @@ where
 
 pub enum Patch<'a, Message> {
     RemoveElement(web_sys::Element),
-    CreateElement { store: Box<FnMut(web_sys::Element) + 'a>, element: String },
+    CreateElement { store: Box<FnMut(web_sys::Element) + 'a>, element: &'a str },
     CopyElement { store: Box<FnMut(web_sys::Element) + 'a>, node: web_sys::Element },
     RemoveText(web_sys::Text),
-    ReplaceText { store: Box<FnMut(web_sys::Text) + 'a>, node: web_sys::Text, text: String },
-    CreateText { store: Box<FnMut(web_sys::Text) + 'a>, text: String },
+    ReplaceText { store: Box<FnMut(web_sys::Text) + 'a>, node: web_sys::Text, text: &'a str },
+    CreateText { store: Box<FnMut(web_sys::Text) + 'a>, text: &'a str },
     CopyText { store: Box<FnMut(web_sys::Text) + 'a>, node: web_sys::Text },
     AddAttribute { name: &'a str, value: &'a str },
     RemoveAttribute(&'a str),
-    AddListener { trigger: String, handler: EventHandler<Message>, store: Box<FnMut(Closure<FnMut(web_sys::Event)>) + 'a> },
+    AddListener { trigger: &'a str, handler: EventHandler<'a, Message>, store: Box<FnMut(Closure<FnMut(web_sys::Event)>) + 'a> },
     CopyListener { store: Box<FnMut(Closure<FnMut(web_sys::Event)>) + 'a>, closure: Closure<FnMut(web_sys::Event)> },
-    RemoveListener { trigger: String, closure: Closure<FnMut(web_sys::Event)> },
+    RemoveListener { trigger: &'a str, closure: Closure<FnMut(web_sys::Event)> },
     Up,
 }
 
@@ -531,7 +531,7 @@ where
 pub fn patch<'a, Message>(parent: web_sys::Element, patch_set: PatchSet<'a, Message>, dispatch: Rc<Fn(Message) + 'static>)
 where
     Message: 'static + Clone,
-    EventHandler<Message>: Clone,
+    EventHandler<'a, Message>: Clone,
 {
 
     let mut node_stack: Vec<web_sys::Node> = vec![parent.unchecked_into()];
@@ -604,6 +604,7 @@ where
                 let dispatch = dispatch.clone();
                 let closure = match handler {
                     EventHandler::Msg(msg) => {
+                        let msg = msg.clone();
                         Closure::wrap(
                             Box::new(move |_| {
                                 dispatch(msg.clone())
@@ -710,9 +711,9 @@ mod tests {
             // until generators are stable, this is the best we can do
             let iter = iter::once((&mut self.node, &self.element))
                 .map(|(node, element)| DomItem::Element {
-                    element: element.clone(),
+                    element: element,
                     node: match node {
-                        Some(_) => Storage::Read(node.clone()),
+                        Some(_) => Storage::Read(node.take()),
                         None => Storage::Write(Box::new(move |n| *node = Some(n))),
                     },
                 })
@@ -723,16 +724,16 @@ mod tests {
                 })
             )
             .chain(self.events.iter_mut()
-                .map(|e|
+                .map(|Event { trigger, handler, closure }|
                      DomItem::Event {
-                         trigger: e.trigger.to_owned(),
-                         handler: match e.handler {
-                             EventHandler::Msg(ref m) => super::EventHandler::Msg(m.clone()),
-                             EventHandler::Map(f) => super::EventHandler::Fn(f),
+                         trigger: trigger,
+                         handler: match handler {
+                             EventHandler::Msg(m) => super::EventHandler::Msg(m),
+                             EventHandler::Map(f) => super::EventHandler::Fn(*f),
                          },
-                         closure: match e.closure {
-                             Some(_) => Storage::Read(e.closure.take()),
-                             None => Storage::Write(Box::new(move |c| e.closure = Some(c))),
+                         closure: match closure {
+                             Some(_) => Storage::Read(closure.take()),
+                             None => Storage::Write(Box::new(move |c| *closure = Some(c))),
                          },
                      }
                  )
@@ -741,13 +742,13 @@ mod tests {
                .flat_map(|c| c.dom_iter())
             )
             .chain(self.text.iter_mut()
-               .flat_map(|t|
+               .flat_map(|Text { text, node }|
                    vec![
                        DomItem::Text {
-                           text: t.text.clone(),
-                           node: match t.node {
-                               Some(_) => Storage::Read(t.node.clone()),
-                               None => Storage::Write(Box::new(move |n| t.node = Some(n))),
+                           text: text,
+                           node: match node {
+                               Some(_) => Storage::Read(node.clone()),
+                               None => Storage::Write(Box::new(move |n| *node = Some(n))),
                            },
                        },
                        // this is necessary because text nodes can have events associated with them
@@ -928,12 +929,12 @@ mod tests {
                 Patch::CreateElement { store: Box::new(|_|()), element: "b".into() },
                 Patch::AddAttribute { name: "class", value: "item" },
                 Patch::AddAttribute { name: "id", value: "id1" },
-                Patch::AddListener { trigger: "onclick".to_owned(), handler: super::EventHandler::Msg(Msg {}), store: Box::new(|_|()) },
+                Patch::AddListener { trigger: "onclick", handler: super::EventHandler::Msg(&Msg {}), store: Box::new(|_|()) },
                 Patch::Up,
                 Patch::CreateElement { store: Box::new(|_|()), element: "i".into() },
                 Patch::AddAttribute { name: "class", value: "item" },
                 Patch::AddAttribute { name: "id", value: "id2" },
-                Patch::AddListener { trigger: "onclick".to_owned(), handler: super::EventHandler::Msg(Msg {}), store: Box::new(|_|()) },
+                Patch::AddListener { trigger: "onclick", handler: super::EventHandler::Msg(&Msg {}), store: Box::new(|_|()) },
                 Patch::Up,
                 Patch::Up,
             ]
