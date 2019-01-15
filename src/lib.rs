@@ -811,7 +811,9 @@ mod tests {
 
     #[test]
     fn basic_diff() {
-        let old: Vec<DomItem<Msg>> = vec![];
+        use std::iter;
+
+        let old = iter::empty();
 
         let mut new: Dom<Msg> = Dom {
             element: "span".into(),
@@ -837,7 +839,9 @@ mod tests {
 
     #[test]
     fn diff_add_text() {
-        let old: Vec<DomItem<Msg>> = vec![];
+        use std::iter;
+
+        let old = iter::empty();
 
         let mut new: Dom<Msg> = Dom {
             element: "div".into(),
@@ -1158,7 +1162,8 @@ mod tests {
 
     #[wasm_bindgen_test]
     fn basic_patch_with_element() {
-        let gen1: Vec<DomItem<Msg>> = vec![];
+        use std::iter;
+        let gen1 = iter::empty();
 
         let mut gen2: Dom<Msg> = Dom {
             element: "div".into(),
@@ -1203,10 +1208,11 @@ mod tests {
     #[wasm_bindgen_test]
     fn basic_event_test() {
         use std::cell::RefCell;
+        use std::iter;
 
         let counter: Rc<RefCell<_>> = Rc::new(RefCell::new(0));
 
-        let gen1: Vec<DomItem<Msg>> = vec![];
+        let gen1 = iter::empty();
 
         let mut gen2: Dom<Msg> = Dom {
             element: "button".into(),
@@ -1243,10 +1249,11 @@ mod tests {
     #[wasm_bindgen_test]
     fn listener_copy() {
         use std::cell::RefCell;
+        use std::iter;
 
         let counter: Rc<RefCell<_>> = Rc::new(RefCell::new(0));
 
-        let gen1: Vec<DomItem<Msg>> = vec![];
+        let gen1 = iter::empty();
 
         let mut gen2: Dom<Msg> = Dom {
             element: "button".into(),
