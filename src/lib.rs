@@ -18,7 +18,7 @@ pub enum EventHandler<'a, Message> {
 }
 
 pub enum Storage<'a, T> {
-    Read(Option<T>),
+    Read(Box<FnMut() -> T + 'a>),
     Write(Box<FnMut(T) + 'a>),
 }
 
@@ -85,18 +85,18 @@ where
 }
 
 pub enum Patch<'a, Message> {
-    RemoveElement(web_sys::Element),
+    RemoveElement(Box<FnMut() -> web_sys::Element + 'a>),
     CreateElement { store: Box<FnMut(web_sys::Element) + 'a>, element: &'a str },
-    CopyElement { store: Box<FnMut(web_sys::Element) + 'a>, node: web_sys::Element },
-    RemoveText(web_sys::Text),
-    ReplaceText { store: Box<FnMut(web_sys::Text) + 'a>, node: web_sys::Text, text: &'a str },
+    CopyElement { store: Box<FnMut(web_sys::Element) + 'a>, take: Box<FnMut() -> web_sys::Element + 'a> },
+    RemoveText(Box<FnMut() -> web_sys::Text + 'a>),
+    ReplaceText { store: Box<FnMut(web_sys::Text) + 'a>, take: Box<FnMut() -> web_sys::Text + 'a>, text: &'a str },
     CreateText { store: Box<FnMut(web_sys::Text) + 'a>, text: &'a str },
-    CopyText { store: Box<FnMut(web_sys::Text) + 'a>, node: web_sys::Text },
+    CopyText { store: Box<FnMut(web_sys::Text) + 'a>, take: Box<FnMut() -> web_sys::Text + 'a> },
     AddAttribute { name: &'a str, value: &'a str },
     RemoveAttribute(&'a str),
     AddListener { trigger: &'a str, handler: EventHandler<'a, Message>, store: Box<FnMut(Closure<FnMut(web_sys::Event)>) + 'a> },
-    CopyListener { store: Box<FnMut(Closure<FnMut(web_sys::Event)>) + 'a>, closure: Closure<FnMut(web_sys::Event)> },
-    RemoveListener { trigger: &'a str, closure: Closure<FnMut(web_sys::Event)> },
+    CopyListener { store: Box<FnMut(Closure<FnMut(web_sys::Event)>) + 'a>, take: Box<FnMut() -> Closure<FnMut(web_sys::Event)> + 'a> },
+    RemoveListener { trigger: &'a str, take: Box<FnMut() -> Closure<FnMut(web_sys::Event)> + 'a> },
     Up,
 }
 
@@ -108,16 +108,16 @@ where
         match self {
             Patch::RemoveElement(_) => write!(f, "RemoveElement(_)"),
             Patch::CreateElement { store: _, element: s } => write!(f, "CreateElement {{ store: _, element: {:?} }}", s),
-            Patch::CopyElement { store: _, node: _ } => write!(f, "CopyElement {{ store: _, node: _ }}"),
+            Patch::CopyElement { store: _, take: _ } => write!(f, "CopyElement {{ store: _, take: _ }}"),
             Patch::RemoveText(_) => write!(f, "RemoveText(_)"),
-            Patch::ReplaceText { store: _, node: _, text: t }  => write!(f, "ReplaceText {{ store: _, node: _, text: {:?} }}", t),
+            Patch::ReplaceText { store: _, take: _, text: t }  => write!(f, "ReplaceText {{ store: _, take: _, text: {:?} }}", t),
             Patch::CreateText { store: _, text: t } => write!(f, "CreateText {{ store: _, text: {:?} }}", t),
-            Patch::CopyText { store: _, node: _ } => write!(f, "CopyText {{ store: _, node: _ }}"),
+            Patch::CopyText { store: _, take: _ } => write!(f, "CopyText {{ store: _, take: _ }}"),
             Patch::AddAttribute { name: n, value: v } => write!(f, "AddAttribute {{ name: {:?}, value: {:?} }}", n, v),
             Patch::RemoveAttribute(s) => write!(f, "RemoveAttribute({:?})", s),
             Patch::AddListener { trigger: t, handler: h, store: _ } => write!(f, "AddListener {{ trigger: {:?}, handler: {:?}, store: _ }}", t, h),
-            Patch::CopyListener { store: _, closure: _ } => write!(f, "CopyListener {{ store: _, closure: _ }}"),
-            Patch::RemoveListener { trigger: t, closure: _ } => write!(f, "RemoveListener {{ trigger: {:?}), closure: _ }}", t),
+            Patch::CopyListener { store: _, take: _ } => write!(f, "CopyListener {{ store: _, take: _ }}"),
+            Patch::RemoveListener { trigger: t, take: _ } => write!(f, "RemoveListener {{ trigger: {:?}), take: _ }}", t),
             Patch::Up => write!(f, "Up"),
         }
     }
@@ -136,8 +136,8 @@ where
             )
             => e1 == e2,
             (
-                Patch::CopyElement { store: _, node: _ },
-                Patch::CopyElement { store: _, node: _ },
+                Patch::CopyElement { store: _, take: _ },
+                Patch::CopyElement { store: _, take: _ },
             )
             => true,
             (
@@ -260,10 +260,10 @@ where
             }
             (Some(o), None) => { // delete remaining old nodes
                 match o {
-                    DomItem::Element { node: Storage::Read(mut node @ Some(_)), .. } => {
+                    DomItem::Element { node: Storage::Read(take), .. } => {
                         // ignore child nodes
                         if !state.is_child() {
-                            patch_set.push(Patch::RemoveElement(node.take().unwrap()));
+                            patch_set.push(Patch::RemoveElement(take));
                         }
 
                         state.push(NodeState::OldChild);
@@ -271,10 +271,10 @@ where
                     DomItem::Element { node: Storage::Write(_), .. } => {
                         panic!("old node should not have Storage::Write(_)");
                     }
-                    DomItem::Text { node: Storage::Read(mut node @ Some(_)), .. } => {
+                    DomItem::Text { node: Storage::Read(take), .. } => {
                         // ignore child nodes
                         if !state.is_child() {
-                            patch_set.push(Patch::RemoveText(node.take().unwrap()));
+                            patch_set.push(Patch::RemoveText(take));
                         }
 
                         state.push(NodeState::OldChild);
@@ -289,14 +289,6 @@ where
                     DomItem::Event { .. } => {}
                     // ignore attributes
                     DomItem::Attr { .. } => {}
-                    // this shouldn't happen
-                    DomItem::Element { node: Storage::Read(None), .. } => {
-                        panic!("Storage::Read should never be None");
-                    }
-                    // this shouldn't happen
-                    DomItem::Text { node: Storage::Read(None), .. } => {
-                        panic!("Storage::Read should never be None");
-                    }
                 }
 
                 o_item = old.next();
@@ -304,13 +296,13 @@ where
             (Some(o), Some(n)) => { // compare nodes
                 match (o, n) {
                     (
-                        DomItem::Element { node: Storage::Read(mut node @ Some(_)), element: o_element },
+                        DomItem::Element { node: Storage::Read(take), element: o_element },
                         DomItem::Element { node: Storage::Write(store), element: n_element }
                     ) => { // compare elements
                         // if the elements match, use the web_sys::Element
                         if o_element == n_element {
                             // copy the node
-                            patch_set.push(Patch::CopyElement { store: store, node: node.take().unwrap() });
+                            patch_set.push(Patch::CopyElement { store, take });
                             state.push(NodeState::Copy);
 
                             o_item = old.next();
@@ -318,7 +310,7 @@ where
                         }
                         // elements don't match, remove the old and make a new one
                         else {
-                            patch_set.push(Patch::RemoveElement(node.take().unwrap()));
+                            patch_set.push(Patch::RemoveElement(take));
                             patch_set.push(Patch::CreateElement { store, element: n_element });
                             state.push(NodeState::Create);
                             
@@ -344,18 +336,18 @@ where
                         }
                     }
                     (
-                        DomItem::Text { node: Storage::Read(mut node @ Some(_)), text: o_text },
+                        DomItem::Text { node: Storage::Read(take), text: o_text },
                         DomItem::Text { node: Storage::Write(store), text: n_text }
                     ) => { // compare text
                         // if the text matches, use the web_sys::Text
                         if o_text == n_text {
                             // copy the node
-                            patch_set.push(Patch::CopyText { store: store, node: node.take().unwrap() });
+                            patch_set.push(Patch::CopyText { store, take });
                             state.push(NodeState::Copy);
                         }
                         // text doesn't match, update it
                         else {
-                            patch_set.push(Patch::ReplaceText { store, node: node.take().unwrap(), text: n_text });
+                            patch_set.push(Patch::ReplaceText { store, take, text: n_text });
                             state.push(NodeState::Copy);
                         }
                         o_item = old.next();
@@ -383,13 +375,13 @@ where
                         n_item = new.next();
                     }
                     (
-                        DomItem::Event { trigger: o_trigger, handler: o_handler, closure: Storage::Read(mut closure) },
+                        DomItem::Event { trigger: o_trigger, handler: o_handler, closure: Storage::Read(take) },
                         DomItem::Event { trigger: n_trigger, handler: n_handler, closure: Storage::Write(store) }
                     ) => { // compare event listeners
                         if o_trigger != n_trigger || o_handler != n_handler {
                             if state.is_copy() {
                                 // remove old listener
-                                patch_set.push(Patch::RemoveListener { trigger: o_trigger, closure: closure.take().unwrap() });
+                                patch_set.push(Patch::RemoveListener { trigger: o_trigger, take });
                             }
                             // add new listener
                             patch_set.push(Patch::AddListener { trigger: n_trigger, handler: n_handler.into(), store });
@@ -400,7 +392,7 @@ where
                         }
                         else {
                             // just copy the existing listener
-                            patch_set.push(Patch::CopyListener { store, closure: closure.take().unwrap() });
+                            patch_set.push(Patch::CopyListener { store, take });
                         }
                         o_item = old.next();
                         n_item = new.next();
@@ -463,9 +455,9 @@ where
                         panic!("new event should not have Storage::Read(_)");
                     }
                     // remove the old node if present
-                    (DomItem::Element { node: Storage::Read(mut node @ Some(_)), .. }, n) => {
+                    (DomItem::Element { node: Storage::Read(take), .. }, n) => {
                         if !state.is_child() {
-                            patch_set.push(Patch::RemoveElement(node.take().unwrap()));
+                            patch_set.push(Patch::RemoveElement(take));
                         }
                         state.push(NodeState::OldChild);
                         o_item = old.next();
@@ -475,14 +467,10 @@ where
                     (DomItem::Element { node: Storage::Write(_), .. }, _) => {
                         panic!("old node should not have Storage::Write(_)");
                     }
-                    // invalid
-                    (DomItem::Element { node: Storage::Read(None), .. }, _) => {
-                        panic!("Storage::Read should never be None");
-                    }
                     // remove the old text if present
-                    (DomItem::Text { node: Storage::Read(mut node @ Some(_)), .. }, n) => {
+                    (DomItem::Text { node: Storage::Read(take), .. }, n) => {
                         if !state.is_child() {
-                            patch_set.push(Patch::RemoveText(node.take().unwrap()));
+                            patch_set.push(Patch::RemoveText(take));
                         }
                         state.push(NodeState::OldChild);
                         o_item = old.next();
@@ -491,10 +479,6 @@ where
                     // invalid
                     (DomItem::Text { node: Storage::Write(_), .. }, _) => {
                         panic!("old text should not have Storage::Write(_)");
-                    }
-                    // invalid
-                    (DomItem::Text { node: Storage::Read(None), .. }, _) => {
-                        panic!("Storage::Read should never be None");
                     }
                     // remove attribute from old node
                     (DomItem::Attr { name, value: _ }, n) => {
@@ -505,9 +489,9 @@ where
                         n_item = Some(n);
                     }
                     // remove event from old node
-                    (DomItem::Event { trigger, closure: Storage::Read(mut closure @ Some(_)), .. }, n) => {
+                    (DomItem::Event { trigger, closure: Storage::Read(take), .. }, n) => {
                         if state.is_copy() {
-                            patch_set.push(Patch::RemoveListener { trigger, closure: closure.take().unwrap() });
+                            patch_set.push(Patch::RemoveListener { trigger, take: take });
                         }
                         o_item = old.next();
                         n_item = Some(n);
@@ -515,10 +499,6 @@ where
                     // invalid
                     (DomItem::Event { closure: Storage::Write(_), .. }, _) => {
                         panic!("old event should not have Storage::Write(_)");
-                    }
-                    // invalid
-                    (DomItem::Event { closure: Storage::Read(None), .. }, _) => {
-                        panic!("Storage::Read should never be None");
                     }
                 }
             }
@@ -541,10 +521,10 @@ where
 
     for p in patch_set.into_iter() {
         match p {
-            Patch::RemoveElement(node) => {
+            Patch::RemoveElement(mut take) => {
                 node_stack.last()
                     .expect("no previous node")
-                    .remove_child(&node)
+                    .remove_child(&take())
                     .expect("failed to remove child node");
             }
             Patch::CreateElement { mut store, element } => {
@@ -556,17 +536,19 @@ where
                     .expect("failed to append child node");
                 node_stack.push(node.into());
             }
-            Patch::CopyElement { mut store, node } => {
+            Patch::CopyElement { mut store, mut take } => {
+                let node = take();
                 store(node.clone());
                 node_stack.push(node.into());
             }
-            Patch::RemoveText(node) => {
+            Patch::RemoveText(mut take) => {
                 node_stack.last()
                     .expect("no previous node")
-                    .remove_child(&node)
+                    .remove_child(&take())
                     .expect("failed to remove child node");
             }
-            Patch::ReplaceText { mut store, node, text } => {
+            Patch::ReplaceText { mut store, mut take, text } => {
+                let node = take();
                 node.set_data(&text);
                 store(node.clone());
                 node_stack.push(node.into());
@@ -580,7 +562,8 @@ where
                     .expect("failed to append child node");
                 node_stack.push(node.into());
             }
-            Patch::CopyText { mut store, node } => {
+            Patch::CopyText { mut store, mut take } => {
+                let node = take();
                 store(node.clone());
                 node_stack.push(node.into());
             }
@@ -625,13 +608,13 @@ where
                     .expect("failed to add event listener");
                 store(closure);
             }
-            Patch::CopyListener { mut store, closure } => {
-                store(closure);
+            Patch::CopyListener { mut store, mut take } => {
+                store(take());
             }
-            Patch::RemoveListener { trigger, closure } => {
+            Patch::RemoveListener { trigger, mut take } => {
                 let node = node_stack.last().expect("no previous node");
                 (node.as_ref() as &web_sys::EventTarget)
-                    .remove_event_listener_with_callback(&trigger, closure.as_ref().unchecked_ref())
+                    .remove_event_listener_with_callback(&trigger, take().as_ref().unchecked_ref())
                     .expect("failed to remove event listener");
             }
             Patch::Up => {
@@ -713,7 +696,7 @@ mod tests {
                 .map(|(node, element)| DomItem::Element {
                     element: element,
                     node: match node {
-                        Some(_) => Storage::Read(node.take()),
+                        Some(_) => Storage::Read(Box::new(move || node.take().unwrap())),
                         None => Storage::Write(Box::new(move |n| *node = Some(n))),
                     },
                 })
@@ -732,7 +715,7 @@ mod tests {
                              EventHandler::Map(f) => super::EventHandler::Fn(*f),
                          },
                          closure: match closure {
-                             Some(_) => Storage::Read(closure.take()),
+                             Some(_) => Storage::Read(Box::new(move || closure.take().unwrap())),
                              None => Storage::Write(Box::new(move |c| *closure = Some(c))),
                          },
                      }
@@ -747,7 +730,7 @@ mod tests {
                        DomItem::Text {
                            text: text,
                            node: match node {
-                               Some(_) => Storage::Read(node.clone()),
+                               Some(_) => Storage::Read(Box::new(move || node.take().unwrap())),
                                None => Storage::Write(Box::new(move |n| *node = Some(n))),
                            },
                        },
@@ -776,18 +759,18 @@ mod tests {
                     (Patch::CreateElement { store: _, element: e1 }, Patch::CreateElement { store: _, element: e2 }) => {
                         assert_eq!(e1, e2, "unexpected CreateElement");
                     }
-                    (Patch::CopyElement { store: _, node: _ }, Patch::CopyElement { store: _, node: _ }) => {}
+                    (Patch::CopyElement { store: _, take: _ }, Patch::CopyElement { store: _, take: _ }) => {}
                     (Patch::AddAttribute { name: n1, value: v1 }, Patch::AddAttribute { name: n2, value: v2 }) => {
                         assert_eq!(n1, n2, "attribute names don't match");
                         assert_eq!(v1, v2, "attribute values don't match");
                     }
-                    (Patch::ReplaceText { store: _, node: _, text: t1 }, Patch::ReplaceText { store: _, node: _, text: t2 }) => {
+                    (Patch::ReplaceText { store: _, take: _, text: t1 }, Patch::ReplaceText { store: _, take: _, text: t2 }) => {
                         assert_eq!(t1, t2, "unexpected ReplaceText");
                     }
                     (Patch::CreateText { store: _, text: t1 }, Patch::CreateText { store: _, text: t2 }) => {
                         assert_eq!(t1, t2, "unexpected CreateText");
                     }
-                    (Patch::CopyText { store: _, node: _ }, Patch::CopyText { store: _, node: _ }) => {}
+                    (Patch::CopyText { store: _, take: _ }, Patch::CopyText { store: _, take: _ }) => {}
                     (Patch::RemoveAttribute(a1), Patch::RemoveAttribute(a2)) => {
                         assert_eq!(a1, a2, "attribute names don't match");
                     }
@@ -795,7 +778,7 @@ mod tests {
                         assert_eq!(t1, t2, "trigger names don't match");
                         assert_eq!(h1, h2, "handlers don't match");
                     }
-                    (Patch::RemoveListener { trigger: t1, closure: _ }, Patch::RemoveListener { trigger: t2, closure: _ }) => {
+                    (Patch::RemoveListener { trigger: t1, take: _ }, Patch::RemoveListener { trigger: t2, take: _ }) => {
                         assert_eq!(t1, t2, "trigger names don't match");
                     }
                     (Patch::RemoveElement(_), Patch::RemoveElement(_)) => {}
@@ -925,7 +908,7 @@ mod tests {
         compare!(
             patch_set,
             [
-                Patch::CopyElement { store: Box::new(|_|()), node: e("div") },
+                Patch::CopyElement { store: Box::new(|_|()), take: Box::new(|| e("div")) },
                 Patch::CreateElement { store: Box::new(|_|()), element: "b".into() },
                 Patch::AddAttribute { name: "class", value: "item" },
                 Patch::AddAttribute { name: "id", value: "id1" },
@@ -968,7 +951,7 @@ mod tests {
         compare!(
             patch_set,
             [
-                Patch::CopyElement { store: Box::new(|_|()), node: e("div") },
+                Patch::CopyElement { store: Box::new(|_|()), take: Box::new(|| e("div")) },
                 Patch::Up,
             ]
         );
@@ -1001,7 +984,7 @@ mod tests {
         compare!(
             patch_set,
             [
-                Patch::RemoveElement(e("div")),
+                Patch::RemoveElement(Box::new(|| e("div"))),
                 Patch::CreateElement { store: Box::new(|_|()), element: "span".into() },
                 Patch::Up,
             ]
@@ -1061,9 +1044,9 @@ mod tests {
         compare!(
             patch_set,
             [
-                Patch::CopyElement { store: Box::new(|_|()), node: e("div") },
-                Patch::RemoveElement(e("b")),
-                Patch::RemoveElement(e("i")),
+                Patch::CopyElement { store: Box::new(|_|()), take: Box::new(|| e("div")) },
+                Patch::RemoveElement(Box::new(|| e("b"))),
+                Patch::RemoveElement(Box::new(|| e("i"))),
                 Patch::Up,
             ]
         );
@@ -1123,7 +1106,7 @@ mod tests {
         compare!(
             patch_set,
             [
-                Patch::RemoveElement(e("span")),
+                Patch::RemoveElement(Box::new(|| e("span"))),
                 Patch::CreateElement { store: Box::new(|_|()), element: "div".into() },
                 Patch::Up,
             ]
