@@ -7,6 +7,10 @@ use std::fmt;
 use std::cmp;
 use std::rc::Rc;
 
+pub trait DomIter<'a, Message: Clone> {
+    fn dom_iter(&'a mut self) -> Box<Iterator<Item = DomItem<'a, Message>> + 'a>;
+}
+
 #[derive(Debug, PartialEq, Copy, Clone)]
 pub enum EventHandler<Message> {
     Msg(Message),
@@ -698,16 +702,13 @@ mod tests {
         node: Option<web_sys::Element>,
     }
 
-    impl<Message> Dom<Message> {
-
-        fn dom(&mut self) -> Vec<DomItem<Message>>
-        where
-            Message: Clone,
+    impl<'a, Message: Clone> DomIter<'a, Message> for Dom<Message> {
+        fn dom_iter(&'a mut self) -> Box<Iterator<Item = DomItem<'a, Message>> + 'a>
         {
             use std::iter;
 
             // until generators are stable, this is the best we can do
-            iter::once((&mut self.node, &self.element))
+            let iter = iter::once((&mut self.node, &self.element))
                 .map(|(node, element)| DomItem::Element {
                     element: element.clone(),
                     node: match node {
@@ -737,7 +738,7 @@ mod tests {
                  )
             )
             .chain(self.children.iter_mut()
-               .flat_map(|c| c.dom())
+               .flat_map(|c| c.dom_iter())
             )
             .chain(self.text.iter_mut()
                .flat_map(|t|
@@ -754,8 +755,9 @@ mod tests {
                    ]
                )
             )
-            .chain(iter::once(DomItem::Up))
-            .collect()
+            .chain(iter::once(DomItem::Up));
+
+            Box::new(iter)
         }
     }
 
@@ -820,9 +822,9 @@ mod tests {
             node: None,
         };
 
-        let mut o = old.into_iter();
-        let mut n = new.dom().into_iter();
-        let patch_set = diff(&mut o, &mut n);
+        let o = old.into_iter();
+        let n = new.dom_iter();
+        let patch_set = diff(o, n);
 
         compare!(
             patch_set,
@@ -849,9 +851,9 @@ mod tests {
             node: None,
         };
 
-        let mut o = old.into_iter();
-        let mut n = new.dom().into_iter();
-        let patch_set = diff(&mut o, &mut n);
+        let o = old.into_iter();
+        let n = new.dom_iter();
+        let patch_set = diff(o, n);
 
         compare!(
             patch_set,
@@ -911,9 +913,9 @@ mod tests {
             node: None,
         };
 
-        let mut o = old.dom().into_iter();
-        let mut n = new.dom().into_iter();
-        let patch_set = diff(&mut o, &mut n);
+        let o = old.dom_iter();
+        let n = new.dom_iter();
+        let patch_set = diff(o, n);
 
         compare!(
             patch_set,
@@ -954,9 +956,9 @@ mod tests {
             node: None,
         };
 
-        let mut o = old.dom().into_iter();
-        let mut n = new.dom().into_iter();
-        let patch_set = diff(&mut o, &mut n);
+        let o = old.dom_iter();
+        let n = new.dom_iter();
+        let patch_set = diff(o, n);
 
         compare!(
             patch_set,
@@ -987,9 +989,9 @@ mod tests {
             node: None,
         };
 
-        let mut o = old.dom().into_iter();
-        let mut n = new.dom().into_iter();
-        let patch_set = diff(&mut o, &mut n);
+        let o = old.dom_iter();
+        let n = new.dom_iter();
+        let patch_set = diff(o, n);
 
         compare!(
             patch_set,
@@ -1047,9 +1049,9 @@ mod tests {
             node: None,
         };
 
-        let mut o = old.dom().into_iter();
-        let mut n = new.dom().into_iter();
-        let patch_set = diff(&mut o, &mut n);
+        let o = old.dom_iter();
+        let n = new.dom_iter();
+        let patch_set = diff(o, n);
 
         compare!(
             patch_set,
@@ -1109,9 +1111,9 @@ mod tests {
             node: None,
         };
 
-        let mut o = old.dom().into_iter();
-        let mut n = new.dom().into_iter();
-        let patch_set = diff(&mut o, &mut n);
+        let o = old.dom_iter();
+        let n = new.dom_iter();
+        let patch_set = diff(o, n);
 
         compare!(
             patch_set,
@@ -1143,15 +1145,13 @@ mod tests {
             node: None,
         };
 
-        {
-            let mut o = old.dom().into_iter();
-            let mut n = new.dom().into_iter();
-            let patch_set = diff(&mut o, &mut n);
+        let o = old.dom_iter();
+        let n = new.dom_iter();
+        let patch_set = diff(o, n);
 
-            let parent = e("div");
-            let dispatch = Rc::new(move |_|());
-            patch(parent.clone(), patch_set, dispatch.clone());
-        }
+        let parent = e("div");
+        let dispatch = Rc::new(move |_|());
+        patch(parent.clone(), patch_set, dispatch.clone());
 
         assert!(new.node.is_some(), "expected node to be copied");
     }
@@ -1183,21 +1183,19 @@ mod tests {
 
         {
             // first gen create element
-            let mut o = gen1.into_iter();
-            let mut n = gen2.dom().into_iter();
-            let patch_set = diff(&mut o, &mut n);
+            let o = gen1.into_iter();
+            let n = gen2.dom_iter();
+            let patch_set = diff(o, n);
             patch(parent.clone(), patch_set, dispatch.clone());
         }
 
         assert!(gen2.node.is_some(), "expected node to be created");
 
-        {
-            // second gen remove and replace element
-            let mut o = gen2.dom().into_iter();
-            let mut n = gen3.dom().into_iter();
-            let patch_set = diff(&mut o, &mut n);
-            patch(parent.clone(), patch_set, dispatch.clone());
-        }
+        // second gen remove and replace element
+        let o = gen2.dom_iter();
+        let n = gen3.dom_iter();
+        let patch_set = diff(o, n);
+        patch(parent.clone(), patch_set, dispatch.clone());
 
         assert!(gen3.node.is_some(), "expected node to be created");
     }
@@ -1228,12 +1226,10 @@ mod tests {
              *count += 1;
         });
 
-        {
-            let mut o = gen1.into_iter();
-            let mut n = gen2.dom().into_iter();
-            let patch_set = diff(&mut o, &mut n);
-            patch(parent.clone(), patch_set, dispatch.clone());
-        }
+        let o = gen1.into_iter();
+        let n = gen2.dom_iter();
+        let patch_set = diff(o, n);
+        patch(parent.clone(), patch_set, dispatch.clone());
 
         gen2.node
             .expect("expected node to be created")
@@ -1270,12 +1266,11 @@ mod tests {
              *count += 1;
         });
 
-        {
-            let mut o = gen1.into_iter();
-            let mut n = gen2.dom().into_iter();
-            let patch_set = diff(&mut o, &mut n);
-            patch(parent.clone(), patch_set, dispatch.clone());
-        }
+
+        let o = gen1.into_iter();
+        let n = gen2.dom_iter();
+        let patch_set = diff(o, n);
+        patch(parent.clone(), patch_set, dispatch.clone());
 
         let node = gen2.node
             .expect("expected node to be created");
@@ -1296,12 +1291,10 @@ mod tests {
             node: None,
         };
 
-        {
-            let mut o = gen2.dom().into_iter();
-            let mut n = gen3.dom().into_iter();
-            let patch_set = diff(&mut o, &mut n);
-            patch(parent.clone(), patch_set, dispatch.clone());
-        }
+        let o = gen2.dom_iter();
+        let n = gen3.dom_iter();
+        let patch_set = diff(o, n);
+        patch(parent.clone(), patch_set, dispatch.clone());
 
         let node = gen3.node
             .expect("expected node to be created");
