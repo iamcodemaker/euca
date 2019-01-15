@@ -164,7 +164,7 @@ where
 
 pub type PatchSet<'a, Message> = Vec<Patch<'a, Message>>;
 
-pub fn diff<'a, Message, I1, I2>(old: &mut I1, new: &mut I2) -> PatchSet<'a, Message>
+pub fn diff<'a, Message, I1, I2>(mut old: I1, mut new: I2) -> PatchSet<'a, Message>
 where
     Message: 'a + PartialEq + Clone + fmt::Debug,
     I1: Iterator<Item = DomItem<'a, Message>>,
