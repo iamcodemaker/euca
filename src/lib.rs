@@ -174,7 +174,37 @@ where
     }
 }
 
-pub type PatchSet<'a, Message> = Vec<Patch<'a, Message>>;
+#[derive(Default, Debug)]
+pub struct PatchSet<'a, Message>(pub Vec<Patch<'a, Message>>);
+
+impl<'a, Message> PatchSet<'a, Message> {
+    pub fn new() -> Self {
+        return PatchSet(Vec::new());
+    }
+
+    pub fn push(&mut self, patch: Patch<'a, Message>) {
+        self.0.push(patch)
+    }
+
+    pub fn len(&self) -> usize {
+        return self.0.len()
+    }
+}
+
+impl<'a, Message> From<Vec<Patch<'a, Message>>> for PatchSet<'a, Message> {
+    fn from(v: Vec<Patch<'a, Message>>) -> Self {
+        PatchSet(v)
+    }
+}
+
+impl<'a, Message> IntoIterator for PatchSet<'a, Message> {
+    type Item = Patch<'a, Message>;
+    type IntoIter = ::std::vec::IntoIter<Patch<'a, Message>>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.into_iter()
+    }
+}
 
 pub fn diff<'a, Message, I1, I2>(mut old: I1, mut new: I2) -> PatchSet<'a, Message>
 where
@@ -758,7 +788,7 @@ mod tests {
             compare!($patch_set, [ $($x),* ]);
         };
         ( $patch_set:ident, [ $( $x:expr),* ] ) => {
-            let cmp: PatchSet<Msg> = vec!($($x),*);
+            let cmp: PatchSet<Msg> = vec!($($x),*).into();
 
             assert_eq!($patch_set.len(), cmp.len(), "lengths don't match\n  left: {:?}\n right: {:?}", $patch_set, cmp);
 
