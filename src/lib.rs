@@ -31,6 +31,14 @@ impl<'a, T> fmt::Debug for Storage<'a, T> {
     }
 }
 
+impl<'a, T> cmp::PartialEq for Storage<'a, T> {
+    fn eq(&self, _: &Self) -> bool {
+        // can't compare these closures, and we don't care if the actual closures are equal anyway.
+        // They are only used for storage.
+        true
+    }
+}
+
 /// Items representing all of the data in the DOM tree.
 ///
 /// This is the struct emitted from the `Iterator` passed to our `diff` function. The items emitted
@@ -38,7 +46,7 @@ impl<'a, T> fmt::Debug for Storage<'a, T> {
 /// some aspect of a DOM node. The idea here is the sequence of items will be the same sequence of
 /// things seen if we were to walk the DOM tree depth first going through all nodes and their
 /// various attributes and events.
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum DomItem<'a, Message> {
     /// An element in the tree.
     Element { element: &'a str, node: Storage<'a, web_sys::Element> },
