@@ -6,6 +6,7 @@ use wasm_bindgen::JsCast;
 use std::fmt;
 use std::cmp;
 use std::rc::Rc;
+use std::cell::RefCell;
 
 pub trait DomIter<'a, Message: Clone> {
     fn dom_iter(&'a mut self) -> Box<Iterator<Item = DomItem<'a, Message>> + 'a>;
@@ -546,12 +547,15 @@ where
     patch_set
 }
 
-pub fn patch<'a, Message>(parent: web_sys::Element, patch_set: PatchSet<'a, Message>, dispatch: Rc<Fn(Message) + 'static>)
-where
+pub trait Dispatch<Message> {
+    fn dispatch(app: Rc<RefCell<Self>>, msg: Message);
+}
+
+pub fn patch<'a, Message, D>(parent: web_sys::Element, patch_set: PatchSet<'a, Message>, app: Rc<RefCell<D>>) where
     Message: 'static + Clone,
     EventHandler<'a, Message>: Clone,
+    D: Dispatch<Message> + 'static,
 {
-
     let mut node_stack: Vec<web_sys::Node> = vec![parent.unchecked_into()];
 
     let document = web_sys::window().expect("expected window")
@@ -622,20 +626,20 @@ where
                     .expect("failed to remove attribute");
             }
             Patch::AddListener { trigger, handler, mut store } => {
-                let dispatch = dispatch.clone();
+                let app = app.clone();
                 let closure = match handler {
                     EventHandler::Msg(msg) => {
                         let msg = msg.clone();
                         Closure::wrap(
                             Box::new(move |_| {
-                                dispatch(msg.clone())
+                                D::dispatch(app.clone(), msg.clone())
                             }) as Box<FnMut(web_sys::Event)>
                         )
                     }
                     EventHandler::Fn(fun) => {
                         Closure::wrap(
                             Box::new(move |event| {
-                                dispatch(fun(event))
+                                D::dispatch(app.clone(), fun(event))
                             }) as Box<FnMut(web_sys::Event)>
                         )
                     }
@@ -1176,8 +1180,13 @@ mod tests {
         let patch_set = diff(o, n);
 
         let parent = e("div");
-        let dispatch = Rc::new(move |_|());
-        patch(parent.clone(), patch_set, dispatch.clone());
+        struct App {};
+        impl Dispatch<Msg> for App {
+            fn dispatch(_: Rc<RefCell<Self>>, _: Msg) {}
+        }
+
+        let app = Rc::new(RefCell::new(App {}));
+        patch(parent.clone(), patch_set, app.clone());
 
         assert!(new.node.is_some(), "expected node to be copied");
     }
@@ -1206,14 +1215,19 @@ mod tests {
         };
 
         let parent = e("div");
-        let dispatch = Rc::new(move |_|());
+        struct App {};
+        impl Dispatch<Msg> for App {
+            fn dispatch(_: Rc<RefCell<Self>>, msg: Msg) {}
+        }
+
+        let app = Rc::new(RefCell::new(App {}));
 
         {
             // first gen create element
             let o = gen1.into_iter();
             let n = gen2.dom_iter();
             let patch_set = diff(o, n);
-            patch(parent.clone(), patch_set, dispatch.clone());
+            patch(parent.clone(), patch_set, app.clone());
         }
 
         assert!(gen2.node.is_some(), "expected node to be created");
@@ -1222,7 +1236,7 @@ mod tests {
         let o = gen2.dom_iter();
         let n = gen3.dom_iter();
         let patch_set = diff(o, n);
-        patch(parent.clone(), patch_set, dispatch.clone());
+        patch(parent.clone(), patch_set, app.clone());
 
         assert!(gen3.node.is_some(), "expected node to be created");
     }
@@ -1232,8 +1246,6 @@ mod tests {
         use std::cell::RefCell;
         use std::iter;
 
-        let counter: Rc<RefCell<_>> = Rc::new(RefCell::new(0));
-
         let gen1 = iter::empty();
 
         let mut gen2: Dom<Msg> = Dom {
@@ -1248,16 +1260,20 @@ mod tests {
         };
 
         let parent = e("div");
-        let dispatch_counter = counter.clone();
-        let dispatch = Rc::new(move |_| {
-             let mut count = dispatch_counter.borrow_mut();
-             *count += 1;
-        });
+        struct App(i32);
+        impl Dispatch<Msg> for App {
+            fn dispatch(app: Rc<RefCell<Self>>, msg: Msg) {
+                let mut app = app.borrow_mut();
+                app.0 += 1;
+            }
+        }
+
+        let app = Rc::new(RefCell::new(App(0)));
 
         let o = gen1.into_iter();
         let n = gen2.dom_iter();
         let patch_set = diff(o, n);
-        patch(parent.clone(), patch_set, dispatch.clone());
+        patch(parent.clone(), patch_set, app.clone());
 
         gen2.node
             .expect("expected node to be created")
@@ -1265,15 +1281,13 @@ mod tests {
             .expect("expected html element")
             .click();
 
-        assert_eq!(*counter.borrow(), 1);
+        assert_eq!(app.borrow().0, 1);
     }
 
     #[wasm_bindgen_test]
     fn listener_copy() {
         use std::cell::RefCell;
         use std::iter;
-
-        let counter: Rc<RefCell<_>> = Rc::new(RefCell::new(0));
 
         let gen1 = iter::empty();
 
@@ -1289,17 +1303,20 @@ mod tests {
         };
 
         let parent = e("div");
-        let dispatch_counter = counter.clone();
-        let dispatch = Rc::new(move |_| {
-             let mut count = dispatch_counter.borrow_mut();
-             *count += 1;
-        });
+        struct App(i32);
+        impl Dispatch<Msg> for App {
+            fn dispatch(app: Rc<RefCell<Self>>, msg: Msg) {
+                let mut app = app.borrow_mut();
+                app.0 += 1;
+            }
+        }
 
+        let app = Rc::new(RefCell::new(App(0)));
 
         let o = gen1.into_iter();
         let n = gen2.dom_iter();
         let patch_set = diff(o, n);
-        patch(parent.clone(), patch_set, dispatch.clone());
+        patch(parent.clone(), patch_set, app.clone());
 
         let node = gen2.node
             .expect("expected node to be created");
@@ -1323,7 +1340,7 @@ mod tests {
         let o = gen2.dom_iter();
         let n = gen3.dom_iter();
         let patch_set = diff(o, n);
-        patch(parent.clone(), patch_set, dispatch.clone());
+        patch(parent.clone(), patch_set, app.clone());
 
         let node = gen3.node
             .expect("expected node to be created");
@@ -1333,6 +1350,6 @@ mod tests {
             .expect("expected html element")
             .click();
 
-        assert_eq!(*counter.borrow(), 2);
+        assert_eq!(app.borrow().0, 2);
     }
 }
