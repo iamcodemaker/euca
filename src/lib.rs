@@ -8,8 +8,8 @@ use std::cmp;
 use std::rc::Rc;
 use std::cell::RefCell;
 
-pub trait DomIter<'a, Message: Clone> {
-    fn dom_iter(&'a mut self) -> Box<Iterator<Item = DomItem<'a, Message>> + 'a>;
+pub trait DomIter<Message: Clone> {
+    fn dom_iter<'a>(&'a mut self) -> Box<Iterator<Item = DomItem<'a, Message>> + 'a>;
 }
 
 #[derive(Debug, PartialEq, Copy, Clone)]
@@ -728,8 +728,8 @@ mod tests {
         node: Option<web_sys::Element>,
     }
 
-    impl<'a, Message: Clone> DomIter<'a, Message> for Dom<Message> {
-        fn dom_iter(&'a mut self) -> Box<Iterator<Item = DomItem<'a, Message>> + 'a>
+    impl<Message: Clone> DomIter<Message> for Dom<Message> {
+        fn dom_iter<'a>(&'a mut self) -> Box<Iterator<Item = DomItem<'a, Message>> + 'a>
         {
             use std::iter;
 
