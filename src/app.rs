@@ -46,6 +46,9 @@ impl<Message, Model, DomTree> Dispatch<Message> for App<Model, DomTree> where
         patch_set.apply(parent, app_rc.clone());
 
         app.dom = new_dom;
+
+        // TODO: evaluate speedup or lack there of from using patch_set.is_noop() to check if we
+        // actually need to apply this patch before applying the patch
     }
 }
 
