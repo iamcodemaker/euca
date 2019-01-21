@@ -1,5 +1,4 @@
 use std::fmt;
-use std::cmp;
 use std::rc::Rc;
 use std::cell::RefCell;
 use wasm_bindgen::prelude::*;
@@ -41,48 +40,6 @@ impl<'a, Message> fmt::Debug for Patch<'a, Message> where
             Patch::CopyListener { store: _, take: _ } => write!(f, "CopyListener {{ store: _, take: _ }}"),
             Patch::RemoveListener { trigger: t, take: _ } => write!(f, "RemoveListener {{ trigger: {:?}), take: _ }}", t),
             Patch::Up => write!(f, "Up"),
-        }
-    }
-}
-
-impl<'a, Message> cmp::PartialEq for Patch<'a, Message> where
-    Message: cmp::PartialEq
-{
-    fn eq(&self, other: &Self) -> bool {
-        match (self, other) {
-            (Patch::RemoveElement(_), Patch::RemoveElement(_)) => true,
-            (
-                Patch::CreateElement { store: _, element: e1 },
-                Patch::CreateElement { store: _, element: e2 },
-            )
-            => e1 == e2,
-            (
-                Patch::CopyElement { store: _, take: _ },
-                Patch::CopyElement { store: _, take: _ },
-            )
-            => true,
-            (
-                Patch::AddAttribute { name: n1, value: v1 },
-                Patch::AddAttribute { name: n2, value: v2 },
-            )
-            => n1 == n2 && v1 == v2,
-            (
-                Patch::RemoveAttribute(s1),
-                Patch::RemoveAttribute(s2),
-            )
-            => s1 == s2,
-            (
-                Patch::AddListener { trigger: t1, handler: h1, .. },
-                Patch::AddListener { trigger: t2, handler: h2, .. },
-            )
-            => t1 == t2 && h1 == h2,
-            (
-                Patch::RemoveListener { trigger: t1, .. },
-                Patch::RemoveListener { trigger: t2, .. },
-            )
-            => t1 == t2,
-            (Patch::Up, Patch::Up) => true,
-            (_, _) => false,
         }
     }
 }
