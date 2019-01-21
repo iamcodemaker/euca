@@ -1,3 +1,14 @@
+//! Dom patching functionality.
+//!
+//! This module implements the [`Patch`] and [`PatchSet`] types which provide the tools necessary
+//! to describe a set of changes to a dom tree. Also provided is the [`PatchSet::apply`] method
+//! which will apply a patch set to the browser's dom tree creating elements as the children of the
+//! given parent element and dispatching events using the given dispatcher.
+//!
+//! [`Patch`]: enum.Patch.html
+//! [`PatchSet`]: struct.PatchSet.html
+//! [`PatchSet::apply`]: struct.PatchSet.html#method.apply
+
 use std::fmt;
 use std::rc::Rc;
 use std::cell::RefCell;
@@ -6,19 +17,92 @@ use wasm_bindgen::JsCast;
 use crate::dom::EventHandler;
 use crate::app::Dispatch;
 
+/// This enum describes all of the operations we need to preform to move the dom to the desired
+/// state. The patch operations expect [`web_sys::Element`], [`web_sys::Text`], and [`Closure`]
+/// items to be stored and retrieved from some concrete dom structure which is not provided. The
+/// patch operation stores closures which will be called at most once, and either take ownership of
+/// and return the desired element or take ownership of and store the given element. Some of the
+/// patch operations do not operate on the actual dom but instead move elements and closures from
+/// the old virtual dom tree to the new virtual dom tree for storage.
+///
+/// [`web_sys::Element`]: https://rustwasm.github.io/wasm-bindgen/api/web_sys/struct.Element.html
+/// [`web_sys::Text`]: https://rustwasm.github.io/wasm-bindgen/api/web_sys/struct.Text.html
+/// [`Closure`]: https://rustwasm.github.io/wasm-bindgen/api/wasm_bindgen/closure/struct.Closure.html
 pub enum Patch<'a, Message> {
+    /// Remove an element.
     RemoveElement(Box<FnMut() -> web_sys::Element + 'a>),
-    CreateElement { store: Box<FnMut(web_sys::Element) + 'a>, element: &'a str },
-    CopyElement { store: Box<FnMut(web_sys::Element) + 'a>, take: Box<FnMut() -> web_sys::Element + 'a> },
+    /// Create an element of the given type.
+    CreateElement {
+        /// Called once to store the given element in the virtual dom.
+        store: Box<FnMut(web_sys::Element) + 'a>,
+        /// The name/type of element that will be created.
+        element: &'a str,
+    },
+    /// Copy and element from the old dom tree to the new dom tree.
+    CopyElement {
+        /// Called once to store the given element in the virtual dom.
+        store: Box<FnMut(web_sys::Element) + 'a>,
+        /// Called once to take an existing element from the old virtual dom.
+        take: Box<FnMut() -> web_sys::Element + 'a>,
+    },
+    /// Remove a text element.
     RemoveText(Box<FnMut() -> web_sys::Text + 'a>),
-    ReplaceText { store: Box<FnMut(web_sys::Text) + 'a>, take: Box<FnMut() -> web_sys::Text + 'a>, text: &'a str },
-    CreateText { store: Box<FnMut(web_sys::Text) + 'a>, text: &'a str },
-    CopyText { store: Box<FnMut(web_sys::Text) + 'a>, take: Box<FnMut() -> web_sys::Text + 'a> },
-    AddAttribute { name: &'a str, value: &'a str },
+    /// Replace the value of a text element.
+    ReplaceText {
+        /// Called once to store the given text node in the virtual dom.
+        store: Box<FnMut(web_sys::Text) + 'a>,
+        /// Called once to take an existing text node from the old virtual dom.
+        take: Box<FnMut() -> web_sys::Text + 'a>,
+        /// The replacement text for the existing text node.
+        text: &'a str,
+    },
+    /// Create a text element.
+    CreateText {
+        /// Called once to store the given text node in the virtual dom.
+        store: Box<FnMut(web_sys::Text) + 'a>,
+        /// The text value of the node to create.
+        text: &'a str,
+    },
+    /// Copy the reference we have to the text element to the new dom.
+    CopyText {
+        /// Called once to store the given text node in the virtual dom.
+        store: Box<FnMut(web_sys::Text) + 'a>,
+        /// Called once to take an existing text node from the old virtual dom.
+        take: Box<FnMut() -> web_sys::Text + 'a>,
+    },
+    /// Add an attribute.
+    AddAttribute {
+        /// The name of the attribute to add.
+        name: &'a str,
+        /// The value of the attribute to add.
+        value: &'a str,
+    },
+    /// Remove an attribute.
     RemoveAttribute(&'a str),
-    AddListener { trigger: &'a str, handler: EventHandler<'a, Message>, store: Box<FnMut(Closure<FnMut(web_sys::Event)>) + 'a> },
-    CopyListener { store: Box<FnMut(Closure<FnMut(web_sys::Event)>) + 'a>, take: Box<FnMut() -> Closure<FnMut(web_sys::Event)> + 'a> },
-    RemoveListener { trigger: &'a str, take: Box<FnMut() -> Closure<FnMut(web_sys::Event)> + 'a> },
+    /// Add an event listener.
+    AddListener {
+        /// The trigger for the event to watch.
+        trigger: &'a str,
+        /// A handler for the event.
+        handler: EventHandler<'a, Message>,
+        /// Called once to store the Closure associated with this event.
+        store: Box<FnMut(Closure<FnMut(web_sys::Event)>) + 'a>,
+    },
+    /// Copy an event listener from the old dom tree to the new dom tree.
+    CopyListener {
+        /// Called once to store the Closure associated with this event.
+        store: Box<FnMut(Closure<FnMut(web_sys::Event)>) + 'a>,
+        /// Called once to take an existing closure from the old virtual dom.
+        take: Box<FnMut() -> Closure<FnMut(web_sys::Event)> + 'a>,
+    },
+    /// Remove an event listener.
+    RemoveListener {
+        /// The trigger for the event to remove.
+        trigger: &'a str,
+        /// Called once to take an existing closure from the old virtual dom.
+        take: Box<FnMut() -> Closure<FnMut(web_sys::Event)> + 'a>,
+    },
+    /// This marks the end of operations on the last node.
     Up,
 }
 
@@ -44,22 +128,30 @@ impl<'a, Message> fmt::Debug for Patch<'a, Message> where
     }
 }
 
+/// A series of [`Patch`]es to apply to the dom.
+///
+/// [`Patch`]: enum.Patch.html
 #[derive(Default, Debug)]
 pub struct PatchSet<'a, Message>(pub Vec<Patch<'a, Message>>);
 
 impl<'a, Message> PatchSet<'a, Message> {
+    /// Create an empty PatchSet.
     pub fn new() -> Self {
         return PatchSet(Vec::new());
     }
 
+    /// Push a patch on to the end of the PatchSet.
     pub fn push(&mut self, patch: Patch<'a, Message>) {
         self.0.push(patch)
     }
 
+    /// Return the length of the PatchSet.
     pub fn len(&self) -> usize {
         return self.0.len()
     }
 
+    /// Return true if applying this PatchSet won't actually alter the browser's dom representation
+    /// and false otherwise.
     pub fn is_noop(&self) -> bool {
         use Patch::*;
 
@@ -78,6 +170,10 @@ impl<'a, Message> PatchSet<'a, Message> {
         })
     }
 
+    /// Apply the given PatchSet creating any elements under the given parent node. Events are
+    /// dispatched via the given [`Dispatch`]er.
+    ///
+    /// [`Dispatch`]: ../app/trait.Dispatch.html
     pub fn apply<D>(self, parent: web_sys::Element, app: Rc<RefCell<D>>) where
         Message: 'static + Clone,
         EventHandler<'a, Message>: Clone,
@@ -221,10 +317,7 @@ mod tests {
 
     #[test]
     fn empty_patch_set_is_noop() {
-        let patch_set: PatchSet<Msg> = vec![
-        ].into();
-
-        assert!(patch_set.is_noop());
+        assert!(PatchSet::<Msg>::new().is_noop());
     }
 
     #[wasm_bindgen_test]

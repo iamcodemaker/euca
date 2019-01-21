@@ -1,9 +1,13 @@
+//! Tools to get the difference between two virtual dom trees.
+
 use std::fmt;
 use crate::patch::PatchSet;
 use crate::patch::Patch;
 use crate::dom::DomItem;
 use crate::dom::Storage;
 
+/// Return the series of steps required to move from the given old/existing virtual dom to the
+/// given new virtual dom.
 pub fn diff<'a, Message, I1, I2>(mut old: I1, mut new: I2) -> PatchSet<'a, Message> where
     Message: 'a + PartialEq + Clone + fmt::Debug,
     I1: Iterator<Item = DomItem<'a, Message>>,
@@ -343,4 +347,3 @@ pub fn diff<'a, Message, I1, I2>(mut old: I1, mut new: I2) -> PatchSet<'a, Messa
 
     patch_set
 }
-
