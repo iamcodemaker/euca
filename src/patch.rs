@@ -212,4 +212,47 @@ impl<'a, Message> IntoIterator for PatchSet<'a, Message> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    use wasm_bindgen_test::*;
+    use wasm_bindgen_test::wasm_bindgen_test_configure;
+    wasm_bindgen_test_configure!(run_in_browser);
+
+    enum Msg {}
+
+    #[test]
+    fn empty_patch_set_is_noop() {
+        let patch_set: PatchSet<Msg> = vec![
+        ].into();
+
+        assert!(patch_set.is_noop());
+    }
+
+    #[wasm_bindgen_test]
+    fn noop_patch_set_is_noop() {
+        let patch_set: PatchSet<Msg> = vec![
+            Patch::CopyElement {
+                store: Box::new(|_|()),
+                take: Box::new(|| {
+                    web_sys::window().expect("expected window")
+                        .document().expect("expected document")
+                        .create_element("test").expect("expected element")
+                }),
+            },
+            Patch::Up,
+        ].into();
+
+        assert!(patch_set.is_noop());
+    }
+
+    #[test]
+    fn not_noop() {
+        let patch_set: PatchSet<Msg> = vec![
+            Patch::CreateElement {
+                store: Box::new(|_|()),
+                element: "",
+            },
+        ].into();
+
+        assert!(!patch_set.is_noop());
+    }
 }
