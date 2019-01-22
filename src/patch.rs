@@ -500,4 +500,72 @@ mod tests {
         let attribute = element.unwrap().get_attribute("name");
         assert!(attribute.is_none());
     }
+
+    #[wasm_bindgen_test]
+    fn remove_attribute_checked() {
+        use Patch::*;
+
+        let mut element = None;
+
+        let patch_set: PatchSet<Msg> = vec![
+            CopyElement {
+                store: Box::new(|e| element = Some(e)),
+                take: Box::new(|| {
+                    let e = elem("input");
+                    e.set_attribute("checked", "true").expect("setting attribute failed");
+                    e
+                }),
+            },
+            RemoveAttribute("checked"),
+            Up,
+        ].into();
+
+        struct App {};
+        impl Dispatch<Msg> for App {
+            fn dispatch(_: Rc<RefCell<Self>>, _: Msg) {}
+        }
+
+        let app = Rc::new(RefCell::new(App {}));
+        let parent = elem("div");
+        patch_set.apply(parent, app);
+
+        let element = element.expect("expected element");
+        let input = element.dyn_ref::<web_sys::HtmlInputElement>().expect("expected input element");
+
+        assert!(!input.checked());
+    }
+
+    #[wasm_bindgen_test]
+    fn remove_attribute_disabled() {
+        use Patch::*;
+
+        let mut element = None;
+
+        let patch_set: PatchSet<Msg> = vec![
+            CopyElement {
+                store: Box::new(|e| element = Some(e)),
+                take: Box::new(|| {
+                    let e = elem("input");
+                    e.set_attribute("disabled", "true").expect("setting attribute failed");
+                    e
+                }),
+            },
+            RemoveAttribute("disabled"),
+            Up,
+        ].into();
+
+        struct App {};
+        impl Dispatch<Msg> for App {
+            fn dispatch(_: Rc<RefCell<Self>>, _: Msg) {}
+        }
+
+        let app = Rc::new(RefCell::new(App {}));
+        let parent = elem("div");
+        patch_set.apply(parent, app);
+
+        let element = element.expect("expected element");
+        let input = element.dyn_ref::<web_sys::HtmlInputElement>().expect("expected input element");
+
+        assert!(!input.disabled());
+    }
 }
