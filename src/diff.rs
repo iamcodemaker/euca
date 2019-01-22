@@ -3,8 +3,8 @@
 use std::fmt;
 use crate::patch::PatchSet;
 use crate::patch::Patch;
-use crate::dom::DomItem;
-use crate::dom::Storage;
+use crate::vdom::DomItem;
+use crate::vdom::Storage;
 
 /// Return the series of steps required to move from the given old/existing virtual dom to the
 /// given new virtual dom.

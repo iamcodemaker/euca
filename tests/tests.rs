@@ -2,9 +2,9 @@ use std::rc::Rc;
 use std::cell::RefCell;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
-use euca::dom::DomItem;
-use euca::dom::DomIter;
-use euca::dom::Storage;
+use euca::vdom::DomItem;
+use euca::vdom::DomIter;
+use euca::vdom::Storage;
 use euca::patch::Patch;
 use euca::patch::PatchSet;
 use euca::app::Dispatch;
@@ -93,8 +93,8 @@ impl<Message: Clone> DomIter<Message> for Dom<Message> {
                  DomItem::Event {
                      trigger: trigger,
                      handler: match handler {
-                         EventHandler::Msg(m) => euca::dom::EventHandler::Msg(m),
-                         EventHandler::Map(f) => euca::dom::EventHandler::Fn(*f),
+                         EventHandler::Msg(m) => euca::vdom::EventHandler::Msg(m),
+                         EventHandler::Map(f) => euca::vdom::EventHandler::Fn(*f),
                      },
                      closure: match closure {
                          Some(_) => Storage::Read(Box::new(move || closure.take().unwrap())),
@@ -294,12 +294,12 @@ fn new_child_nodes() {
             Patch::CreateElement { store: Box::new(|_|()), element: "b".into() },
             Patch::AddAttribute { name: "class", value: "item" },
             Patch::AddAttribute { name: "id", value: "id1" },
-            Patch::AddListener { trigger: "onclick", handler: euca::dom::EventHandler::Msg(&Msg {}), store: Box::new(|_|()) },
+            Patch::AddListener { trigger: "onclick", handler: euca::vdom::EventHandler::Msg(&Msg {}), store: Box::new(|_|()) },
             Patch::Up,
             Patch::CreateElement { store: Box::new(|_|()), element: "i".into() },
             Patch::AddAttribute { name: "class", value: "item" },
             Patch::AddAttribute { name: "id", value: "id2" },
-            Patch::AddListener { trigger: "onclick", handler: euca::dom::EventHandler::Msg(&Msg {}), store: Box::new(|_|()) },
+            Patch::AddListener { trigger: "onclick", handler: euca::vdom::EventHandler::Msg(&Msg {}), store: Box::new(|_|()) },
             Patch::Up,
             Patch::Up,
         ]

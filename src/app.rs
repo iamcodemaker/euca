@@ -14,7 +14,7 @@ use std::rc::Rc;
 use std::cell::RefCell;
 use std::fmt;
 use crate::diff;
-use crate::dom::DomIter;
+use crate::vdom::DomIter;
 
 /// Implemented on a model, used to process a message that updates the model.
 pub trait Update<Message> {

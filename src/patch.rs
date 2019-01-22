@@ -14,7 +14,7 @@ use std::rc::Rc;
 use std::cell::RefCell;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
-use crate::dom::EventHandler;
+use crate::vdom::EventHandler;
 use crate::app::Dispatch;
 
 /// This enum describes all of the operations we need to preform to move the dom to the desired
