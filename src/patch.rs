@@ -234,6 +234,8 @@ impl<'a, Message> PatchSet<'a, Message> {
                 }
                 Patch::AddAttribute { name, value } => {
                     match name {
+                        // TODO: maybe we don't need to filter this for attribute name. Can we just
+                        // remove any attribute that has the value "false"?
                         // properly handle setting special boolean attributes to false
                         "checked" | "disabled" | "autofocus"
                         if value == "false"
