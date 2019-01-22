@@ -1,5 +1,6 @@
 use std::rc::Rc;
 use std::cell::RefCell;
+use std::iter;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 use euca::vdom::DomItem;
@@ -92,8 +93,6 @@ struct Dom<Message> {
 impl<Message: Clone> DomIter<Message> for Dom<Message> {
     fn dom_iter<'a>(&'a mut self) -> Box<Iterator<Item = DomItem<'a, Message>> + 'a>
     {
-        use std::iter;
-
         // until generators are stable, this is the best we can do
         let iter = iter::once(&mut self.element)
             .map(|node| match node {
@@ -196,8 +195,6 @@ struct Msg {}
 
 #[test]
 fn basic_diff() {
-    use std::iter;
-
     let old = iter::empty();
 
     let mut new: Dom<Msg> = Dom {
@@ -222,8 +219,6 @@ fn basic_diff() {
 
 #[test]
 fn diff_add_text() {
-    use std::iter;
-
     let old = iter::empty();
 
     let mut new: Dom<Msg> = Dom {
@@ -313,6 +308,103 @@ fn new_child_nodes() {
             Patch::AddListener { trigger: "onclick", handler: euca::vdom::EventHandler::Msg(&Msg {}), store: Box::new(|_|()) },
             Patch::Up,
             Patch::Up,
+        ]
+    );
+}
+
+#[wasm_bindgen_test]
+fn from_empty() {
+    let mut new: Dom<Msg> = Dom {
+        element: Node::elem("div"),
+        attributes: vec!(),
+        events: vec!(),
+        children: vec![
+            Dom {
+                element: Node::elem("b"),
+                attributes: vec![
+                    Attr { name: "class", value: "item" },
+                    Attr { name: "id", value: "id1" },
+                ],
+                events: vec![
+                    Event { trigger: "onclick".into(), handler: EventHandler::Msg(Msg {}), closure: None },
+                ],
+                children: vec![],
+            },
+            Dom {
+                element: Node::elem("i"),
+                attributes: vec![
+                    Attr { name: "class", value: "item" },
+                    Attr { name: "id", value: "id2" },
+                ],
+                events: vec![
+                    Event { trigger: "onclick".into(), handler: EventHandler::Msg(Msg {}), closure: None },
+                ],
+                children: vec![],
+            },
+        ],
+    };
+
+    let n = new.dom_iter();
+    let patch_set = diff::diff(iter::empty(), n);
+
+    compare!(
+        patch_set,
+        [
+            Patch::CreateElement { store: Box::new(|_|()), element: "div" },
+            Patch::CreateElement { store: Box::new(|_|()), element: "b" },
+            Patch::AddAttribute { name: "class", value: "item" },
+            Patch::AddAttribute { name: "id", value: "id1" },
+            Patch::AddListener { trigger: "onclick", handler: euca::vdom::EventHandler::Msg(&Msg {}), store: Box::new(|_|()) },
+            Patch::Up,
+            Patch::CreateElement { store: Box::new(|_|()), element: "i" },
+            Patch::AddAttribute { name: "class", value: "item" },
+            Patch::AddAttribute { name: "id", value: "id2" },
+            Patch::AddListener { trigger: "onclick", handler: euca::vdom::EventHandler::Msg(&Msg {}), store: Box::new(|_|()) },
+            Patch::Up,
+            Patch::Up,
+        ]
+    );
+}
+
+#[wasm_bindgen_test]
+fn to_empty() {
+    let mut old: Dom<Msg> = Dom {
+        element: Node::elem_with_node("div"),
+        attributes: vec!(),
+        events: vec!(),
+        children: vec![
+            Dom {
+                element: Node::elem_with_node("b"),
+                attributes: vec![
+                    Attr { name: "class", value: "item" },
+                    Attr { name: "id", value: "id1" },
+                ],
+                events: vec![
+                    Event { trigger: "onclick".into(), handler: EventHandler::Msg(Msg {}), closure: None },
+                ],
+                children: vec![],
+            },
+            Dom {
+                element: Node::elem_with_node("i"),
+                attributes: vec![
+                    Attr { name: "class", value: "item" },
+                    Attr { name: "id", value: "id2" },
+                ],
+                events: vec![
+                    Event { trigger: "onclick".into(), handler: EventHandler::Msg(Msg {}), closure: None },
+                ],
+                children: vec![],
+            },
+        ],
+    };
+
+    let o = old.dom_iter();
+    let patch_set = diff::diff(o, iter::empty());
+
+    compare!(
+        patch_set,
+        [
+            Patch::RemoveElement(Box::new(|| e("div"))),
         ]
     );
 }
@@ -519,7 +611,6 @@ fn null_patch_with_element() {
 
 #[wasm_bindgen_test]
 fn basic_patch_with_element() {
-    use std::iter;
     let gen1 = iter::empty();
 
     let mut gen2: Dom<Msg> = Dom {
@@ -569,9 +660,6 @@ fn basic_patch_with_element() {
 
 #[wasm_bindgen_test]
 fn basic_event_test() {
-    use std::cell::RefCell;
-    use std::iter;
-
     let gen1 = iter::empty();
 
     let mut gen2: Dom<Msg> = Dom {
@@ -613,9 +701,6 @@ fn basic_event_test() {
 
 #[wasm_bindgen_test]
 fn listener_copy() {
-    use std::cell::RefCell;
-    use std::iter;
-
     let gen1 = iter::empty();
 
     let mut gen2: Dom<Msg> = Dom {
