@@ -408,4 +408,36 @@ mod tests {
         assert!(attribute.is_some());
         assert_eq!(attribute.unwrap(), "value");
     }
+
+    #[wasm_bindgen_test]
+    fn remove_attribute() {
+        use Patch::*;
+
+        let mut element = None;
+
+        let patch_set: PatchSet<Msg> = vec![
+            CopyElement {
+                store: Box::new(|e| element = Some(e)),
+                take: Box::new(|| {
+                    let e = elem("test");
+                    e.set_attribute("name", "value").expect("setting attribute failed");
+                    e
+                }),
+            },
+            RemoveAttribute("name"),
+            Up,
+        ].into();
+
+        struct App {};
+        impl Dispatch<Msg> for App {
+            fn dispatch(_: Rc<RefCell<Self>>, _: Msg) {}
+        }
+
+        let app = Rc::new(RefCell::new(App {}));
+        let parent = elem("div");
+        patch_set.apply(parent, app);
+
+        let attribute = element.unwrap().get_attribute("name");
+        assert!(attribute.is_none());
+    }
 }
