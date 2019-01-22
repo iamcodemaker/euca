@@ -375,4 +375,37 @@ mod tests {
 
         assert!(element.is_some());
     }
+
+    #[wasm_bindgen_test]
+    fn add_attribute() {
+        use Patch::*;
+
+        let mut element = None;
+
+        let patch_set: PatchSet<Msg> = vec![
+            CopyElement {
+                store: Box::new(|e| element = Some(e)),
+                take: Box::new(|| {
+                    let e = elem("test");
+                    assert!(e.get_attribute("name").is_none());
+                    e
+                }),
+            },
+            AddAttribute { name: "name", value: "value" },
+            Up,
+        ].into();
+
+        struct App {};
+        impl Dispatch<Msg> for App {
+            fn dispatch(_: Rc<RefCell<Self>>, _: Msg) {}
+        }
+
+        let app = Rc::new(RefCell::new(App {}));
+        let parent = elem("div");
+        patch_set.apply(parent, app);
+
+        let attribute = element.unwrap().get_attribute("name");
+        assert!(attribute.is_some());
+        assert_eq!(attribute.unwrap(), "value");
+    }
 }
