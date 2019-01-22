@@ -38,8 +38,8 @@ fn element_with_closure(name: &str, trigger: &str) -> (web_sys::Element, Closure
 
 #[derive(PartialEq)]
 struct Attr {
-    name: String,
-    value: String,
+    name: &'static str,
+    value: &'static str,
 }
 
 #[derive(PartialEq)]
@@ -54,18 +54,39 @@ struct Event<Message> {
     closure: Option<Closure<FnMut(web_sys::Event)>>,
 }
 
-struct Text {
-    text: String,
-    node: Option<web_sys::Text>,
+enum Node {
+    Elem { name: &'static str, node: Option<web_sys::Element> },
+    Text { text: &'static str, node: Option<web_sys::Text> },
+}
+
+impl Node {
+    fn elem(name: &'static str) -> Self {
+        Node::Elem {
+            name: name,
+            node: None,
+        }
+    }
+
+    fn text(text: &'static str) -> Self {
+        Node::Text {
+            text: text,
+            node: None,
+        }
+    }
+
+    fn elem_with_node(name: &'static str) -> Self {
+        Node::Elem {
+            name: name,
+            node: Some(e(name)),
+        }
+    }
 }
 
 struct Dom<Message> {
-    element: String,
+    element: Node,
     attributes: Vec<Attr>,
     events: Vec<Event<Message>>,
     children: Vec<Dom<Message>>,
-    text: Option<Text>,
-    node: Option<web_sys::Element>,
 }
 
 impl<Message: Clone> DomIter<Message> for Dom<Message> {
@@ -74,18 +95,31 @@ impl<Message: Clone> DomIter<Message> for Dom<Message> {
         use std::iter;
 
         // until generators are stable, this is the best we can do
-        let iter = iter::once((&mut self.node, &self.element))
-            .map(|(node, element)| DomItem::Element {
-                element: element,
-                node: match node {
-                    Some(_) => Storage::Read(Box::new(move || node.take().unwrap())),
-                    None => Storage::Write(Box::new(move |n| *node = Some(n))),
-                },
+        let iter = iter::once(&mut self.element)
+            .map(|node| match node {
+                Node::Elem { name, ref mut node } => {
+                    DomItem::Element {
+                        element: name,
+                        node: match node {
+                            Some(_) => Storage::Read(Box::new(move || node.take().unwrap())),
+                            None => Storage::Write(Box::new(move |n| *node = Some(n))),
+                        },
+                    }
+                }
+                Node::Text { text, ref mut node } => {
+                    DomItem::Text {
+                        text: text,
+                        node: match node {
+                            Some(_) => Storage::Read(Box::new(move || node.take().unwrap())),
+                            None => Storage::Write(Box::new(move |n| *node = Some(n))),
+                        },
+                    }
+                }
             })
         .chain(self.attributes.iter()
             .map(|attr| DomItem::Attr {
-                name: &attr.name,
-                value: &attr.value
+                name: attr.name,
+                value: attr.value
             })
         )
         .chain(self.events.iter_mut()
@@ -105,21 +139,6 @@ impl<Message: Clone> DomIter<Message> for Dom<Message> {
         )
         .chain(self.children.iter_mut()
            .flat_map(|c| c.dom_iter())
-        )
-        .chain(self.text.iter_mut()
-           .flat_map(|Text { text, node }|
-               vec![
-                   DomItem::Text {
-                       text: text,
-                       node: match node {
-                           Some(_) => Storage::Read(Box::new(move || node.take().unwrap())),
-                           None => Storage::Write(Box::new(move |n| *node = Some(n))),
-                       },
-                   },
-                   // this is necessary because text nodes can have events associated with them
-                   DomItem::Up,
-               ]
-           )
         )
         .chain(iter::once(DomItem::Up));
 
@@ -182,12 +201,10 @@ fn basic_diff() {
     let old = iter::empty();
 
     let mut new: Dom<Msg> = Dom {
-        element: "span".into(),
+        element: Node::elem("span"),
         attributes: vec!(),
         events: vec!(),
         children: vec!(),
-        text: None,
-        node: None,
     };
 
     let o = old.into_iter();
@@ -210,15 +227,17 @@ fn diff_add_text() {
     let old = iter::empty();
 
     let mut new: Dom<Msg> = Dom {
-        element: "div".into(),
+        element: Node::elem("div"),
         attributes: vec!(),
         events: vec!(),
-        children: vec!(),
-        text: Some(Text {
-            text: "text".to_owned(),
-            node: None,
-        }),
-        node: None,
+        children: vec![
+            Dom {
+                element: Node::text("text"),
+                attributes: vec![],
+                events: vec![],
+                children: vec![],
+            },
+        ],
     };
 
     let o = old.into_iter();
@@ -239,48 +258,40 @@ fn diff_add_text() {
 #[wasm_bindgen_test]
 fn new_child_nodes() {
     let mut old: Dom<Msg> = Dom {
-        element: "div".into(),
+        element: Node::elem_with_node("div"),
         attributes: vec!(),
         events: vec!(),
         children: vec![],
-        text: None,
-        node: Some(e("div")),
     };
 
     let mut new: Dom<Msg> = Dom {
-        element: "div".into(),
+        element: Node::elem("div"),
         attributes: vec!(),
         events: vec!(),
         children: vec![
             Dom {
-                element: "b".into(),
+                element: Node::elem("b"),
                 attributes: vec![
-                    Attr { name: "class".into(), value: "item".into() },
-                    Attr { name: "id".into(), value: "id1".into() },
+                    Attr { name: "class", value: "item" },
+                    Attr { name: "id", value: "id1" },
                 ],
                 events: vec![
                     Event { trigger: "onclick".into(), handler: EventHandler::Msg(Msg {}), closure: None },
                 ],
                 children: vec![],
-                text: None,
-                node: None,
             },
             Dom {
-                element: "i".into(),
+                element: Node::elem("i"),
                 attributes: vec![
-                    Attr { name: "class".into(), value: "item".into() },
-                    Attr { name: "id".into(), value: "id2".into() },
+                    Attr { name: "class", value: "item" },
+                    Attr { name: "id", value: "id2" },
                 ],
                 events: vec![
                     Event { trigger: "onclick".into(), handler: EventHandler::Msg(Msg {}), closure: None },
                 ],
                 children: vec![],
-                text: None,
-                node: None,
             },
         ],
-        text: None,
-        node: None,
     };
 
     let o = old.dom_iter();
@@ -309,21 +320,17 @@ fn new_child_nodes() {
 #[wasm_bindgen_test]
 fn no_difference() {
     let mut old: Dom<Msg> = Dom {
-        element: "div".into(),
+        element: Node::elem_with_node("div"),
         attributes: vec!(),
         events: vec!(),
         children: vec!(),
-        text: None,
-        node: Some(e("div")),
     };
 
     let mut new: Dom<Msg> = Dom {
-        element: "div".into(),
+        element: Node::elem("div"),
         attributes: vec!(),
         events: vec!(),
         children: vec!(),
-        text: None,
-        node: None,
     };
 
     let o = old.dom_iter();
@@ -342,21 +349,17 @@ fn no_difference() {
 #[wasm_bindgen_test]
 fn basic_diff_with_element() {
     let mut old: Dom<Msg> = Dom {
-        element: "div".into(),
+        element: Node::elem_with_node("div"),
         attributes: vec!(),
         events: vec!(),
         children: vec!(),
-        text: None,
-        node: Some(e("div")),
     };
 
     let mut new: Dom<Msg> = Dom {
-        element: "span".into(),
+        element: Node::elem("span"),
         attributes: vec!(),
         events: vec!(),
         children: vec!(),
-        text: None,
-        node: None,
     };
 
     let o = old.dom_iter();
@@ -377,12 +380,12 @@ fn basic_diff_with_element() {
 fn old_child_nodes_with_element() {
     let (elem, closure) = element_with_closure("b", "onclick");
     let mut old: Dom<Msg> = Dom {
-        element: "div".into(),
+        element: Node::elem_with_node("div"),
         attributes: vec!(),
         events: vec!(),
         children: vec![
             Dom {
-                element: "b".into(),
+                element: Node::Elem { name: "b", node: Some(elem) },
                 attributes: vec![
                     Attr { name: "class".into(), value: "item".into() },
                     Attr { name: "id".into(), value: "id".into() },
@@ -391,32 +394,24 @@ fn old_child_nodes_with_element() {
                     Event { trigger: "onclick".into(), handler: EventHandler::Msg(Msg {}), closure: Some(closure) },
                 ],
                 children: vec![],
-                text: None,
-                node: Some(elem),
             },
             Dom {
-                element: "i".into(),
+                element: Node::elem_with_node("i"),
                 attributes: vec![
                     Attr { name: "class".into(), value: "item".into() },
                     Attr { name: "id".into(), value: "id".into() },
                 ],
                 events: vec![],
                 children: vec![],
-                text: None,
-                node: Some(e("i")),
             },
         ],
-        text: None,
-        node: Some(e("div")),
     };
 
     let mut new: Dom<Msg> = Dom {
-        element: "div".into(),
+        element: Node::elem("div"),
         attributes: vec!(),
         events: vec!(),
         children: vec!(),
-        text: None,
-        node: None,
     };
 
     let o = old.dom_iter();
@@ -437,12 +432,12 @@ fn old_child_nodes_with_element() {
 #[wasm_bindgen_test]
 fn diff_old_child_nodes_with_element() {
     let mut old: Dom<Msg> = Dom {
-        element: "span".into(),
+        element: Node::elem_with_node("span"),
         attributes: vec!(),
         events: vec!(),
         children: vec![
             Dom {
-                element: "b".into(),
+                element: Node::elem_with_node("b"),
                 attributes: vec![
                     Attr { name: "class".into(), value: "item".into() },
                     Attr { name: "id".into(), value: "id".into() },
@@ -451,11 +446,9 @@ fn diff_old_child_nodes_with_element() {
                     Event { trigger: "onclick".into(), handler: EventHandler::Msg(Msg {}), closure: None },
                 ],
                 children: vec![],
-                text: None,
-                node: Some(e("b")),
             },
             Dom {
-                element: "i".into(),
+                element: Node::elem_with_node("i"),
                 attributes: vec![
                     Attr { name: "class".into(), value: "item".into() },
                     Attr { name: "id".into(), value: "id".into() },
@@ -464,21 +457,15 @@ fn diff_old_child_nodes_with_element() {
                     Event { trigger: "onclick".into(), handler: EventHandler::Msg(Msg {}), closure: None },
                 ],
                 children: vec![],
-                text: None,
-                node: Some(e("i")),
             },
         ],
-        text: None,
-        node: Some(e("span")),
     };
 
     let mut new: Dom<Msg> = Dom {
-        element: "div".into(),
+        element: Node::elem("div"),
         attributes: vec!(),
         events: vec!(),
         children: vec!(),
-        text: None,
-        node: None,
     };
 
     let o = old.dom_iter();
@@ -498,21 +485,17 @@ fn diff_old_child_nodes_with_element() {
 #[wasm_bindgen_test]
 fn null_patch_with_element() {
     let mut old: Dom<Msg> = Dom {
-        element: "div".into(),
+        element: Node::elem_with_node("div"),
         attributes: vec!(),
         events: vec!(),
         children: vec!(),
-        text: None,
-        node: Some(e("div")),
     };
 
     let mut new: Dom<Msg> = Dom {
-        element: "div".into(),
+        element: Node::elem("div"),
         attributes: vec!(),
         events: vec!(),
         children: vec!(),
-        text: None,
-        node: None,
     };
 
     let o = old.dom_iter();
@@ -528,7 +511,10 @@ fn null_patch_with_element() {
     let app = Rc::new(RefCell::new(App {}));
     patch_set.apply(parent.clone(), app.clone());
 
-    assert!(new.node.is_some(), "expected node to be copied");
+    match new.element {
+        Node::Elem { name: _, node: Some(_) } => {},
+        _ => panic!("expected node to be copied"),
+    }
 }
 
 #[wasm_bindgen_test]
@@ -537,21 +523,17 @@ fn basic_patch_with_element() {
     let gen1 = iter::empty();
 
     let mut gen2: Dom<Msg> = Dom {
-        element: "div".into(),
+        element: Node::elem("div"),
         attributes: vec!(),
         events: vec!(),
         children: vec!(),
-        text: None,
-        node: None,
     };
 
     let mut gen3: Dom<Msg> = Dom {
-        element: "span".into(),
+        element: Node::elem("span"),
         attributes: vec!(),
         events: vec!(),
         children: vec!(),
-        text: None,
-        node: None,
     };
 
     let parent = e("div");
@@ -568,7 +550,10 @@ fn basic_patch_with_element() {
     let patch_set = diff::diff(o, n);
     patch_set.apply(parent.clone(), app.clone());
 
-    assert!(gen2.node.is_some(), "expected node to be created");
+    match gen2.element {
+        Node::Elem { name: _, node: Some(_) } => {},
+        _ => panic!("expected node to be created"),
+    }
 
     // second gen remove and replace element
     let o = gen2.dom_iter();
@@ -576,7 +561,10 @@ fn basic_patch_with_element() {
     let patch_set = diff::diff(o, n);
     patch_set.apply(parent.clone(), app.clone());
 
-    assert!(gen3.node.is_some(), "expected node to be created");
+    match gen3.element {
+        Node::Elem { name: _, node: Some(_) } => {},
+        _ => panic!("expected node to be created"),
+    };
 }
 
 #[wasm_bindgen_test]
@@ -587,14 +575,12 @@ fn basic_event_test() {
     let gen1 = iter::empty();
 
     let mut gen2: Dom<Msg> = Dom {
-        element: "button".into(),
+        element: Node::elem("button"),
         attributes: vec!(),
         events: vec![
-            Event { trigger: "click".into(), handler: EventHandler::Msg(Msg {}), closure: None },
+            Event { trigger: "click".into(), handler: EventHandler::Map(|_| Msg {}), closure: None },
         ],
         children: vec!(),
-        text: None,
-        node: None,
     };
 
     let parent = e("div");
@@ -613,11 +599,14 @@ fn basic_event_test() {
     let patch_set = diff::diff(o, n);
     patch_set.apply(parent.clone(), app.clone());
 
-    gen2.node
-        .expect("expected node to be created")
-        .dyn_ref::<web_sys::HtmlElement>()
-        .expect("expected html element")
-        .click();
+    match gen2.element {
+        Node::Elem { name: _, node: Some(node) } => {
+            node.dyn_ref::<web_sys::HtmlElement>()
+                .expect("expected html element")
+                .click();
+        },
+        _ => panic!("expected node to be created"),
+    };
 
     assert_eq!(app.borrow().0, 1);
 }
@@ -630,14 +619,12 @@ fn listener_copy() {
     let gen1 = iter::empty();
 
     let mut gen2: Dom<Msg> = Dom {
-        element: "button".into(),
+        element: Node::elem("button"),
         attributes: vec!(),
         events: vec![
             Event { trigger: "click".into(), handler: EventHandler::Msg(Msg {}), closure: None },
         ],
         children: vec!(),
-        text: None,
-        node: None,
     };
 
     let parent = e("div");
@@ -656,23 +643,22 @@ fn listener_copy() {
     let patch_set = diff::diff(o, n);
     patch_set.apply(parent.clone(), app.clone());
 
-    let node = gen2.node
-        .expect("expected node to be created");
-    gen2.node = Some(node.clone());
-
-    node.dyn_ref::<web_sys::HtmlElement>()
-        .expect("expected html element")
-        .click();
+    match gen2.element {
+        Node::Elem { name: _, node: Some(ref node) } => {
+            node.dyn_ref::<web_sys::HtmlElement>()
+                .expect("expected html element")
+                .click();
+        },
+        _ => panic!("expected node to be created"),
+    }
 
     let mut gen3: Dom<Msg> = Dom {
-        element: "button".into(),
+        element: Node::elem("button"),
         attributes: vec!(),
         events: vec![
             Event { trigger: "click".into(), handler: EventHandler::Msg(Msg {}), closure: None },
         ],
         children: vec!(),
-        text: None,
-        node: None,
     };
 
     let o = gen2.dom_iter();
@@ -680,13 +666,14 @@ fn listener_copy() {
     let patch_set = diff::diff(o, n);
     patch_set.apply(parent.clone(), app.clone());
 
-    let node = gen3.node
-        .expect("expected node to be created");
-    gen3.node = Some(node.clone());
-
-    node.dyn_ref::<web_sys::HtmlElement>()
-        .expect("expected html element")
-        .click();
+    match gen3.element {
+        Node::Elem { name: _, node: Some(node) } => {
+            node.dyn_ref::<web_sys::HtmlElement>()
+                .expect("expected html element")
+                .click();
+        },
+        _ => panic!("expected node to be created"),
+    }
 
     assert_eq!(app.borrow().0, 2);
 }
