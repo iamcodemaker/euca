@@ -233,12 +233,27 @@ impl<'a, Message> PatchSet<'a, Message> {
                     node_stack.push(node.into());
                 }
                 Patch::AddAttribute { name, value } => {
-                    node_stack.last()
-                        .expect("no previous node")
-                        .dyn_ref::<web_sys::Element>()
-                        .expect("attributes can only be added to elements")
-                        .set_attribute(name, value)
-                        .expect("failed to set attribute");
+                    match name {
+                        // properly handle setting special boolean attributes to false
+                        "checked" | "disabled" | "autofocus"
+                        if value == "false"
+                        => {
+                            node_stack.last()
+                                .expect("no previous node")
+                                .dyn_ref::<web_sys::Element>()
+                                .expect("attributes can only be removed from elements")
+                                .remove_attribute(name)
+                                .expect("failed to remove attribute");
+                        }
+                        _ => {
+                            node_stack.last()
+                                .expect("no previous node")
+                                .dyn_ref::<web_sys::Element>()
+                                .expect("attributes can only be added to elements")
+                                .set_attribute(name, value)
+                                .expect("failed to set attribute");
+                        }
+                    }
                 }
                 Patch::RemoveAttribute(name) => {
                     node_stack.last()
@@ -567,5 +582,95 @@ mod tests {
         let input = element.dyn_ref::<web_sys::HtmlInputElement>().expect("expected input element");
 
         assert!(!input.disabled());
+    }
+
+    #[wasm_bindgen_test]
+    fn set_attribute_checked_false() {
+        use Patch::*;
+
+        let mut element = None;
+
+        let patch_set: PatchSet<Msg> = vec![
+            CreateElement {
+                element: "input",
+                store: Box::new(|e| element = Some(e)),
+            },
+            AddAttribute { name: "checked", value: "false" },
+            Up,
+        ].into();
+
+        struct App {};
+        impl Dispatch<Msg> for App {
+            fn dispatch(_: Rc<RefCell<Self>>, _: Msg) {}
+        }
+
+        let app = Rc::new(RefCell::new(App {}));
+        let parent = elem("div");
+        patch_set.apply(parent, app);
+
+        let element = element.expect("expected element");
+        let input = element.dyn_ref::<web_sys::HtmlInputElement>().expect("expected input element");
+
+        assert!(!input.checked());
+    }
+
+    #[wasm_bindgen_test]
+    fn set_attribute_disabled_false() {
+        use Patch::*;
+
+        let mut element = None;
+
+        let patch_set: PatchSet<Msg> = vec![
+            CreateElement {
+                element: "input",
+                store: Box::new(|e| element = Some(e)),
+            },
+            AddAttribute { name: "disabled", value: "false" },
+            Up,
+        ].into();
+
+        struct App {};
+        impl Dispatch<Msg> for App {
+            fn dispatch(_: Rc<RefCell<Self>>, _: Msg) {}
+        }
+
+        let app = Rc::new(RefCell::new(App {}));
+        let parent = elem("div");
+        patch_set.apply(parent, app);
+
+        let element = element.expect("expected element");
+        let input = element.dyn_ref::<web_sys::HtmlInputElement>().expect("expected input element");
+
+        assert!(!input.disabled());
+    }
+
+    #[wasm_bindgen_test]
+    fn set_attribute_autofocus_false() {
+        use Patch::*;
+
+        let mut element = None;
+
+        let patch_set: PatchSet<Msg> = vec![
+            CreateElement {
+                element: "input",
+                store: Box::new(|e| element = Some(e)),
+            },
+            AddAttribute { name: "autofocus", value: "false" },
+            Up,
+        ].into();
+
+        struct App {};
+        impl Dispatch<Msg> for App {
+            fn dispatch(_: Rc<RefCell<Self>>, _: Msg) {}
+        }
+
+        let app = Rc::new(RefCell::new(App {}));
+        let parent = elem("div");
+        patch_set.apply(parent, app);
+
+        let element = element.expect("expected element");
+        let input = element.dyn_ref::<web_sys::HtmlInputElement>().expect("expected input element");
+
+        assert!(!input.autofocus());
     }
 }
