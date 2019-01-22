@@ -234,10 +234,12 @@ impl<'a, Message> PatchSet<'a, Message> {
                 }
                 Patch::AddAttribute { name, value } => {
                     match name {
-                        // TODO: maybe we don't need to filter this for attribute name. Can we just
-                        // remove any attribute that has the value "false"?
-                        // properly handle setting special boolean attributes to false
+                        // properly handle setting special boolean attributes to false. We could
+                        // filter just on value == "false" here, but that might have false
+                        // positives like an input field with "value=false".
                         "checked" | "disabled" | "autofocus"
+                        | "selected" | "hidden" | "draggable"
+                        | "spellcheck"
                         if value == "false"
                         => {
                             node_stack.last()
@@ -674,5 +676,35 @@ mod tests {
         let input = element.dyn_ref::<web_sys::HtmlInputElement>().expect("expected input element");
 
         assert!(!input.autofocus());
+    }
+
+    #[wasm_bindgen_test]
+    fn set_attribute_selected_false() {
+        use Patch::*;
+
+        let mut element = None;
+
+        let patch_set: PatchSet<Msg> = vec![
+            CreateElement {
+                element: "option",
+                store: Box::new(|e| element = Some(e)),
+            },
+            AddAttribute { name: "selected", value: "false" },
+            Up,
+        ].into();
+
+        struct App {};
+        impl Dispatch<Msg> for App {
+            fn dispatch(_: Rc<RefCell<Self>>, _: Msg) {}
+        }
+
+        let app = Rc::new(RefCell::new(App {}));
+        let parent = elem("div");
+        patch_set.apply(parent, app);
+
+        let element = element.expect("expected element");
+        let option = element.dyn_ref::<web_sys::HtmlOptionElement>().expect("expected input element");
+
+        assert!(!option.selected());
     }
 }

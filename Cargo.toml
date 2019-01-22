@@ -23,6 +23,7 @@ features = [
     "HtmlElement",
     "CharacterData",
     "HtmlInputElement",
+    "HtmlOptionElement",
 ]
 
 [dev-dependencies]
