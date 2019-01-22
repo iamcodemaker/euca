@@ -16,7 +16,8 @@ use wasm_bindgen::prelude::*;
 /// function must be a plain fn pointer and cannot capture any state from the environment.
 ///
 /// [`web_sys::Event`]: https://rustwasm.github.io/wasm-bindgen/api/web_sys/struct.Event.html
-#[derive(Debug, PartialEq, Copy, Clone)] pub enum EventHandler<'a, Message> {
+#[derive(Debug, PartialEq, Copy, Clone)]
+pub enum EventHandler<'a, Message> {
     /// A message that will be generated when this event associated with this handler fires.
     Msg(&'a Message),
 
