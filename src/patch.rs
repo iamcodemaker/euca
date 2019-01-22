@@ -410,6 +410,66 @@ mod tests {
     }
 
     #[wasm_bindgen_test]
+    fn add_attribute_checked() {
+        use Patch::*;
+
+        let mut element = None;
+
+        let patch_set: PatchSet<Msg> = vec![
+            CreateElement {
+                element: "input",
+                store: Box::new(|e| element = Some(e)),
+            },
+            AddAttribute { name: "checked", value: "true" },
+            Up,
+        ].into();
+
+        struct App {};
+        impl Dispatch<Msg> for App {
+            fn dispatch(_: Rc<RefCell<Self>>, _: Msg) {}
+        }
+
+        let app = Rc::new(RefCell::new(App {}));
+        let parent = elem("div");
+        patch_set.apply(parent, app);
+
+        let element = element.expect("expected element");
+        let input = element.dyn_ref::<web_sys::HtmlInputElement>().expect("expected input element");
+
+        assert!(input.checked());
+    }
+
+    #[wasm_bindgen_test]
+    fn add_attribute_disabled() {
+        use Patch::*;
+
+        let mut element = None;
+
+        let patch_set: PatchSet<Msg> = vec![
+            CreateElement {
+                element: "input",
+                store: Box::new(|e| element = Some(e)),
+            },
+            AddAttribute { name: "disabled", value: "true" },
+            Up,
+        ].into();
+
+        struct App {};
+        impl Dispatch<Msg> for App {
+            fn dispatch(_: Rc<RefCell<Self>>, _: Msg) {}
+        }
+
+        let app = Rc::new(RefCell::new(App {}));
+        let parent = elem("div");
+        patch_set.apply(parent, app);
+
+        let element = element.expect("expected element");
+        let input = element.dyn_ref::<web_sys::HtmlInputElement>().expect("expected input element");
+
+        assert!(input.disabled());
+    }
+
+    #[wasm_bindgen_test]
     fn remove_attribute() {
         use Patch::*;
 
