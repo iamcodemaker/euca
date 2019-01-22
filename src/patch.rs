@@ -440,6 +440,30 @@ impl<'a, Message> PatchSet<'a, Message> {
                                 }) as Box<FnMut(web_sys::Event)>
                             )
                         }
+                        EventHandler::InputValue(fun) => {
+                            Closure::wrap(
+                                Box::new(move |event: web_sys::Event| {
+                                    let value = match event.target() {
+                                        None => String::new(),
+                                        Some(target) => {
+                                            if let Some(input) = target.dyn_ref::<web_sys::HtmlInputElement>() {
+                                                input.value()
+                                            }
+                                            else if let Some(input) = target.dyn_ref::<web_sys::HtmlTextAreaElement>() {
+                                                input.value()
+                                            }
+                                            else if let Some(input) = target.dyn_ref::<web_sys::HtmlSelectElement>() {
+                                                input.value()
+                                            }
+                                            else {
+                                                String::new()
+                                            }
+                                        }
+                                    };
+                                    D::dispatch(app.clone(), fun(value))
+                                }) as Box<FnMut(web_sys::Event)>
+                            )
+                        }
                     };
                     let node = node_stack.last().expect("no previous node");
                     (node.as_ref() as &web_sys::EventTarget)
