@@ -319,6 +319,7 @@ mod tests {
             .create_element(name).expect("expected element")
     }
 
+    #[derive(Clone)]
     enum Msg {}
 
     #[test]
@@ -349,5 +350,29 @@ mod tests {
         ].into();
 
         assert!(!patch_set.is_noop());
+    }
+
+    #[wasm_bindgen_test]
+    fn copy_element() {
+        let mut element = None;
+
+        let patch_set: PatchSet<Msg> = vec![
+            Patch::CopyElement {
+                store: Box::new(|e| element = Some(e)),
+                take: Box::new(|| elem("test")),
+            },
+            Patch::Up,
+        ].into();
+
+        struct App {};
+        impl Dispatch<Msg> for App {
+            fn dispatch(_: Rc<RefCell<Self>>, _: Msg) {}
+        }
+
+        let app = Rc::new(RefCell::new(App {}));
+        let parent = elem("div");
+        patch_set.apply(parent, app);
+
+        assert!(element.is_some());
     }
 }
