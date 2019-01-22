@@ -313,6 +313,12 @@ mod tests {
     use wasm_bindgen_test::wasm_bindgen_test_configure;
     wasm_bindgen_test_configure!(run_in_browser);
 
+    fn elem(name: &str) -> web_sys::Element {
+        web_sys::window().expect("expected window")
+            .document().expect("expected document")
+            .create_element(name).expect("expected element")
+    }
+
     enum Msg {}
 
     #[test]
@@ -325,11 +331,7 @@ mod tests {
         let patch_set: PatchSet<Msg> = vec![
             Patch::CopyElement {
                 store: Box::new(|_|()),
-                take: Box::new(|| {
-                    web_sys::window().expect("expected window")
-                        .document().expect("expected document")
-                        .create_element("test").expect("expected element")
-                }),
+                take: Box::new(|| elem("test")),
             },
             Patch::Up,
         ].into();
