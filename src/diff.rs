@@ -201,15 +201,19 @@ pub fn diff<'a, Message, I1, I2>(mut old: I1, mut new: I2) -> PatchSet<'a, Messa
                             // add attribute
                             patch_set.push(Patch::SetAttribute { name: n_name, value: n_value });
                         }
-                        if o_name != n_name || o_value != n_value {
+                        // names are different
+                        else if o_name != n_name {
                             if state.is_copy() {
                                 // remove old attribute
                                 patch_set.push(Patch::RemoveAttribute(o_name));
                             }
-                            if !state.is_create() {
-                                // add new attribute
-                                patch_set.push(Patch::SetAttribute { name: n_name, value: n_value });
-                            }
+                            // add new attribute
+                            patch_set.push(Patch::SetAttribute { name: n_name, value: n_value });
+                        }
+                        // only values are different
+                        else if o_value != n_value {
+                            // set new attribute value
+                            patch_set.push(Patch::SetAttribute { name: n_name, value: n_value });
                         }
                         o_item = old.next();
                         n_item = new.next();
