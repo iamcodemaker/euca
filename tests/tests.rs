@@ -160,7 +160,7 @@ macro_rules! compare {
                     assert_eq!(e1, e2, "unexpected CreateElement");
                 }
                 (Patch::CopyElement { store: _, take: _ }, Patch::CopyElement { store: _, take: _ }) => {}
-                (Patch::AddAttribute { name: n1, value: v1 }, Patch::AddAttribute { name: n2, value: v2 }) => {
+                (Patch::SetAttribute { name: n1, value: v1 }, Patch::SetAttribute { name: n2, value: v2 }) => {
                     assert_eq!(n1, n2, "attribute names don't match");
                     assert_eq!(v1, v2, "attribute values don't match");
                 }
@@ -298,13 +298,13 @@ fn new_child_nodes() {
         [
             Patch::CopyElement { store: Box::new(|_|()), take: Box::new(|| e("div")) },
             Patch::CreateElement { store: Box::new(|_|()), element: "b".into() },
-            Patch::AddAttribute { name: "class", value: "item" },
-            Patch::AddAttribute { name: "id", value: "id1" },
+            Patch::SetAttribute { name: "class", value: "item" },
+            Patch::SetAttribute { name: "id", value: "id1" },
             Patch::AddListener { trigger: "onclick", handler: euca::vdom::EventHandler::Msg(&Msg {}), store: Box::new(|_|()) },
             Patch::Up,
             Patch::CreateElement { store: Box::new(|_|()), element: "i".into() },
-            Patch::AddAttribute { name: "class", value: "item" },
-            Patch::AddAttribute { name: "id", value: "id2" },
+            Patch::SetAttribute { name: "class", value: "item" },
+            Patch::SetAttribute { name: "id", value: "id2" },
             Patch::AddListener { trigger: "onclick", handler: euca::vdom::EventHandler::Msg(&Msg {}), store: Box::new(|_|()) },
             Patch::Up,
             Patch::Up,
@@ -352,13 +352,13 @@ fn from_empty() {
         [
             Patch::CreateElement { store: Box::new(|_|()), element: "div" },
             Patch::CreateElement { store: Box::new(|_|()), element: "b" },
-            Patch::AddAttribute { name: "class", value: "item" },
-            Patch::AddAttribute { name: "id", value: "id1" },
+            Patch::SetAttribute { name: "class", value: "item" },
+            Patch::SetAttribute { name: "id", value: "id1" },
             Patch::AddListener { trigger: "onclick", handler: euca::vdom::EventHandler::Msg(&Msg {}), store: Box::new(|_|()) },
             Patch::Up,
             Patch::CreateElement { store: Box::new(|_|()), element: "i" },
-            Patch::AddAttribute { name: "class", value: "item" },
-            Patch::AddAttribute { name: "id", value: "id2" },
+            Patch::SetAttribute { name: "class", value: "item" },
+            Patch::SetAttribute { name: "id", value: "id2" },
             Patch::AddListener { trigger: "onclick", handler: euca::vdom::EventHandler::Msg(&Msg {}), store: Box::new(|_|()) },
             Patch::Up,
             Patch::Up,

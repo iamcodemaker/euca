@@ -76,7 +76,7 @@ pub fn diff<'a, Message, I1, I2>(mut old: I1, mut new: I2) -> PatchSet<'a, Messa
                         patch_set.push(Patch::CreateText { store, text });
                     }
                     DomItem::Attr { name, value } => {
-                        patch_set.push(Patch::AddAttribute { name, value });
+                        patch_set.push(Patch::SetAttribute { name, value });
                     }
                     DomItem::Event { trigger, handler, closure: Storage::Write(store) } => {
                         patch_set.push(Patch::AddListener { trigger, handler: handler.into(), store });
@@ -199,7 +199,7 @@ pub fn diff<'a, Message, I1, I2>(mut old: I1, mut new: I2) -> PatchSet<'a, Messa
                     ) => { // compare attributes
                         if state.is_create() {
                             // add attribute
-                            patch_set.push(Patch::AddAttribute { name: n_name, value: n_value });
+                            patch_set.push(Patch::SetAttribute { name: n_name, value: n_value });
                         }
                         if o_name != n_name || o_value != n_value {
                             if state.is_copy() {
@@ -208,7 +208,7 @@ pub fn diff<'a, Message, I1, I2>(mut old: I1, mut new: I2) -> PatchSet<'a, Messa
                             }
                             if !state.is_create() {
                                 // add new attribute
-                                patch_set.push(Patch::AddAttribute { name: n_name, value: n_value });
+                                patch_set.push(Patch::SetAttribute { name: n_name, value: n_value });
                             }
                         }
                         o_item = old.next();
@@ -280,7 +280,7 @@ pub fn diff<'a, Message, I1, I2>(mut old: I1, mut new: I2) -> PatchSet<'a, Messa
                     }
                     // add attribute to new node
                     (o, DomItem::Attr { name, value }) => {
-                        patch_set.push(Patch::AddAttribute { name, value });
+                        patch_set.push(Patch::SetAttribute { name, value });
                         o_item = Some(o);
                         n_item = new.next();
                     }

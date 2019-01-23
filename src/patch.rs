@@ -70,11 +70,11 @@ pub enum Patch<'a, Message> {
         /// Called once to take an existing text node from the old virtual dom.
         take: Box<FnMut() -> web_sys::Text + 'a>,
     },
-    /// Add an attribute.
-    AddAttribute {
-        /// The name of the attribute to add.
+    /// Set an attribute.
+    SetAttribute {
+        /// The name of the attribute to set.
         name: &'a str,
-        /// The value of the attribute to add.
+        /// The value of the attribute to set.
         value: &'a str,
     },
     /// Remove an attribute.
@@ -118,7 +118,7 @@ impl<'a, Message> fmt::Debug for Patch<'a, Message> where
             Patch::ReplaceText { store: _, take: _, text: t }  => write!(f, "ReplaceText {{ store: _, take: _, text: {:?} }}", t),
             Patch::CreateText { store: _, text: t } => write!(f, "CreateText {{ store: _, text: {:?} }}", t),
             Patch::CopyText { store: _, take: _ } => write!(f, "CopyText {{ store: _, take: _ }}"),
-            Patch::AddAttribute { name: n, value: v } => write!(f, "AddAttribute {{ name: {:?}, value: {:?} }}", n, v),
+            Patch::SetAttribute { name: n, value: v } => write!(f, "SetAttribute {{ name: {:?}, value: {:?} }}", n, v),
             Patch::RemoveAttribute(s) => write!(f, "RemoveAttribute({:?})", s),
             Patch::AddListener { trigger: t, handler: h, store: _ } => write!(f, "AddListener {{ trigger: {:?}, handler: {:?}, store: _ }}", t, h),
             Patch::CopyListener { store: _, take: _ } => write!(f, "CopyListener {{ store: _, take: _ }}"),
@@ -164,7 +164,7 @@ impl<'a, Message> PatchSet<'a, Message> {
             // these patches change the dom
             RemoveElement(_) | CreateElement { .. }
             | RemoveListener { .. } | AddListener { .. }
-            | RemoveAttribute(_) | AddAttribute { .. }
+            | RemoveAttribute(_) | SetAttribute { .. }
             | RemoveText(_) | CreateText { .. } | ReplaceText { .. }
             => false,
         })
@@ -232,7 +232,7 @@ impl<'a, Message> PatchSet<'a, Message> {
                     store(node.clone());
                     node_stack.push(node.into());
                 }
-                Patch::AddAttribute { name, value } => {
+                Patch::SetAttribute { name, value } => {
                     match name {
                         // properly handle setting special boolean attributes to false. We could
                         // filter just on value == "false" here, but that might have false
@@ -410,7 +410,7 @@ mod tests {
                     e
                 }),
             },
-            AddAttribute { name: "name", value: "value" },
+            SetAttribute { name: "name", value: "value" },
             Up,
         ].into();
 
@@ -439,7 +439,7 @@ mod tests {
                 element: "input",
                 store: Box::new(|e| element = Some(e)),
             },
-            AddAttribute { name: "checked", value: "true" },
+            SetAttribute { name: "checked", value: "true" },
             Up,
         ].into();
 
@@ -469,7 +469,7 @@ mod tests {
                 element: "input",
                 store: Box::new(|e| element = Some(e)),
             },
-            AddAttribute { name: "disabled", value: "true" },
+            SetAttribute { name: "disabled", value: "true" },
             Up,
         ].into();
 
@@ -599,7 +599,7 @@ mod tests {
                 element: "input",
                 store: Box::new(|e| element = Some(e)),
             },
-            AddAttribute { name: "checked", value: "false" },
+            SetAttribute { name: "checked", value: "false" },
             Up,
         ].into();
 
@@ -629,7 +629,7 @@ mod tests {
                 element: "input",
                 store: Box::new(|e| element = Some(e)),
             },
-            AddAttribute { name: "disabled", value: "false" },
+            SetAttribute { name: "disabled", value: "false" },
             Up,
         ].into();
 
@@ -659,7 +659,7 @@ mod tests {
                 element: "input",
                 store: Box::new(|e| element = Some(e)),
             },
-            AddAttribute { name: "autofocus", value: "false" },
+            SetAttribute { name: "autofocus", value: "false" },
             Up,
         ].into();
 
@@ -689,7 +689,7 @@ mod tests {
                 element: "option",
                 store: Box::new(|e| element = Some(e)),
             },
-            AddAttribute { name: "selected", value: "false" },
+            SetAttribute { name: "selected", value: "false" },
             Up,
         ].into();
 
