@@ -16,6 +16,7 @@ use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 use crate::vdom::EventHandler;
 use crate::app::Dispatch;
+use log::warn;
 
 /// This enum describes all of the operations we need to preform to move the dom to the desired
 /// state. The patch operations expect [`web_sys::Element`], [`web_sys::Text`], and [`Closure`]
@@ -128,6 +129,104 @@ impl<'a, Message> fmt::Debug for Patch<'a, Message> where
     }
 }
 
+macro_rules! attribute_setter_match_arm {
+    ( $node:ident, $setter:ident, $attr:literal, $value:ident, [ $node_type1:path $(, $node_type:path )* ] ) => {
+        {
+            if let Some(elem) = $node.dyn_ref::<$node_type1>() {
+                if let Ok(value) = $value.parse() {
+                    elem.$setter(value);
+                }
+                else if $value == $attr {
+                    elem.$setter(true);
+                }
+                else {
+                    warn!("non boolean value '{}' set for '{}' attribute", $value, $attr);
+                    $node.dyn_ref::<web_sys::Element>()
+                        .expect("attributes can only be added to elements")
+                        .set_attribute($attr, $value)
+                        .expect("failed to set attribute");
+                }
+            }
+            $(else if let Some(elem) = $node.dyn_ref::<$node_type>() {
+                if let Ok(value) = $value.parse() {
+                    elem.$setter(value);
+                }
+                else if $value == $attr {
+                    elem.$setter(true);
+                }
+                else {
+                    warn!("non boolean value '{}' set for '{}' attribute", $value, $attr);
+                    $node.dyn_ref::<web_sys::Element>()
+                        .expect("attributes can only be added to elements")
+                        .set_attribute($attr, $value)
+                        .expect("failed to set attribute");
+                }
+            })*
+            else {
+                let elem = $node.dyn_ref::<web_sys::Element>()
+                    .expect("attributes can only be added to elements");
+                elem.set_attribute($attr, $value)
+                    .expect("failed to set attribute");
+                warn!("attribute '{}' set for '{}' element, expected one of {}",
+                    $attr, elem.node_name(), stringify!($($node_type),*));
+            }
+        }
+    };
+}
+
+macro_rules! attribute_setter {
+    ( $node:ident, $name:ident, $value:ident, [ $( $attr:literal => $setter:ident [ $( $node_type:path ,)* ] ,)* ] ) => {
+        attribute_setter!($node, $name, $value, [ $( $attr => $setter [ $( $node_type ),* ] ),* ] )
+    };
+    ( $node:ident, $name:ident, $value:ident, [ $( $attr:literal => $setter:ident [ $( $node_type:path ),* ] ),* ] ) => {
+        match $name {
+            $( $attr => { attribute_setter_match_arm!($node, $setter, $attr, $value, [ $($node_type),* ]) } )*
+            _ => {
+                $node.dyn_ref::<web_sys::Element>()
+                    .expect("attributes can only be added to elements")
+                    .set_attribute($name, $value)
+                    .expect("failed to set attribute");
+            }
+        }
+    }
+}
+
+macro_rules! attribute_unsetter_match_arm {
+    ( $node:ident, $setter:ident, $attr:literal, [ $node_type1:path $(, $node_type:path )* ] ) => {
+        if let Some(elem) = $node.dyn_ref::<$node_type1>() {
+            elem.$setter(false);
+        }
+        $(else if let Some(elem) = $node.dyn_ref::<$node_type>() {
+            elem.$setter(false);
+        })*
+        else {
+            let elem = $node.dyn_ref::<web_sys::Element>()
+                .expect("attributes can only be removed from elements");
+            elem.remove_attribute($attr)
+                .expect("failed to set attribute");
+            warn!("attribute '{}' removed for '{}' element, expected one of {}",
+                $attr, elem.node_name(), stringify!($($node_type),*));
+        }
+    };
+}
+
+macro_rules! attribute_unsetter {
+    ( $node:ident, $name:ident, [ $( $attr:literal => $setter:ident [ $( $node_type:path ,)* ] ,)* ] ) => {
+        attribute_unsetter!($node, $name, [ $( $attr => $setter [ $( $node_type ),* ] ),* ] )
+    };
+    ( $node:ident, $name:ident, [ $( $attr:literal => $setter:ident [ $( $node_type:path ),* ] ),* ] ) => {
+        match $name {
+            $( $attr => { attribute_unsetter_match_arm!($node, $setter, $attr, [ $($node_type),* ]) } )*
+            _ => {
+                $node.dyn_ref::<web_sys::Element>()
+                    .expect("attributes can only be removed from elements")
+                    .remove_attribute($name)
+                    .expect("failed to remove attribute");
+            }
+        }
+    };
+}
+
 /// A series of [`Patch`]es to apply to the dom.
 ///
 /// [`Patch`]: enum.Patch.html
@@ -233,39 +332,86 @@ impl<'a, Message> PatchSet<'a, Message> {
                     node_stack.push(node.into());
                 }
                 Patch::SetAttribute { name, value } => {
-                    match name {
-                        // properly handle setting special boolean attributes to false. We could
-                        // filter just on value == "false" here, but that might have false
-                        // positives like an input field with "value=false".
-                        "checked" | "disabled" | "autofocus"
-                        | "selected" | "hidden" | "draggable"
-                        | "spellcheck"
-                        if value == "false"
-                        => {
-                            node_stack.last()
-                                .expect("no previous node")
-                                .dyn_ref::<web_sys::Element>()
-                                .expect("attributes can only be removed from elements")
-                                .remove_attribute(name)
-                                .expect("failed to remove attribute");
-                        }
-                        _ => {
-                            node_stack.last()
-                                .expect("no previous node")
-                                .dyn_ref::<web_sys::Element>()
-                                .expect("attributes can only be added to elements")
-                                .set_attribute(name, value)
-                                .expect("failed to set attribute");
-                        }
-                    }
+                    let node = node_stack.last().expect("no previous node");
+
+                    // properly handle boolean attributes using special setters
+                    attribute_setter!(node, name, value, [
+                        "autofocus" => set_autofocus [
+                            web_sys::HtmlButtonElement,
+                            web_sys::HtmlInputElement,
+                            web_sys::HtmlSelectElement,
+                            web_sys::HtmlTextAreaElement,
+                        ],
+                        "checked" => set_checked [
+                            web_sys::HtmlInputElement,
+                            web_sys::HtmlMenuItemElement,
+                        ],
+                        "disabled" => set_disabled [
+                            web_sys::HtmlButtonElement,
+                            web_sys::HtmlFieldSetElement,
+                            web_sys::HtmlInputElement,
+                            web_sys::HtmlLinkElement,
+                            web_sys::HtmlMenuItemElement,
+                            web_sys::HtmlOptGroupElement,
+                            web_sys::HtmlOptionElement,
+                            web_sys::HtmlSelectElement,
+                            web_sys::HtmlStyleElement,
+                            web_sys::HtmlTextAreaElement,
+                        ],
+                        "draggable" => set_draggable [
+                            web_sys::HtmlElement,
+                        ],
+                        "hidden" => set_hidden [
+                            web_sys::HtmlElement,
+                        ],
+                        "selected" => set_selected [
+                            web_sys::HtmlOptionElement,
+                        ],
+                        "spellcheck" => set_spellcheck [
+                            web_sys::HtmlElement,
+                        ],
+                    ]);
                 }
                 Patch::RemoveAttribute(name) => {
-                    node_stack.last()
-                        .expect("no previous node")
-                        .dyn_ref::<web_sys::Element>()
-                        .expect("attributes can only be removed from elements")
-                        .remove_attribute(name)
-                        .expect("failed to remove attribute");
+                    let node = node_stack.last().expect("no previous node");
+
+                    // properly handle boolean attributes using special setters
+                    attribute_unsetter!(node, name, [
+                        "autofocus" => set_autofocus [
+                            web_sys::HtmlButtonElement,
+                            web_sys::HtmlInputElement,
+                            web_sys::HtmlSelectElement,
+                            web_sys::HtmlTextAreaElement,
+                        ],
+                        "checked" => set_checked [
+                            web_sys::HtmlInputElement,
+                            web_sys::HtmlMenuItemElement,
+                        ],
+                        "disabled" => set_disabled [
+                            web_sys::HtmlButtonElement,
+                            web_sys::HtmlFieldSetElement,
+                            web_sys::HtmlInputElement,
+                            web_sys::HtmlLinkElement,
+                            web_sys::HtmlMenuItemElement,
+                            web_sys::HtmlOptGroupElement,
+                            web_sys::HtmlOptionElement,
+                            web_sys::HtmlSelectElement,
+                            web_sys::HtmlStyleElement,
+                            web_sys::HtmlTextAreaElement,
+                        ],
+                        "draggable" => set_draggable [
+                            web_sys::HtmlElement,
+                        ],
+                        "hidden" => set_hidden [
+                            web_sys::HtmlElement,
+                        ],
+                        "selected" => set_selected [
+                            web_sys::HtmlOptionElement,
+                        ],
+                        "spellcheck" => set_spellcheck [
+                            web_sys::HtmlElement,
+                        ],
+                    ]);
                 }
                 Patch::AddListener { trigger, handler, mut store } => {
                     let app = app.clone();
