@@ -215,10 +215,15 @@ pub fn diff<'a, Message, I1, I2>(mut old: I1, mut new: I2) -> PatchSet<'a, Messa
                             // set new attribute value
                             patch_set.push(Patch::SetAttribute { name: n_name, value: n_value });
                         }
-                        // values are the same, check for special attributes
+                        // values are the same, check for special attributes. These are attributes
+                        // attributes that the browser can change as the result of user actions, so
+                        // we won't detect that if we only go by the state of the vdom. To work
+                        // around that, we just always set these.
                         else {
                             match n_name {
-                                "checked" => patch_set.push(Patch::SetAttribute { name: n_name, value: n_value }),
+                                "checked" | "selected" | "spellcheck" => {
+                                    patch_set.push(Patch::SetAttribute { name: n_name, value: n_value })
+                                }
                                 _ => {}
                             }
                         }
