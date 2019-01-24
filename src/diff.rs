@@ -215,6 +215,13 @@ pub fn diff<'a, Message, I1, I2>(mut old: I1, mut new: I2) -> PatchSet<'a, Messa
                             // set new attribute value
                             patch_set.push(Patch::SetAttribute { name: n_name, value: n_value });
                         }
+                        // values are the same, check for special attributes
+                        else {
+                            match n_name {
+                                "checked" => patch_set.push(Patch::SetAttribute { name: n_name, value: n_value }),
+                                _ => {}
+                            }
+                        }
                         o_item = old.next();
                         n_item = new.next();
                     }

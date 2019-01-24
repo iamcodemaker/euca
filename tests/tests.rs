@@ -503,6 +503,40 @@ fn diff_attributes() {
 }
 
 #[wasm_bindgen_test]
+fn diff_checked() {
+    let mut old: Dom<Msg> = Dom {
+        element: Node::elem_with_node("input"),
+        attributes: vec![
+            Attr { name: "checked", value: "false" },
+        ],
+        events: vec!(),
+        children: vec!(),
+    };
+
+    let mut new: Dom<Msg> = Dom {
+        element: Node::elem("input"),
+        attributes: vec![
+            Attr { name: "checked", value: "false" },
+        ],
+        events: vec!(),
+        children: vec!(),
+    };
+
+    let o = old.dom_iter();
+    let n = new.dom_iter();
+    let patch_set = diff::diff(o, n);
+
+    compare!(
+        patch_set,
+        [
+            Patch::CopyElement { store: Box::new(|_|()), take: Box::new(|| e("input")) },
+            Patch::SetAttribute { name: "checked", value: "false" },
+            Patch::Up,
+        ]
+    );
+}
+
+#[wasm_bindgen_test]
 fn old_child_nodes_with_element() {
     let (elem, closure) = element_with_closure("b", "onclick");
     let mut old: Dom<Msg> = Dom {
