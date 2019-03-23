@@ -17,11 +17,13 @@ use crate::diff;
 use crate::vdom::DomIter;
 use crate::vdom::Storage;
 
+/// A list of side effect producing commands.
+type Commands<Model, Dispatcher> = Vec<fn(&Model, Rc<RefCell<Dispatcher>>)>;
+
 /// Implemented on a model, used to process a message that updates the model.
 pub trait Update<Message> {
     /// Update the model using the given message.
-    fn update(&mut self, msg: Message);
-    //fn update(&mut self) -> Command
+    fn update(&mut self, msg: Message) -> Commands<Self, Dispatch<Message>>;
 }
 
 /// Implemented on a model, used to render (or view) the model as a virtual dom.
@@ -33,7 +35,7 @@ pub trait Render<DomTree> {
 /// Dispatch a message from an event handler.
 pub trait Dispatch<Message> {
     /// Dispatch the given message to the given app.
-    fn dispatch(app: Rc<RefCell<Self>>, msg: Message);
+    fn dispatch(app: Rc<RefCell<Self>>, msg: Message) where Self: Sized;
 }
 
 /// A wasm application consisting of a model, a virtual dom representation, and the parent element
@@ -60,7 +62,12 @@ impl<Message, Model, DomTree> Dispatch<Message> for App<Model, DomTree> where
         } = *app;
 
         // update the model
-        model.update(msg);
+        let commands = model.update(msg);
+
+        // execute side effects
+        for cmd in &commands {
+            (*cmd)(&model, app_rc.clone());
+        }
 
         // render a new dom from the updated model
         let new_dom = model.render();
