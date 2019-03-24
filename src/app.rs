@@ -18,6 +18,7 @@ use crate::vdom::DomIter;
 use crate::vdom::Storage;
 
 /// A side effect producing command.
+#[derive(PartialEq)]
 pub struct Command<Message> {
     msg: Message,
     cmd: fn(Message, Rc<RefCell<Dispatch<Message>>>),
