@@ -5,6 +5,7 @@
 
 pub mod patch;
 pub mod diff;
+pub mod dom;
 pub mod vdom;
 pub mod app;
 
