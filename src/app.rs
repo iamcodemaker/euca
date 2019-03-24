@@ -17,8 +17,29 @@ use crate::diff;
 use crate::vdom::DomIter;
 use crate::vdom::Storage;
 
+/// A side effect producing command.
+pub struct Command<Message> {
+    msg: Message,
+    cmd: fn(Message, Rc<RefCell<Dispatch<Message>>>),
+}
+
+impl<Message> Command<Message> {
+    /// Create a new command.
+    pub fn new(msg: Message, cmd: fn(Message, Rc<RefCell<Dispatch<Message>>>)) -> Self {
+        Command {
+            msg: msg,
+            cmd: cmd,
+        }
+    }
+
+    /// Execute this command.
+    pub fn exec(self, app: Rc<RefCell<Dispatch<Message>>>) {
+        (self.cmd)(self.msg, app);
+    }
+}
+
 /// A list of side effect producing commands.
-type Commands<Message> = Vec<(Message, fn(Message, Rc<RefCell<Dispatch<Message>>>))>;
+type Commands<Message> = Vec<Command<Message>>;
 
 /// Implemented on a model, used to process a message that updates the model.
 pub trait Update<Message> {
@@ -65,8 +86,8 @@ impl<Message, Model, DomTree> Dispatch<Message> for App<Model, DomTree> where
         let commands = model.update(msg);
 
         // execute side effects
-        for (cmd_msg, cmd) in commands {
-            cmd(cmd_msg, app_rc.clone());
+        for cmd in commands {
+            cmd.exec(app_rc.clone());
         }
 
         // render a new dom from the updated model
