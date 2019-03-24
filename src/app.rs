@@ -18,12 +18,12 @@ use crate::vdom::DomIter;
 use crate::vdom::Storage;
 
 /// A list of side effect producing commands.
-type Commands<Model, Dispatcher> = Vec<fn(&Model, Rc<RefCell<Dispatcher>>)>;
+type Commands<Message> = Vec<(Message, fn(Message, Rc<RefCell<Dispatch<Message>>>))>;
 
 /// Implemented on a model, used to process a message that updates the model.
 pub trait Update<Message> {
     /// Update the model using the given message.
-    fn update(&mut self, msg: Message) -> Commands<Self, Dispatch<Message>>;
+    fn update(&mut self, msg: Message) -> Commands<Message>;
 }
 
 /// Implemented on a model, used to render (or view) the model as a virtual dom.
@@ -65,8 +65,8 @@ impl<Message, Model, DomTree> Dispatch<Message> for App<Model, DomTree> where
         let commands = model.update(msg);
 
         // execute side effects
-        for cmd in &commands {
-            (*cmd)(&model, app_rc.clone());
+        for (cmd_msg, cmd) in commands {
+            cmd(cmd_msg, app_rc.clone());
         }
 
         // render a new dom from the updated model
