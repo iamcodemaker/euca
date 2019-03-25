@@ -160,7 +160,7 @@ macro_rules! compare {
                 (Patch::CreateElement { element: e1 }, Patch::CreateElement { element: e2 }) => {
                     assert_eq!(e1, e2, "unexpected CreateElement");
                 }
-                (Patch::CopyElement { take: _ }, Patch::CopyElement { take: _ }) => {}
+                (Patch::CopyElement(_), Patch::CopyElement(_)) => {}
                 (Patch::SetAttribute { name: n1, value: v1 }, Patch::SetAttribute { name: n2, value: v2 }) => {
                     assert_eq!(n1, n2, "attribute names don't match");
                     assert_eq!(v1, v2, "attribute values don't match");
@@ -171,7 +171,7 @@ macro_rules! compare {
                 (Patch::CreateText { text: t1 }, Patch::CreateText { text: t2 }) => {
                     assert_eq!(t1, t2, "unexpected CreateText");
                 }
-                (Patch::CopyText { take: _ }, Patch::CopyText { take: _ }) => {}
+                (Patch::CopyText(_), Patch::CopyText(_)) => {}
                 (Patch::RemoveAttribute(a1), Patch::RemoveAttribute(a2)) => {
                     assert_eq!(a1, a2, "attribute names don't match");
                 }
@@ -300,7 +300,7 @@ fn new_child_nodes() {
     compare!(
         patch_set,
         [
-            Patch::CopyElement { take: Box::new(|| e("div")) },
+            Patch::CopyElement(Box::new(|| e("div"))),
             Patch::CreateElement { element: "b".into() },
             Patch::SetAttribute { name: "class", value: "item" },
             Patch::SetAttribute { name: "id", value: "id1" },
@@ -439,7 +439,7 @@ fn no_difference() {
     compare!(
         patch_set,
         [
-            Patch::CopyElement { take: Box::new(|| e("div")) },
+            Patch::CopyElement(Box::new(|| e("div"))),
             Patch::Up,
         ]
     );
@@ -504,7 +504,7 @@ fn diff_attributes() {
     compare!(
         patch_set,
         [
-            Patch::CopyElement { take: Box::new(|| e("div")) },
+            Patch::CopyElement(Box::new(|| e("div"))),
             Patch::SetAttribute { name: "name", value: "new value" },
             Patch::Up,
         ]
@@ -539,7 +539,7 @@ fn diff_checked() {
     compare!(
         patch_set,
         [
-            Patch::CopyElement { take: Box::new(|| e("input")) },
+            Patch::CopyElement(Box::new(|| e("input"))),
             Patch::SetAttribute { name: "checked", value: "false" },
             Patch::Up,
         ]
@@ -591,7 +591,7 @@ fn old_child_nodes_with_element() {
     compare!(
         patch_set,
         [
-            Patch::CopyElement { take: Box::new(|| e("div")) },
+            Patch::CopyElement(Box::new(|| e("div"))),
             Patch::RemoveElement(Box::new(|| e("b"))),
             Patch::RemoveElement(Box::new(|| e("i"))),
             Patch::Up,

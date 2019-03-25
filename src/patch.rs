@@ -40,10 +40,7 @@ pub enum Patch<'a, Message> {
         element: &'a str,
     },
     /// Copy and element from the old dom tree to the new dom tree.
-    CopyElement {
-        /// Called once to take an existing element from the old virtual dom.
-        take: Box<FnMut() -> web_sys::Element + 'a>,
-    },
+    CopyElement(Box<FnMut() -> web_sys::Element + 'a>),
     /// Remove a text element.
     RemoveText(Box<FnMut() -> web_sys::Text + 'a>),
     /// Replace the value of a text element.
@@ -59,10 +56,7 @@ pub enum Patch<'a, Message> {
         text: &'a str,
     },
     /// Copy the reference we have to the text element to the new dom.
-    CopyText {
-        /// Called once to take an existing text node from the old virtual dom.
-        take: Box<FnMut() -> web_sys::Text + 'a>,
-    },
+    CopyText(Box<FnMut() -> web_sys::Text + 'a>),
     /// Set an attribute.
     SetAttribute {
         /// The name of the attribute to set.
@@ -80,10 +74,7 @@ pub enum Patch<'a, Message> {
         handler: EventHandler<'a, Message>,
     },
     /// Copy an event listener from the old dom tree to the new dom tree.
-    CopyListener {
-        /// Called once to take an existing closure from the old virtual dom.
-        take: Box<FnMut() -> Closure<FnMut(web_sys::Event)> + 'a>,
-    },
+    CopyListener(Box<FnMut() -> Closure<FnMut(web_sys::Event)> + 'a>),
     /// Remove an event listener.
     RemoveListener {
         /// The trigger for the event to remove.
@@ -102,15 +93,15 @@ impl<'a, Message> fmt::Debug for Patch<'a, Message> where
         match self {
             Patch::RemoveElement(_) => write!(f, "RemoveElement(_)"),
             Patch::CreateElement { element: s } => write!(f, "CreateElement {{ element: {:?} }}", s),
-            Patch::CopyElement { take: _ } => write!(f, "CopyElement {{ take: _ }}"),
+            Patch::CopyElement(_) => write!(f, "CopyElement(_)"),
             Patch::RemoveText(_) => write!(f, "RemoveText(_)"),
             Patch::ReplaceText { take: _, text: t }  => write!(f, "ReplaceText {{ take: _, text: {:?} }}", t),
             Patch::CreateText { text: t } => write!(f, "CreateText {{ text: {:?} }}", t),
-            Patch::CopyText { take: _ } => write!(f, "CopyText {{ take: _ }}"),
+            Patch::CopyText(_) => write!(f, "CopyText(_)"),
             Patch::SetAttribute { name: n, value: v } => write!(f, "SetAttribute {{ name: {:?}, value: {:?} }}", n, v),
             Patch::RemoveAttribute(s) => write!(f, "RemoveAttribute({:?})", s),
             Patch::AddListener { trigger: t, handler: h } => write!(f, "AddListener {{ trigger: {:?}, handler: {:?} }}", t, h),
-            Patch::CopyListener { take: _ } => write!(f, "CopyListener {{ take: _ }}"),
+            Patch::CopyListener(_) => write!(f, "CopyListener(_)"),
             Patch::RemoveListener { trigger: t, take: _ } => write!(f, "RemoveListener {{ trigger: {:?}), take: _ }}", t),
             Patch::Up => write!(f, "Up"),
         }
@@ -252,8 +243,8 @@ impl<'a, Message> PatchSet<'a, Message> {
         self.patches.iter().all(|p| match p {
             // these patches just copy stuff into the new virtual dom tree, thus if we just keep
             // the old dom tree, the end result is the same
-            CopyElement { .. } | CopyListener { .. }
-            | CopyText { .. } | Up
+            CopyElement(_) | CopyListener(_)
+            | CopyText(_) | Up
             => true,
             // these patches change the dom
             RemoveElement(_) | CreateElement { .. }
@@ -297,7 +288,7 @@ impl<'a, Message> PatchSet<'a, Message> {
                         .expect("failed to append child node");
                     node_stack.push(node.into());
                 }
-                Patch::CopyElement { mut take } => {
+                Patch::CopyElement(mut take) => {
                     let node = take();
                     storage.push(WebItem::Element(node.clone()));
                     node_stack.push(node.into());
@@ -323,7 +314,7 @@ impl<'a, Message> PatchSet<'a, Message> {
                         .expect("failed to append child node");
                     node_stack.push(node.into());
                 }
-                Patch::CopyText { mut take } => {
+                Patch::CopyText(mut take) => {
                     let node = take();
                     storage.push(WebItem::Text(node.clone()));
                     node_stack.push(node.into());
@@ -435,7 +426,7 @@ impl<'a, Message> PatchSet<'a, Message> {
                         .expect("failed to add event listener");
                     storage.push(WebItem::Closure(closure));
                 }
-                Patch::CopyListener { mut take } => {
+                Patch::CopyListener(mut take) => {
                     storage.push(WebItem::Closure(take()));
                 }
                 Patch::RemoveListener { trigger, mut take } => {
@@ -497,9 +488,7 @@ mod tests {
     #[wasm_bindgen_test]
     fn noop_patch_set_is_noop() {
         let patch_set: PatchSet<Msg> = vec![
-            Patch::CopyElement {
-                take: Box::new(|| elem("test")),
-            },
+            Patch::CopyElement(Box::new(|| elem("test"))),
             Patch::Up,
         ].into();
 
@@ -520,9 +509,7 @@ mod tests {
     #[wasm_bindgen_test]
     fn copy_element() {
         let patch_set: PatchSet<Msg> = vec![
-            Patch::CopyElement {
-                take: Box::new(|| elem("test")),
-            },
+            Patch::CopyElement(Box::new(|| elem("test"))),
             Patch::Up,
         ].into();
 
@@ -543,13 +530,13 @@ mod tests {
         use Patch::*;
 
         let patch_set: PatchSet<Msg> = vec![
-            CopyElement {
-                take: Box::new(|| {
+            CopyElement(
+                Box::new(|| {
                     let e = elem("test");
                     assert!(e.get_attribute("name").is_none());
                     e
                 }),
-            },
+            ),
             SetAttribute { name: "name", value: "value" },
             Up,
         ].into();
@@ -636,13 +623,13 @@ mod tests {
         use Patch::*;
 
         let patch_set: PatchSet<Msg> = vec![
-            CopyElement {
-                take: Box::new(|| {
+            CopyElement(
+                Box::new(|| {
                     let e = elem("test");
                     e.set_attribute("name", "value").expect("setting attribute failed");
                     e
                 }),
-            },
+            ),
             RemoveAttribute("name"),
             Up,
         ].into();
@@ -668,13 +655,13 @@ mod tests {
         use Patch::*;
 
         let patch_set: PatchSet<Msg> = vec![
-            CopyElement {
-                take: Box::new(|| {
+            CopyElement(
+                Box::new(|| {
                     let e = elem("input");
                     e.set_attribute("checked", "true").expect("setting attribute failed");
                     e
                 }),
-            },
+            ),
             RemoveAttribute("checked"),
             Up,
         ].into();
@@ -702,13 +689,13 @@ mod tests {
         use Patch::*;
 
         let patch_set: PatchSet<Msg> = vec![
-            CopyElement {
-                take: Box::new(|| {
+            CopyElement(
+                Box::new(|| {
                     let e = elem("input");
                     e.set_attribute("disabled", "true").expect("setting attribute failed");
                     e
                 }),
-            },
+            ),
             RemoveAttribute("disabled"),
             Up,
         ].into();
