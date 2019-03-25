@@ -1,14 +1,16 @@
 //! Tools to get the difference between two virtual dom trees.
 
 use std::fmt;
+use std::mem;
 use crate::patch::PatchSet;
 use crate::patch::Patch;
 use crate::vdom::DomItem;
 use crate::vdom::Storage;
+use crate::vdom::WebItem;
 
 /// Return the series of steps required to move from the given old/existing virtual dom to the
 /// given new virtual dom.
-pub fn diff<'a, Message, I1, I2>(mut old: I1, mut new: I2) -> PatchSet<'a, Message> where
+pub fn diff<'a, Message, I1, I2>(mut old: I1, mut new: I2, storage: &'a mut Storage) -> PatchSet<'a, Message> where
     Message: 'a + PartialEq + Clone + fmt::Debug,
     I1: Iterator<Item = DomItem<'a, Message>>,
     I2: Iterator<Item = DomItem<'a, Message>>,
@@ -61,6 +63,7 @@ pub fn diff<'a, Message, I1, I2>(mut old: I1, mut new: I2) -> PatchSet<'a, Messa
 
     let mut o_item = old.next();
     let mut n_item = new.next();
+    let mut sto = storage.iter_mut();
 
     loop {
         match (o_item.take(), n_item.take()) {
@@ -69,29 +72,20 @@ pub fn diff<'a, Message, I1, I2>(mut old: I1, mut new: I2) -> PatchSet<'a, Messa
             }
             (None, Some(n)) => { // create remaining new nodes
                 match n {
-                    DomItem::Element { node: Storage::Write(store), element } => {
-                        patch_set.push(Patch::CreateElement { store, element });
+                    DomItem::Element { element } => {
+                        patch_set.push(Patch::CreateElement { element });
                     }
-                    DomItem::Text { node: Storage::Write(store), text } => {
-                        patch_set.push(Patch::CreateText { store, text });
+                    DomItem::Text { text } => {
+                        patch_set.push(Patch::CreateText { text });
                     }
                     DomItem::Attr { name, value } => {
                         patch_set.push(Patch::SetAttribute { name, value });
                     }
-                    DomItem::Event { trigger, handler, closure: Storage::Write(store) } => {
-                        patch_set.push(Patch::AddListener { trigger, handler: handler.into(), store });
+                    DomItem::Event { trigger, handler } => {
+                        patch_set.push(Patch::AddListener { trigger, handler: handler.into() });
                     }
                     DomItem::Up => {
                         patch_set.push(Patch::Up);
-                    }
-                    DomItem::Element { node: Storage::Read(_), .. } => {
-                        panic!("new node should not have Storage::Read(_)");
-                    }
-                    DomItem::Event { closure: Storage::Read(_), .. } => {
-                        panic!("new event should not have Storage::Read(_)");
-                    }
-                    DomItem::Text { node: Storage::Read(_), .. } => {
-                        panic!("new text should not have Storage::Read(_)");
                     }
                 }
 
@@ -99,7 +93,17 @@ pub fn diff<'a, Message, I1, I2>(mut old: I1, mut new: I2) -> PatchSet<'a, Messa
             }
             (Some(o), None) => { // delete remaining old nodes
                 match o {
-                    DomItem::Element { node: Storage::Read(take), .. } => {
+                    DomItem::Element { .. } => {
+                        let web_item = sto.next().expect("dom storage to match dom iter");
+                        let take = Box::new(move || {
+                            let mut taken_item = WebItem::Taken;
+                            mem::swap(web_item, &mut taken_item);
+                            match taken_item {
+                                WebItem::Element(i) => i,
+                                _ => panic!("storage type mismatch"),
+                            }
+                        });
+
                         // ignore child nodes
                         if !state.is_child() {
                             patch_set.push(Patch::RemoveElement(take));
@@ -107,10 +111,17 @@ pub fn diff<'a, Message, I1, I2>(mut old: I1, mut new: I2) -> PatchSet<'a, Messa
 
                         state.push(NodeState::OldChild);
                     }
-                    DomItem::Element { node: Storage::Write(_), .. } => {
-                        panic!("old node should not have Storage::Write(_)");
-                    }
-                    DomItem::Text { node: Storage::Read(take), .. } => {
+                    DomItem::Text { .. } => {
+                        let web_item = sto.next().expect("dom storage to match dom iter");
+                        let take = Box::new(move || {
+                            let mut taken_item = WebItem::Taken;
+                            mem::swap(web_item, &mut taken_item);
+                            match taken_item {
+                                WebItem::Text(i) => i,
+                                _ => panic!("storage type mismatch"),
+                            }
+                        });
+
                         // ignore child nodes
                         if !state.is_child() {
                             patch_set.push(Patch::RemoveText(take));
@@ -118,14 +129,12 @@ pub fn diff<'a, Message, I1, I2>(mut old: I1, mut new: I2) -> PatchSet<'a, Messa
 
                         state.push(NodeState::OldChild);
                     }
-                    DomItem::Text { node: Storage::Write(_), .. } => {
-                        panic!("old text should not have Storage::Write(_)");
-                    }
                     DomItem::Up => {
                         state.pop();
                     }
-                    // XXX do we need to remove events?
-                    DomItem::Event { .. } => {}
+                    DomItem::Event { .. } => {
+                        let _ = sto.next().expect("dom storage to match dom iter");
+                    }
                     // ignore attributes
                     DomItem::Attr { .. } => {}
                 }
@@ -135,13 +144,23 @@ pub fn diff<'a, Message, I1, I2>(mut old: I1, mut new: I2) -> PatchSet<'a, Messa
             (Some(o), Some(n)) => { // compare nodes
                 match (o, n) {
                     (
-                        DomItem::Element { node: Storage::Read(take), element: o_element },
-                        DomItem::Element { node: Storage::Write(store), element: n_element }
+                        DomItem::Element { element: o_element },
+                        DomItem::Element { element: n_element }
                     ) => { // compare elements
+                        let web_item = sto.next().expect("dom storage to match dom iter");
+                        let take = Box::new(move || {
+                            let mut taken_item = WebItem::Taken;
+                            mem::swap(web_item, &mut taken_item);
+                            match taken_item {
+                                WebItem::Element(i) => i,
+                                _ => panic!("storage type mismatch"),
+                            }
+                        });
+
                         // if the elements match, use the web_sys::Element
                         if o_element == n_element {
                             // copy the node
-                            patch_set.push(Patch::CopyElement { store, take });
+                            patch_set.push(Patch::CopyElement { take });
                             state.push(NodeState::Copy);
 
                             o_item = old.next();
@@ -150,7 +169,7 @@ pub fn diff<'a, Message, I1, I2>(mut old: I1, mut new: I2) -> PatchSet<'a, Messa
                         // elements don't match, remove the old and make a new one
                         else {
                             patch_set.push(Patch::RemoveElement(take));
-                            patch_set.push(Patch::CreateElement { store, element: n_element });
+                            patch_set.push(Patch::CreateElement { element: n_element });
                             state.push(NodeState::Create);
                             
                             // skip the rest of the items in the old tree for this element, this
@@ -159,16 +178,19 @@ pub fn diff<'a, Message, I1, I2>(mut old: I1, mut new: I2) -> PatchSet<'a, Messa
                                 o_item = old.next();
                                 match o_item.take() {
                                     Some(DomItem::Element { .. }) => {
+                                        let _ = sto.next().expect("dom storage to match dom iter");
                                         state.push(NodeState::OldChild);
                                     }
                                     Some(DomItem::Up) if state.is_child() => {
                                         state.pop();
                                     }
+                                    Some(DomItem::Text { .. }) | Some(DomItem::Event { .. }) => {
+                                        let _ = sto.next().expect("dom storage to match dom iter");
+                                    }
                                     o @ Some(DomItem::Up) | o @ None => {
                                         o_item = o;
                                         break;
                                     }
-                                    // XXX do we need special handling for events?
                                     _ => {}
                                 }
                             }
@@ -176,18 +198,28 @@ pub fn diff<'a, Message, I1, I2>(mut old: I1, mut new: I2) -> PatchSet<'a, Messa
                         }
                     }
                     (
-                        DomItem::Text { node: Storage::Read(take), text: o_text },
-                        DomItem::Text { node: Storage::Write(store), text: n_text }
+                        DomItem::Text { text: o_text },
+                        DomItem::Text { text: n_text }
                     ) => { // compare text
+                        let web_item = sto.next().expect("dom storage to match dom iter");
+                        let take = Box::new(move || {
+                            let mut taken_item = WebItem::Taken;
+                            mem::swap(web_item, &mut taken_item);
+                            match taken_item {
+                                WebItem::Text(i) => i,
+                                _ => panic!("storage type mismatch"),
+                            }
+                        });
+
                         // if the text matches, use the web_sys::Text
                         if o_text == n_text {
                             // copy the node
-                            patch_set.push(Patch::CopyText { store, take });
+                            patch_set.push(Patch::CopyText { take });
                             state.push(NodeState::Copy);
                         }
                         // text doesn't match, update it
                         else {
-                            patch_set.push(Patch::ReplaceText { store, take, text: n_text });
+                            patch_set.push(Patch::ReplaceText { take, text: n_text });
                             state.push(NodeState::Copy);
                         }
                         o_item = old.next();
@@ -231,24 +263,34 @@ pub fn diff<'a, Message, I1, I2>(mut old: I1, mut new: I2) -> PatchSet<'a, Messa
                         n_item = new.next();
                     }
                     (
-                        DomItem::Event { trigger: o_trigger, handler: o_handler, closure: Storage::Read(take) },
-                        DomItem::Event { trigger: n_trigger, handler: n_handler, closure: Storage::Write(store) }
+                        DomItem::Event { trigger: o_trigger, handler: o_handler },
+                        DomItem::Event { trigger: n_trigger, handler: n_handler }
                     ) => { // compare event listeners
+                        let web_item = sto.next().expect("dom storage to match dom iter");
+                        let take = Box::new(move || {
+                            let mut taken_item = WebItem::Taken;
+                            mem::swap(web_item, &mut taken_item);
+                            match taken_item {
+                                WebItem::Closure(i) => i,
+                                _ => panic!("storage type mismatch"),
+                            }
+                        });
+
                         if o_trigger != n_trigger || o_handler != n_handler {
                             if state.is_copy() {
                                 // remove old listener
                                 patch_set.push(Patch::RemoveListener { trigger: o_trigger, take });
                             }
                             // add new listener
-                            patch_set.push(Patch::AddListener { trigger: n_trigger, handler: n_handler.into(), store });
+                            patch_set.push(Patch::AddListener { trigger: n_trigger, handler: n_handler.into() });
                         }
                         else if state.is_create() {
                             // add listener
-                            patch_set.push(Patch::AddListener { trigger: n_trigger, handler: n_handler.into(), store });
+                            patch_set.push(Patch::AddListener { trigger: n_trigger, handler: n_handler.into() });
                         }
                         else {
                             // just copy the existing listener
-                            patch_set.push(Patch::CopyListener { store, take });
+                            patch_set.push(Patch::CopyListener { take });
                         }
                         o_item = old.next();
                         n_item = new.next();
@@ -273,26 +315,18 @@ pub fn diff<'a, Message, I1, I2>(mut old: I1, mut new: I2) -> PatchSet<'a, Messa
                         state.pop();
                     }
                     // add a new child node
-                    (o, DomItem::Element { node: Storage::Write(store), element }) => {
-                        patch_set.push(Patch::CreateElement { store, element });
+                    (o, DomItem::Element { element }) => {
+                        patch_set.push(Patch::CreateElement { element });
                         state.push(NodeState::NewChild);
                         o_item = Some(o);
                         n_item = new.next();
-                    }
-                    // invalid
-                    (_, DomItem::Element { node: Storage::Read(_), .. }) => {
-                        panic!("new node should not have Storage::Read(_)");
                     }
                     // add a new text node
-                    (o, DomItem::Text { node: Storage::Write(store), text }) => {
-                        patch_set.push(Patch::CreateText { store, text });
+                    (o, DomItem::Text { text }) => {
+                        patch_set.push(Patch::CreateText { text });
                         state.push(NodeState::NewChild);
                         o_item = Some(o);
                         n_item = new.next();
-                    }
-                    // invalid
-                    (_, DomItem::Text { node: Storage::Read(_), .. }) => {
-                        panic!("new text should not have Storage::Read(_)");
                     }
                     // add attribute to new node
                     (o, DomItem::Attr { name, value }) => {
@@ -301,17 +335,23 @@ pub fn diff<'a, Message, I1, I2>(mut old: I1, mut new: I2) -> PatchSet<'a, Messa
                         n_item = new.next();
                     }
                     // add event to new node
-                    (o, DomItem::Event { trigger, handler, closure: Storage::Write(store) }) => {
-                        patch_set.push(Patch::AddListener { trigger, handler: handler.into(), store });
+                    (o, DomItem::Event { trigger, handler }) => {
+                        patch_set.push(Patch::AddListener { trigger, handler: handler.into() });
                         o_item = Some(o);
                         n_item = new.next();
                     }
-                    // invalid
-                    (_, DomItem::Event { closure: Storage::Read(_), .. }) => {
-                        panic!("new event should not have Storage::Read(_)");
-                    }
                     // remove the old node if present
-                    (DomItem::Element { node: Storage::Read(take), .. }, n) => {
+                    (DomItem::Element { .. }, n) => {
+                        let web_item = sto.next().expect("dom storage to match dom iter");
+                        let take = Box::new(move || {
+                            let mut taken_item = WebItem::Taken;
+                            mem::swap(web_item, &mut taken_item);
+                            match taken_item {
+                                WebItem::Element(i) => i,
+                                _ => panic!("storage type mismatch"),
+                            }
+                        });
+
                         if !state.is_child() {
                             patch_set.push(Patch::RemoveElement(take));
                         }
@@ -319,22 +359,24 @@ pub fn diff<'a, Message, I1, I2>(mut old: I1, mut new: I2) -> PatchSet<'a, Messa
                         o_item = old.next();
                         n_item = Some(n);
                     }
-                    // invalid
-                    (DomItem::Element { node: Storage::Write(_), .. }, _) => {
-                        panic!("old node should not have Storage::Write(_)");
-                    }
                     // remove the old text if present
-                    (DomItem::Text { node: Storage::Read(take), .. }, n) => {
+                    (DomItem::Text { .. }, n) => {
+                        let web_item = sto.next().expect("dom storage to match dom iter");
+                        let take = Box::new(move || {
+                            let mut taken_item = WebItem::Taken;
+                            mem::swap(web_item, &mut taken_item);
+                            match taken_item {
+                                WebItem::Text(i) => i,
+                                _ => panic!("storage type mismatch"),
+                            }
+                        });
+
                         if !state.is_child() {
                             patch_set.push(Patch::RemoveText(take));
                         }
                         state.push(NodeState::OldChild);
                         o_item = old.next();
                         n_item = Some(n);
-                    }
-                    // invalid
-                    (DomItem::Text { node: Storage::Write(_), .. }, _) => {
-                        panic!("old text should not have Storage::Write(_)");
                     }
                     // remove attribute from old node
                     (DomItem::Attr { name, value: _ }, n) => {
@@ -345,16 +387,22 @@ pub fn diff<'a, Message, I1, I2>(mut old: I1, mut new: I2) -> PatchSet<'a, Messa
                         n_item = Some(n);
                     }
                     // remove event from old node
-                    (DomItem::Event { trigger, closure: Storage::Read(take), .. }, n) => {
+                    (DomItem::Event { trigger, .. }, n) => {
+                        let web_item = sto.next().expect("dom storage to match dom iter");
+                        let take = Box::new(move || {
+                            let mut taken_item = WebItem::Taken;
+                            mem::swap(web_item, &mut taken_item);
+                            match taken_item {
+                                WebItem::Closure(i) => i,
+                                _ => panic!("storage type mismatch"),
+                            }
+                        });
+
                         if state.is_copy() {
                             patch_set.push(Patch::RemoveListener { trigger, take: take });
                         }
                         o_item = old.next();
                         n_item = Some(n);
-                    }
-                    // invalid
-                    (DomItem::Event { closure: Storage::Write(_), .. }, _) => {
-                        panic!("old event should not have Storage::Write(_)");
                     }
                 }
             }

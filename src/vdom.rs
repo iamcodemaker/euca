@@ -8,7 +8,6 @@
 //! [`patch`]: ../patch/enum.Patch.html
 
 use std::fmt;
-use std::cmp;
 use wasm_bindgen::prelude::*;
 
 /// This represents an event handler. The handler can either always map to a specific message, or a
@@ -27,30 +26,35 @@ pub enum EventHandler<'a, Message> {
     Fn(fn(web_sys::Event) -> Message),
 }
 
-/// Callbacks used to store and retrieve dom nodes and closures.
-pub enum Storage<'a, T> {
-    /// This will be called one or zero times and should take the stored object from the virtual
-    /// dom and return it.
-    Read(Box<FnMut() -> T + 'a>),
-    /// This will be called one or zero times and should store the given object in the virtual dom.
-    Write(Box<FnMut(T) + 'a>),
+/// A DOM node or JS closure created when applying a patch.
+pub enum WebItem {
+    /// A DOM element.
+    Element(web_sys::Element),
+    /// A DOM text node.
+    Text(web_sys::Text),
+    /// A JS closure.
+    Closure(Closure<FnMut(web_sys::Event)>),
+    /// A previously occupied, now empty storage entry.
+    Taken,
 }
 
-impl<'a, T> fmt::Debug for Storage<'a, T> {
+impl fmt::Debug for WebItem {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            Storage::Read(_) => write!(f, "Read(_)"),
-            Storage::Write(_) => write!(f, "Write(_)"),
+            WebItem::Element(node) => write!(f, "Element({:?})", node),
+            WebItem::Text(text) => write!(f, "Text({:?})", text),
+            WebItem::Closure(_) => write!(f, "Closure(_)"),
+            WebItem::Taken => write!(f, "Taken"),
         }
     }
 }
 
-impl<'a, T> cmp::PartialEq for Storage<'a, T> {
-    fn eq(&self, _: &Self) -> bool {
-        // can't compare these closures, and we don't care if the actual closures are equal anyway.  They are only used for storage.
-        true
-    }
-}
+/// A list of [`WebItem`]s.
+///
+/// The list should match the traversal order of the vDOM tree we are operating on.
+///
+/// [`WebItem`]: enum.WebItem.html
+pub type Storage = Vec<WebItem>;
 
 /// Items representing all of the data in the DOM tree.
 ///
@@ -65,15 +69,11 @@ pub enum DomItem<'a, Message> {
     Element {
         /// The element name/type.
         element: &'a str,
-        /// Storage for this element.
-        node: Storage<'a, web_sys::Element>,
     },
     /// A text node in the tree.
     Text {
         /// The text value of the node.
         text: &'a str,
-        /// Storage for this node.
-        node: Storage<'a, web_sys::Text>,
     },
     /// An attribute of the last node we saw.
     Attr {
@@ -88,8 +88,6 @@ pub enum DomItem<'a, Message> {
         trigger: &'a str,
         /// The handler for this event.
         handler: EventHandler<'a, Message>,
-        /// Storage for the closure associated with this event.
-        closure: Storage<'a, Closure<FnMut(web_sys::Event)>>,
     },
     /// We are finished processing children nodes, the next node is a sibling.
     Up,

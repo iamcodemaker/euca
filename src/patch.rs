@@ -15,6 +15,8 @@ use std::cell::RefCell;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 use crate::vdom::EventHandler;
+use crate::vdom::WebItem;
+use crate::vdom::Storage;
 use crate::app::Dispatch;
 use log::warn;
 
@@ -34,15 +36,11 @@ pub enum Patch<'a, Message> {
     RemoveElement(Box<FnMut() -> web_sys::Element + 'a>),
     /// Create an element of the given type.
     CreateElement {
-        /// Called once to store the given element in the virtual dom.
-        store: Box<FnMut(web_sys::Element) + 'a>,
         /// The name/type of element that will be created.
         element: &'a str,
     },
     /// Copy and element from the old dom tree to the new dom tree.
     CopyElement {
-        /// Called once to store the given element in the virtual dom.
-        store: Box<FnMut(web_sys::Element) + 'a>,
         /// Called once to take an existing element from the old virtual dom.
         take: Box<FnMut() -> web_sys::Element + 'a>,
     },
@@ -50,8 +48,6 @@ pub enum Patch<'a, Message> {
     RemoveText(Box<FnMut() -> web_sys::Text + 'a>),
     /// Replace the value of a text element.
     ReplaceText {
-        /// Called once to store the given text node in the virtual dom.
-        store: Box<FnMut(web_sys::Text) + 'a>,
         /// Called once to take an existing text node from the old virtual dom.
         take: Box<FnMut() -> web_sys::Text + 'a>,
         /// The replacement text for the existing text node.
@@ -59,15 +55,11 @@ pub enum Patch<'a, Message> {
     },
     /// Create a text element.
     CreateText {
-        /// Called once to store the given text node in the virtual dom.
-        store: Box<FnMut(web_sys::Text) + 'a>,
         /// The text value of the node to create.
         text: &'a str,
     },
     /// Copy the reference we have to the text element to the new dom.
     CopyText {
-        /// Called once to store the given text node in the virtual dom.
-        store: Box<FnMut(web_sys::Text) + 'a>,
         /// Called once to take an existing text node from the old virtual dom.
         take: Box<FnMut() -> web_sys::Text + 'a>,
     },
@@ -86,13 +78,9 @@ pub enum Patch<'a, Message> {
         trigger: &'a str,
         /// A handler for the event.
         handler: EventHandler<'a, Message>,
-        /// Called once to store the Closure associated with this event.
-        store: Box<FnMut(Closure<FnMut(web_sys::Event)>) + 'a>,
     },
     /// Copy an event listener from the old dom tree to the new dom tree.
     CopyListener {
-        /// Called once to store the Closure associated with this event.
-        store: Box<FnMut(Closure<FnMut(web_sys::Event)>) + 'a>,
         /// Called once to take an existing closure from the old virtual dom.
         take: Box<FnMut() -> Closure<FnMut(web_sys::Event)> + 'a>,
     },
@@ -113,16 +101,16 @@ impl<'a, Message> fmt::Debug for Patch<'a, Message> where
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Patch::RemoveElement(_) => write!(f, "RemoveElement(_)"),
-            Patch::CreateElement { store: _, element: s } => write!(f, "CreateElement {{ store: _, element: {:?} }}", s),
-            Patch::CopyElement { store: _, take: _ } => write!(f, "CopyElement {{ store: _, take: _ }}"),
+            Patch::CreateElement { element: s } => write!(f, "CreateElement {{ element: {:?} }}", s),
+            Patch::CopyElement { take: _ } => write!(f, "CopyElement {{ take: _ }}"),
             Patch::RemoveText(_) => write!(f, "RemoveText(_)"),
-            Patch::ReplaceText { store: _, take: _, text: t }  => write!(f, "ReplaceText {{ store: _, take: _, text: {:?} }}", t),
-            Patch::CreateText { store: _, text: t } => write!(f, "CreateText {{ store: _, text: {:?} }}", t),
-            Patch::CopyText { store: _, take: _ } => write!(f, "CopyText {{ store: _, take: _ }}"),
+            Patch::ReplaceText { take: _, text: t }  => write!(f, "ReplaceText {{ take: _, text: {:?} }}", t),
+            Patch::CreateText { text: t } => write!(f, "CreateText {{ text: {:?} }}", t),
+            Patch::CopyText { take: _ } => write!(f, "CopyText {{ take: _ }}"),
             Patch::SetAttribute { name: n, value: v } => write!(f, "SetAttribute {{ name: {:?}, value: {:?} }}", n, v),
             Patch::RemoveAttribute(s) => write!(f, "RemoveAttribute({:?})", s),
-            Patch::AddListener { trigger: t, handler: h, store: _ } => write!(f, "AddListener {{ trigger: {:?}, handler: {:?}, store: _ }}", t, h),
-            Patch::CopyListener { store: _, take: _ } => write!(f, "CopyListener {{ store: _, take: _ }}"),
+            Patch::AddListener { trigger: t, handler: h } => write!(f, "AddListener {{ trigger: {:?}, handler: {:?} }}", t, h),
+            Patch::CopyListener { take: _ } => write!(f, "CopyListener {{ take: _ }}"),
             Patch::RemoveListener { trigger: t, take: _ } => write!(f, "RemoveListener {{ trigger: {:?}), take: _ }}", t),
             Patch::Up => write!(f, "Up"),
         }
@@ -231,22 +219,29 @@ macro_rules! attribute_unsetter {
 ///
 /// [`Patch`]: enum.Patch.html
 #[derive(Default, Debug)]
-pub struct PatchSet<'a, Message>(pub Vec<Patch<'a, Message>>);
+pub struct PatchSet<'a, Message> {
+    /// The patches in this patch set.
+    pub patches: Vec<Patch<'a, Message>>,
+    storage: Vec<WebItem>,
+}
 
 impl<'a, Message> PatchSet<'a, Message> {
     /// Create an empty PatchSet.
     pub fn new() -> Self {
-        return PatchSet(Vec::new());
+        PatchSet {
+            patches: vec![],
+            storage: vec![],
+        }
     }
 
     /// Push a patch on to the end of the PatchSet.
     pub fn push(&mut self, patch: Patch<'a, Message>) {
-        self.0.push(patch)
+        self.patches.push(patch)
     }
 
     /// Return the length of the PatchSet.
     pub fn len(&self) -> usize {
-        return self.0.len()
+        return self.patches.len()
     }
 
     /// Return true if applying this PatchSet won't actually alter the browser's dom representation
@@ -254,7 +249,7 @@ impl<'a, Message> PatchSet<'a, Message> {
     pub fn is_noop(&self) -> bool {
         use Patch::*;
 
-        self.0.iter().all(|p| match p {
+        self.patches.iter().all(|p| match p {
             // these patches just copy stuff into the new virtual dom tree, thus if we just keep
             // the old dom tree, the end result is the same
             CopyElement { .. } | CopyListener { .. }
@@ -273,17 +268,19 @@ impl<'a, Message> PatchSet<'a, Message> {
     /// dispatched via the given [`Dispatch`]er.
     ///
     /// [`Dispatch`]: ../app/trait.Dispatch.html
-    pub fn apply<D>(self, parent: web_sys::Element, app: Rc<RefCell<D>>) where
+    pub fn apply<D>(self, parent: web_sys::Element, app: Rc<RefCell<D>>) -> Storage where
         Message: 'static + Clone,
         EventHandler<'a, Message>: Clone,
         D: Dispatch<Message> + 'static,
     {
         let mut node_stack: Vec<web_sys::Node> = vec![parent.unchecked_into()];
 
+        let PatchSet { patches, mut storage } = self;
+
         let document = web_sys::window().expect("expected window")
             .document().expect("expected document");
 
-        for p in self.0.into_iter() {
+        for p in patches.into_iter() {
             match p {
                 Patch::RemoveElement(mut take) => {
                     node_stack.last()
@@ -291,18 +288,18 @@ impl<'a, Message> PatchSet<'a, Message> {
                         .remove_child(&take())
                         .expect("failed to remove child node");
                 }
-                Patch::CreateElement { mut store, element } => {
+                Patch::CreateElement { element } => {
                     let node = document.create_element(&element).expect("failed to create element");
-                    store(node.clone());
+                    storage.push(WebItem::Element(node.clone()));
                     node_stack.last()
                         .expect("no previous node")
                         .append_child(&node)
                         .expect("failed to append child node");
                     node_stack.push(node.into());
                 }
-                Patch::CopyElement { mut store, mut take } => {
+                Patch::CopyElement { mut take } => {
                     let node = take();
-                    store(node.clone());
+                    storage.push(WebItem::Element(node.clone()));
                     node_stack.push(node.into());
                 }
                 Patch::RemoveText(mut take) => {
@@ -311,24 +308,24 @@ impl<'a, Message> PatchSet<'a, Message> {
                         .remove_child(&take())
                         .expect("failed to remove child node");
                 }
-                Patch::ReplaceText { mut store, mut take, text } => {
+                Patch::ReplaceText { mut take, text } => {
                     let node = take();
                     node.set_data(&text);
-                    store(node.clone());
+                    storage.push(WebItem::Text(node.clone()));
                     node_stack.push(node.into());
                 }
-                Patch::CreateText { mut store, text } => {
+                Patch::CreateText { text } => {
                     let node = document.create_text_node(&text);
-                    store(node.clone());
+                    storage.push(WebItem::Text(node.clone()));
                     node_stack.last()
                         .expect("no previous node")
                         .append_child(&node)
                         .expect("failed to append child node");
                     node_stack.push(node.into());
                 }
-                Patch::CopyText { mut store, mut take } => {
+                Patch::CopyText { mut take } => {
                     let node = take();
-                    store(node.clone());
+                    storage.push(WebItem::Text(node.clone()));
                     node_stack.push(node.into());
                 }
                 Patch::SetAttribute { name, value } => {
@@ -413,7 +410,7 @@ impl<'a, Message> PatchSet<'a, Message> {
                         ],
                     ]);
                 }
-                Patch::AddListener { trigger, handler, mut store } => {
+                Patch::AddListener { trigger, handler } => {
                     let app = app.clone();
                     let closure = match handler {
                         EventHandler::Msg(msg) => {
@@ -436,10 +433,10 @@ impl<'a, Message> PatchSet<'a, Message> {
                     (node.as_ref() as &web_sys::EventTarget)
                         .add_event_listener_with_callback(&trigger, closure.as_ref().unchecked_ref())
                         .expect("failed to add event listener");
-                    store(closure);
+                    storage.push(WebItem::Closure(closure));
                 }
-                Patch::CopyListener { mut store, mut take } => {
-                    store(take());
+                Patch::CopyListener { mut take } => {
+                    storage.push(WebItem::Closure(take()));
                 }
                 Patch::RemoveListener { trigger, mut take } => {
                     let node = node_stack.last().expect("no previous node");
@@ -452,12 +449,17 @@ impl<'a, Message> PatchSet<'a, Message> {
                 }
             }
         }
+
+        storage
     }
 }
 
 impl<'a, Message> From<Vec<Patch<'a, Message>>> for PatchSet<'a, Message> {
     fn from(v: Vec<Patch<'a, Message>>) -> Self {
-        PatchSet(v)
+        PatchSet {
+            patches: v,
+            storage: vec![],
+        }
     }
 }
 
@@ -466,7 +468,7 @@ impl<'a, Message> IntoIterator for PatchSet<'a, Message> {
     type IntoIter = ::std::vec::IntoIter<Patch<'a, Message>>;
 
     fn into_iter(self) -> Self::IntoIter {
-        self.0.into_iter()
+        self.patches.into_iter()
     }
 }
 
@@ -496,7 +498,6 @@ mod tests {
     fn noop_patch_set_is_noop() {
         let patch_set: PatchSet<Msg> = vec![
             Patch::CopyElement {
-                store: Box::new(|_|()),
                 take: Box::new(|| elem("test")),
             },
             Patch::Up,
@@ -509,7 +510,6 @@ mod tests {
     fn not_noop() {
         let patch_set: PatchSet<Msg> = vec![
             Patch::CreateElement {
-                store: Box::new(|_|()),
                 element: "",
             },
         ].into();
@@ -519,11 +519,8 @@ mod tests {
 
     #[wasm_bindgen_test]
     fn copy_element() {
-        let mut element = None;
-
         let patch_set: PatchSet<Msg> = vec![
             Patch::CopyElement {
-                store: Box::new(|e| element = Some(e)),
                 take: Box::new(|| elem("test")),
             },
             Patch::Up,
@@ -536,20 +533,17 @@ mod tests {
 
         let app = Rc::new(RefCell::new(App {}));
         let parent = elem("div");
-        patch_set.apply(parent, app);
+        let storage = patch_set.apply(parent, app);
 
-        assert!(element.is_some());
+        assert!(!storage.is_empty());
     }
 
     #[wasm_bindgen_test]
     fn add_attribute() {
         use Patch::*;
 
-        let mut element = None;
-
         let patch_set: PatchSet<Msg> = vec![
             CopyElement {
-                store: Box::new(|e| element = Some(e)),
                 take: Box::new(|| {
                     let e = elem("test");
                     assert!(e.get_attribute("name").is_none());
@@ -567,9 +561,12 @@ mod tests {
 
         let app = Rc::new(RefCell::new(App {}));
         let parent = elem("div");
-        patch_set.apply(parent, app);
+        let storage = patch_set.apply(parent, app);
 
-        let attribute = element.unwrap().get_attribute("name");
+        let attribute = match storage[0] {
+            WebItem::Element(ref e) => e.get_attribute("name"),
+            _ => panic!("element not stored as expected"),
+        };
         assert!(attribute.is_some());
         assert_eq!(attribute.unwrap(), "value");
     }
@@ -578,12 +575,9 @@ mod tests {
     fn add_attribute_checked() {
         use Patch::*;
 
-        let mut element = None;
-
         let patch_set: PatchSet<Msg> = vec![
             CreateElement {
                 element: "input",
-                store: Box::new(|e| element = Some(e)),
             },
             SetAttribute { name: "checked", value: "true" },
             Up,
@@ -596,9 +590,12 @@ mod tests {
 
         let app = Rc::new(RefCell::new(App {}));
         let parent = elem("div");
-        patch_set.apply(parent, app);
+        let storage = patch_set.apply(parent, app);
 
-        let element = element.expect("expected element");
+        let element = match storage[0] {
+            WebItem::Element(ref e) => e,
+            _ => panic!("element not stored as expected"),
+        };
         let input = element.dyn_ref::<web_sys::HtmlInputElement>().expect("expected input element");
 
         assert!(input.checked());
@@ -608,12 +605,9 @@ mod tests {
     fn add_attribute_disabled() {
         use Patch::*;
 
-        let mut element = None;
-
         let patch_set: PatchSet<Msg> = vec![
             CreateElement {
                 element: "input",
-                store: Box::new(|e| element = Some(e)),
             },
             SetAttribute { name: "disabled", value: "true" },
             Up,
@@ -626,9 +620,12 @@ mod tests {
 
         let app = Rc::new(RefCell::new(App {}));
         let parent = elem("div");
-        patch_set.apply(parent, app);
+        let storage = patch_set.apply(parent, app);
 
-        let element = element.expect("expected element");
+        let element = match storage[0] {
+            WebItem::Element(ref e) => e,
+            _ => panic!("element not stored as expected"),
+        };
         let input = element.dyn_ref::<web_sys::HtmlInputElement>().expect("expected input element");
 
         assert!(input.disabled());
@@ -638,11 +635,8 @@ mod tests {
     fn remove_attribute() {
         use Patch::*;
 
-        let mut element = None;
-
         let patch_set: PatchSet<Msg> = vec![
             CopyElement {
-                store: Box::new(|e| element = Some(e)),
                 take: Box::new(|| {
                     let e = elem("test");
                     e.set_attribute("name", "value").expect("setting attribute failed");
@@ -660,9 +654,12 @@ mod tests {
 
         let app = Rc::new(RefCell::new(App {}));
         let parent = elem("div");
-        patch_set.apply(parent, app);
+        let storage = patch_set.apply(parent, app);
 
-        let attribute = element.unwrap().get_attribute("name");
+        let attribute = match storage[0] {
+            WebItem::Element(ref e) => e.get_attribute("name"),
+            _ => panic!("element not stored as expected"),
+        };
         assert!(attribute.is_none());
     }
 
@@ -670,11 +667,8 @@ mod tests {
     fn remove_attribute_checked() {
         use Patch::*;
 
-        let mut element = None;
-
         let patch_set: PatchSet<Msg> = vec![
             CopyElement {
-                store: Box::new(|e| element = Some(e)),
                 take: Box::new(|| {
                     let e = elem("input");
                     e.set_attribute("checked", "true").expect("setting attribute failed");
@@ -692,9 +686,12 @@ mod tests {
 
         let app = Rc::new(RefCell::new(App {}));
         let parent = elem("div");
-        patch_set.apply(parent, app);
+        let storage = patch_set.apply(parent, app);
 
-        let element = element.expect("expected element");
+        let element = match storage[0] {
+            WebItem::Element(ref e) => e,
+            _ => panic!("element not stored as expected"),
+        };
         let input = element.dyn_ref::<web_sys::HtmlInputElement>().expect("expected input element");
 
         assert!(!input.checked());
@@ -704,11 +701,8 @@ mod tests {
     fn remove_attribute_disabled() {
         use Patch::*;
 
-        let mut element = None;
-
         let patch_set: PatchSet<Msg> = vec![
             CopyElement {
-                store: Box::new(|e| element = Some(e)),
                 take: Box::new(|| {
                     let e = elem("input");
                     e.set_attribute("disabled", "true").expect("setting attribute failed");
@@ -726,9 +720,12 @@ mod tests {
 
         let app = Rc::new(RefCell::new(App {}));
         let parent = elem("div");
-        patch_set.apply(parent, app);
+        let storage = patch_set.apply(parent, app);
 
-        let element = element.expect("expected element");
+        let element = match storage[0] {
+            WebItem::Element(ref e) => e,
+            _ => panic!("element not stored as expected"),
+        };
         let input = element.dyn_ref::<web_sys::HtmlInputElement>().expect("expected input element");
 
         assert!(!input.disabled());
@@ -738,12 +735,9 @@ mod tests {
     fn set_attribute_checked_false() {
         use Patch::*;
 
-        let mut element = None;
-
         let patch_set: PatchSet<Msg> = vec![
             CreateElement {
                 element: "input",
-                store: Box::new(|e| element = Some(e)),
             },
             SetAttribute { name: "checked", value: "false" },
             Up,
@@ -756,9 +750,12 @@ mod tests {
 
         let app = Rc::new(RefCell::new(App {}));
         let parent = elem("div");
-        patch_set.apply(parent, app);
+        let storage = patch_set.apply(parent, app);
 
-        let element = element.expect("expected element");
+        let element = match storage[0] {
+            WebItem::Element(ref e) => e,
+            _ => panic!("element not stored as expected"),
+        };
         let input = element.dyn_ref::<web_sys::HtmlInputElement>().expect("expected input element");
 
         assert!(!input.checked());
@@ -768,12 +765,9 @@ mod tests {
     fn set_attribute_disabled_false() {
         use Patch::*;
 
-        let mut element = None;
-
         let patch_set: PatchSet<Msg> = vec![
             CreateElement {
                 element: "input",
-                store: Box::new(|e| element = Some(e)),
             },
             SetAttribute { name: "disabled", value: "false" },
             Up,
@@ -786,9 +780,12 @@ mod tests {
 
         let app = Rc::new(RefCell::new(App {}));
         let parent = elem("div");
-        patch_set.apply(parent, app);
+        let storage = patch_set.apply(parent, app);
 
-        let element = element.expect("expected element");
+        let element = match storage[0] {
+            WebItem::Element(ref e) => e,
+            _ => panic!("element not stored as expected"),
+        };
         let input = element.dyn_ref::<web_sys::HtmlInputElement>().expect("expected input element");
 
         assert!(!input.disabled());
@@ -798,12 +795,9 @@ mod tests {
     fn set_attribute_autofocus_false() {
         use Patch::*;
 
-        let mut element = None;
-
         let patch_set: PatchSet<Msg> = vec![
             CreateElement {
                 element: "input",
-                store: Box::new(|e| element = Some(e)),
             },
             SetAttribute { name: "autofocus", value: "false" },
             Up,
@@ -816,9 +810,12 @@ mod tests {
 
         let app = Rc::new(RefCell::new(App {}));
         let parent = elem("div");
-        patch_set.apply(parent, app);
+        let storage = patch_set.apply(parent, app);
 
-        let element = element.expect("expected element");
+        let element = match storage[0] {
+            WebItem::Element(ref e) => e,
+            _ => panic!("element not stored as expected"),
+        };
         let input = element.dyn_ref::<web_sys::HtmlInputElement>().expect("expected input element");
 
         assert!(!input.autofocus());
@@ -828,12 +825,9 @@ mod tests {
     fn set_attribute_selected_false() {
         use Patch::*;
 
-        let mut element = None;
-
         let patch_set: PatchSet<Msg> = vec![
             CreateElement {
                 element: "option",
-                store: Box::new(|e| element = Some(e)),
             },
             SetAttribute { name: "selected", value: "false" },
             Up,
@@ -846,9 +840,12 @@ mod tests {
 
         let app = Rc::new(RefCell::new(App {}));
         let parent = elem("div");
-        patch_set.apply(parent, app);
+        let storage = patch_set.apply(parent, app);
 
-        let element = element.expect("expected element");
+        let element = match storage[0] {
+            WebItem::Element(ref e) => e,
+            _ => panic!("element not stored as expected"),
+        };
         let option = element.dyn_ref::<web_sys::HtmlOptionElement>().expect("expected input element");
 
         assert!(!option.selected());
