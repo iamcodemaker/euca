@@ -13,7 +13,6 @@ use web_sys;
 use std::rc::Rc;
 use std::cell::RefCell;
 use std::fmt;
-use std::mem;
 use crate::diff;
 use crate::vdom::DomIter;
 use crate::vdom::Storage;
@@ -53,21 +52,24 @@ impl<Message, Model, DomTree> Dispatch<Message> for App<Model, DomTree> where
 {
     fn dispatch(app_rc: Rc<RefCell<Self>>, msg: Message) {
         let mut app = app_rc.borrow_mut();
-        let parent = app.parent.clone();
-        let mut storage = vec![];
-        mem::swap(&mut storage, &mut app.storage);
+        let App {
+            ref parent,
+            ref mut model,
+            ref mut storage,
+            ref mut dom,
+        } = *app;
 
         // update the model
-        app.model.update(msg);
+        model.update(msg);
 
         // render a new dom from the updated model
-        let mut new_dom = app.model.render();
+        let mut new_dom = model.render();
 
         // push changes to the browser
-        let old = app.dom.dom_iter();
+        let old = dom.dom_iter();
         let new = new_dom.dom_iter();
-        let patch_set = diff::diff(old, new, &mut storage);
-        app.storage = patch_set.apply(parent, app_rc.clone());
+        let patch_set = diff::diff(old, new, storage);
+        app.storage = patch_set.apply(parent.clone(), app_rc.clone());
 
         app.dom = new_dom;
 
@@ -103,11 +105,14 @@ impl<Model, DomTree> App<Model, DomTree> {
         use std::iter;
 
         let mut app = app_rc.borrow_mut();
-        let mut storage = vec![];
-        mem::swap(&mut storage, &mut app.storage);
+        let App {
+            ref mut storage,
+            ref mut dom,
+            ..
+        } = *app;
 
-        let n = app.dom.dom_iter();
-        let patch_set = diff::diff(iter::empty(), n, &mut storage);
+        let n = dom.dom_iter();
+        let patch_set = diff::diff(iter::empty(), n, storage);
         app.storage = patch_set.apply(parent, app_rc.clone());
     }
 
@@ -122,13 +127,16 @@ impl<Model, DomTree> App<Model, DomTree> {
         use std::iter;
 
         let mut app = app_rc.borrow_mut();
-        let parent = app.parent.clone();
-        let mut storage = vec![];
-        mem::swap(&mut storage, &mut app.storage);
+        let App {
+            ref parent,
+            ref mut storage,
+            ref mut dom,
+            ..
+        } = *app;
 
         // remove the current app from the browser's dom by diffing it with an empty virtual dom.
-        let o = app.dom.dom_iter();
-        let patch_set = diff::diff(o, iter::empty(), &mut storage);
-        app.storage = patch_set.apply(parent, app_rc.clone());
+        let o = dom.dom_iter();
+        let patch_set = diff::diff(o, iter::empty(), storage);
+        app.storage = patch_set.apply(parent.clone(), app_rc.clone());
     }
 }
