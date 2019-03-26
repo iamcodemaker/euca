@@ -51,7 +51,7 @@ comfortable to them. If that's a declarative, JSX
 [macro](https://github.com/bodil/typed-html) style or a function oriented elm style,
 the framework should accept anything as an input.  Similarly, each framework
 implements it's own vDOM diffing and patching algorithms, this is redundant. Why
-don't all the frameworks just use the best algorithms.
+don't all the frameworks just reuse the best algorithms?
 
 I thought, why do we have frameworks at all? What if we could break out each part,
 vDOM representation, diffing, patching and compose them as we saw fit. Euca an
