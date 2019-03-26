@@ -108,10 +108,10 @@ pub fn diff<'a, Message, I1, I2>(mut old: I1, mut new: I2, storage: &'a mut Stor
             }
             (None, Some(n)) => { // create remaining new nodes
                 match n {
-                    DomItem::Element { element } => {
+                    DomItem::Element(element) => {
                         patch_set.push(Patch::CreateElement { element });
                     }
-                    DomItem::Text { text } => {
+                    DomItem::Text(text) => {
                         patch_set.push(Patch::CreateText { text });
                     }
                     DomItem::Attr { name, value } => {
@@ -129,7 +129,7 @@ pub fn diff<'a, Message, I1, I2>(mut old: I1, mut new: I2, storage: &'a mut Stor
             }
             (Some(o), None) => { // delete remaining old nodes
                 match o {
-                    DomItem::Element { .. } => {
+                    DomItem::Element(_) => {
                         let web_item = sto.next().expect("dom storage to match dom iter");
 
                         // ignore child nodes
@@ -139,7 +139,7 @@ pub fn diff<'a, Message, I1, I2>(mut old: I1, mut new: I2, storage: &'a mut Stor
 
                         state.push(NodeState::OldChild);
                     }
-                    DomItem::Text { .. } => {
+                    DomItem::Text(_) => {
                         let web_item = sto.next().expect("dom storage to match dom iter");
 
                         // ignore child nodes
@@ -164,8 +164,8 @@ pub fn diff<'a, Message, I1, I2>(mut old: I1, mut new: I2, storage: &'a mut Stor
             (Some(o), Some(n)) => { // compare nodes
                 match (o, n) {
                     (
-                        DomItem::Element { element: o_element },
-                        DomItem::Element { element: n_element }
+                        DomItem::Element(o_element),
+                        DomItem::Element(n_element)
                     ) => { // compare elements
                         let web_item = sto.next().expect("dom storage to match dom iter");
 
@@ -189,14 +189,14 @@ pub fn diff<'a, Message, I1, I2>(mut old: I1, mut new: I2, storage: &'a mut Stor
                             loop {
                                 o_item = old.next();
                                 match o_item.take() {
-                                    Some(DomItem::Element { .. }) => {
+                                    Some(DomItem::Element(_)) => {
                                         let _ = sto.next().expect("dom storage to match dom iter");
                                         state.push(NodeState::OldChild);
                                     }
                                     Some(DomItem::Up) if state.is_child() => {
                                         state.pop();
                                     }
-                                    Some(DomItem::Text { .. }) | Some(DomItem::Event { .. }) => {
+                                    Some(DomItem::Text(_)) | Some(DomItem::Event { .. }) => {
                                         let _ = sto.next().expect("dom storage to match dom iter");
                                     }
                                     o @ Some(DomItem::Up) | o @ None => {
@@ -210,8 +210,8 @@ pub fn diff<'a, Message, I1, I2>(mut old: I1, mut new: I2, storage: &'a mut Stor
                         }
                     }
                     (
-                        DomItem::Text { text: o_text },
-                        DomItem::Text { text: n_text }
+                        DomItem::Text(o_text),
+                        DomItem::Text(n_text)
                     ) => { // compare text
                         let web_item = sto.next().expect("dom storage to match dom iter");
 
@@ -311,14 +311,14 @@ pub fn diff<'a, Message, I1, I2>(mut old: I1, mut new: I2, storage: &'a mut Stor
                         state.pop();
                     }
                     // add a new child node
-                    (o, DomItem::Element { element }) => {
+                    (o, DomItem::Element(element)) => {
                         patch_set.push(Patch::CreateElement { element });
                         state.push(NodeState::NewChild);
                         o_item = Some(o);
                         n_item = new.next();
                     }
                     // add a new text node
-                    (o, DomItem::Text { text }) => {
+                    (o, DomItem::Text(text)) => {
                         patch_set.push(Patch::CreateText { text });
                         state.push(NodeState::NewChild);
                         o_item = Some(o);
@@ -337,7 +337,7 @@ pub fn diff<'a, Message, I1, I2>(mut old: I1, mut new: I2, storage: &'a mut Stor
                         n_item = new.next();
                     }
                     // remove the old node if present
-                    (DomItem::Element { .. }, n) => {
+                    (DomItem::Element(_), n) => {
                         let web_item = sto.next().expect("dom storage to match dom iter");
 
                         if !state.is_child() {
@@ -348,7 +348,7 @@ pub fn diff<'a, Message, I1, I2>(mut old: I1, mut new: I2, storage: &'a mut Stor
                         n_item = Some(n);
                     }
                     // remove the old text if present
-                    (DomItem::Text { .. }, n) => {
+                    (DomItem::Text(_), n) => {
                         let web_item = sto.next().expect("dom storage to match dom iter");
 
                         if !state.is_child() {

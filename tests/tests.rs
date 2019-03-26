@@ -77,16 +77,8 @@ impl<Message: Clone> DomIter<Message> for Dom<Message> {
         // until generators are stable, this is the best we can do
         let iter = iter::once(&self.element)
             .map(|node| match node {
-                Node::Elem { name } => {
-                    DomItem::Element {
-                        element: name,
-                    }
-                }
-                Node::Text { text } => {
-                    DomItem::Text {
-                        text: text,
-                    }
-                }
+                Node::Elem { name } => DomItem::Element(name),
+                Node::Text { text } => DomItem::Text(text),
             })
         .chain(self.attributes.iter()
             .map(|attr| DomItem::Attr {
@@ -121,14 +113,14 @@ fn gen_storage<'a, Message, Iter>(iter: Iter) -> Storage where
     iter
         .filter(|i| {
             match i {
-                DomItem::Element { .. } | DomItem::Text { .. } | DomItem::Event { .. } => true,
+                DomItem::Element(_) | DomItem::Text(_) | DomItem::Event { .. } => true,
                 DomItem::Attr { .. } | DomItem::Up => false,
             }
         })
         .map(|i| {
             match i {
-                DomItem::Element { element } => WebItem::Element(e(element)),
-                DomItem::Text { text } => WebItem::Text(
+                DomItem::Element(element) => WebItem::Element(e(element)),
+                DomItem::Text(text) => WebItem::Text(
                     web_sys::window().expect("expected window")
                         .document().expect("expected document")
                         .create_text_node(text)

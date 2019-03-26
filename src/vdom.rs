@@ -66,15 +66,9 @@ pub type Storage = Vec<WebItem>;
 #[derive(Debug, PartialEq)]
 pub enum DomItem<'a, Message> {
     /// An element in the tree.
-    Element {
-        /// The element name/type.
-        element: &'a str,
-    },
+    Element(&'a str),
     /// A text node in the tree.
-    Text {
-        /// The text value of the node.
-        text: &'a str,
-    },
+    Text(&'a str),
     /// An attribute of the last node we saw.
     Attr {
         /// The attribute name.

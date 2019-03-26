@@ -156,16 +156,8 @@ impl<Message: Clone> DomIter<Message> for Dom<Message> {
     {
         let iter = iter::once(&self.element)
             .map(|node| match node {
-                Node::Elem { name } => {
-                    DomItem::Element {
-                        element: name,
-                    }
-                }
-                Node::Text { text } => {
-                    DomItem::Text {
-                        text: text,
-                    }
-                }
+                Node::Elem { name } => DomItem::Element(name),
+                Node::Text { text } => DomItem::Text(text),
             })
             .chain(self.attributes.iter()
                 .map(|attr| DomItem::Attr {
