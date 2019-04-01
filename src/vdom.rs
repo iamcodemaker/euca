@@ -96,5 +96,5 @@ pub enum DomItem<'a, Message> {
 /// This trait provides a way to iterate over a virtual dom representation.
 pub trait DomIter<Message: Clone> {
     /// Return an iterator over the virtual dom.
-    fn dom_iter<'a>(&'a mut self) -> Box<Iterator<Item = DomItem<'a, Message>> + 'a>;
+    fn dom_iter<'a>(&'a self) -> Box<Iterator<Item = DomItem<'a, Message>> + 'a>;
 }

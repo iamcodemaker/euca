@@ -56,14 +56,14 @@ impl<Message, Model, DomTree> Dispatch<Message> for App<Model, DomTree> where
             ref parent,
             ref mut model,
             ref mut storage,
-            ref mut dom,
+            ref dom,
         } = *app;
 
         // update the model
         model.update(msg);
 
         // render a new dom from the updated model
-        let mut new_dom = model.render();
+        let new_dom = model.render();
 
         // push changes to the browser
         let old = dom.dom_iter();
@@ -107,7 +107,7 @@ impl<Model, DomTree> App<Model, DomTree> {
         let mut app = app_rc.borrow_mut();
         let App {
             ref mut storage,
-            ref mut dom,
+            ref dom,
             ..
         } = *app;
 
@@ -130,7 +130,7 @@ impl<Model, DomTree> App<Model, DomTree> {
         let App {
             ref parent,
             ref mut storage,
-            ref mut dom,
+            ref dom,
             ..
         } = *app;
 

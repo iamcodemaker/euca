@@ -72,10 +72,10 @@ struct Dom<Message> {
 }
 
 impl<Message: Clone> DomIter<Message> for Dom<Message> {
-    fn dom_iter<'a>(&'a mut self) -> Box<Iterator<Item = DomItem<'a, Message>> + 'a>
+    fn dom_iter<'a>(&'a self) -> Box<Iterator<Item = DomItem<'a, Message>> + 'a>
     {
         // until generators are stable, this is the best we can do
-        let iter = iter::once(&mut self.element)
+        let iter = iter::once(&self.element)
             .map(|node| match node {
                 Node::Elem { name } => {
                     DomItem::Element {
@@ -94,7 +94,7 @@ impl<Message: Clone> DomIter<Message> for Dom<Message> {
                 value: attr.value
             })
         )
-        .chain(self.events.iter_mut()
+        .chain(self.events.iter()
             .map(|Event { trigger, handler }|
                  DomItem::Event {
                      trigger: trigger,
@@ -105,7 +105,7 @@ impl<Message: Clone> DomIter<Message> for Dom<Message> {
                  }
              )
         )
-        .chain(self.children.iter_mut()
+        .chain(self.children.iter()
            .flat_map(|c| c.dom_iter())
         )
         .chain(iter::once(DomItem::Up));
@@ -199,7 +199,7 @@ fn basic_diff() {
     let old = iter::empty();
     let mut storage = vec![];
 
-    let mut new: Dom<Msg> = Dom {
+    let new: Dom<Msg> = Dom {
         element: Node::elem("span"),
         attributes: vec!(),
         events: vec!(),
@@ -224,7 +224,7 @@ fn diff_add_text() {
     let old = iter::empty();
     let mut storage = vec![];
 
-    let mut new: Dom<Msg> = Dom {
+    let new: Dom<Msg> = Dom {
         element: Node::elem("div"),
         attributes: vec!(),
         events: vec!(),
@@ -255,14 +255,14 @@ fn diff_add_text() {
 
 #[wasm_bindgen_test]
 fn new_child_nodes() {
-    let mut old: Dom<Msg> = Dom {
+    let old: Dom<Msg> = Dom {
         element: Node::elem_with_node("div"),
         attributes: vec!(),
         events: vec!(),
         children: vec![],
     };
 
-    let mut new: Dom<Msg> = Dom {
+    let new: Dom<Msg> = Dom {
         element: Node::elem("div"),
         attributes: vec!(),
         events: vec!(),
@@ -318,7 +318,7 @@ fn new_child_nodes() {
 
 #[wasm_bindgen_test]
 fn from_empty() {
-    let mut new: Dom<Msg> = Dom {
+    let new: Dom<Msg> = Dom {
         element: Node::elem("div"),
         attributes: vec!(),
         events: vec!(),
@@ -373,7 +373,7 @@ fn from_empty() {
 
 #[wasm_bindgen_test]
 fn to_empty() {
-    let mut old: Dom<Msg> = Dom {
+    let old: Dom<Msg> = Dom {
         element: Node::elem_with_node("div"),
         attributes: vec!(),
         events: vec!(),
@@ -417,14 +417,14 @@ fn to_empty() {
 
 #[wasm_bindgen_test]
 fn no_difference() {
-    let mut old: Dom<Msg> = Dom {
+    let old: Dom<Msg> = Dom {
         element: Node::elem_with_node("div"),
         attributes: vec!(),
         events: vec!(),
         children: vec!(),
     };
 
-    let mut new: Dom<Msg> = Dom {
+    let new: Dom<Msg> = Dom {
         element: Node::elem("div"),
         attributes: vec!(),
         events: vec!(),
@@ -447,14 +447,14 @@ fn no_difference() {
 
 #[wasm_bindgen_test]
 fn basic_diff_with_element() {
-    let mut old: Dom<Msg> = Dom {
+    let old: Dom<Msg> = Dom {
         element: Node::elem_with_node("div"),
         attributes: vec!(),
         events: vec!(),
         children: vec!(),
     };
 
-    let mut new: Dom<Msg> = Dom {
+    let new: Dom<Msg> = Dom {
         element: Node::elem("span"),
         attributes: vec!(),
         events: vec!(),
@@ -478,7 +478,7 @@ fn basic_diff_with_element() {
 
 #[wasm_bindgen_test]
 fn diff_attributes() {
-    let mut old: Dom<Msg> = Dom {
+    let old: Dom<Msg> = Dom {
         element: Node::elem_with_node("div"),
         attributes: vec![
             Attr { name: "name", value: "value" },
@@ -487,7 +487,7 @@ fn diff_attributes() {
         children: vec!(),
     };
 
-    let mut new: Dom<Msg> = Dom {
+    let new: Dom<Msg> = Dom {
         element: Node::elem("div"),
         attributes: vec![
             Attr { name: "name", value: "new value" },
@@ -513,7 +513,7 @@ fn diff_attributes() {
 
 #[wasm_bindgen_test]
 fn diff_checked() {
-    let mut old: Dom<Msg> = Dom {
+    let old: Dom<Msg> = Dom {
         element: Node::elem_with_node("input"),
         attributes: vec![
             Attr { name: "checked", value: "false" },
@@ -522,7 +522,7 @@ fn diff_checked() {
         children: vec!(),
     };
 
-    let mut new: Dom<Msg> = Dom {
+    let new: Dom<Msg> = Dom {
         element: Node::elem("input"),
         attributes: vec![
             Attr { name: "checked", value: "false" },
@@ -548,7 +548,7 @@ fn diff_checked() {
 
 #[wasm_bindgen_test]
 fn old_child_nodes_with_element() {
-    let mut old: Dom<Msg> = Dom {
+    let old: Dom<Msg> = Dom {
         element: Node::elem_with_node("div"),
         attributes: vec!(),
         events: vec!(),
@@ -576,7 +576,7 @@ fn old_child_nodes_with_element() {
         ],
     };
 
-    let mut new: Dom<Msg> = Dom {
+    let new: Dom<Msg> = Dom {
         element: Node::elem("div"),
         attributes: vec!(),
         events: vec!(),
@@ -601,7 +601,7 @@ fn old_child_nodes_with_element() {
 
 #[wasm_bindgen_test]
 fn diff_old_child_nodes_with_element() {
-    let mut old: Dom<Msg> = Dom {
+    let old: Dom<Msg> = Dom {
         element: Node::elem_with_node("span"),
         attributes: vec!(),
         events: vec!(),
@@ -631,7 +631,7 @@ fn diff_old_child_nodes_with_element() {
         ],
     };
 
-    let mut new: Dom<Msg> = Dom {
+    let new: Dom<Msg> = Dom {
         element: Node::elem("div"),
         attributes: vec!(),
         events: vec!(),
@@ -655,14 +655,14 @@ fn diff_old_child_nodes_with_element() {
 
 #[wasm_bindgen_test]
 fn null_patch_with_element() {
-    let mut old: Dom<Msg> = Dom {
+    let old: Dom<Msg> = Dom {
         element: Node::elem_with_node("div"),
         attributes: vec!(),
         events: vec!(),
         children: vec!(),
     };
 
-    let mut new: Dom<Msg> = Dom {
+    let new: Dom<Msg> = Dom {
         element: Node::elem("div"),
         attributes: vec!(),
         events: vec!(),
@@ -694,14 +694,14 @@ fn basic_patch_with_element() {
     let gen1 = iter::empty();
     let mut storage = vec![];
 
-    let mut gen2: Dom<Msg> = Dom {
+    let gen2: Dom<Msg> = Dom {
         element: Node::elem("div"),
         attributes: vec!(),
         events: vec!(),
         children: vec!(),
     };
 
-    let mut gen3: Dom<Msg> = Dom {
+    let gen3: Dom<Msg> = Dom {
         element: Node::elem("span"),
         attributes: vec!(),
         events: vec!(),
@@ -744,7 +744,7 @@ fn basic_event_test() {
     let gen1 = iter::empty();
     let mut storage = vec![];
 
-    let mut gen2: Dom<Msg> = Dom {
+    let gen2: Dom<Msg> = Dom {
         element: Node::elem("button"),
         attributes: vec!(),
         events: vec![
@@ -786,7 +786,7 @@ fn listener_copy() {
     let gen1 = iter::empty();
     let mut storage = vec![];
 
-    let mut gen2: Dom<Msg> = Dom {
+    let gen2: Dom<Msg> = Dom {
         element: Node::elem("button"),
         attributes: vec!(),
         events: vec![
@@ -820,7 +820,7 @@ fn listener_copy() {
         _ => panic!("expected node to be created"),
     }
 
-    let mut gen3: Dom<Msg> = Dom {
+    let gen3: Dom<Msg> = Dom {
         element: Node::elem("button"),
         attributes: vec!(),
         events: vec![

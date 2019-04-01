@@ -152,9 +152,9 @@ impl<Message> Into<Dom<Message>> for &str {
 }
 
 impl<Message: Clone> DomIter<Message> for Dom<Message> {
-    fn dom_iter<'a>(&'a mut self) -> Box<Iterator<Item = DomItem<'a, Message>> + 'a>
+    fn dom_iter<'a>(&'a self) -> Box<Iterator<Item = DomItem<'a, Message>> + 'a>
     {
-        let iter = iter::once(&mut self.element)
+        let iter = iter::once(&self.element)
             .map(|node| match node {
                 Node::Elem { name } => {
                     DomItem::Element {
@@ -173,7 +173,7 @@ impl<Message: Clone> DomIter<Message> for Dom<Message> {
                     value: &attr.value
                 })
             )
-            .chain(self.events.iter_mut()
+            .chain(self.events.iter()
                 .map(|Event { trigger, handler }|
                      DomItem::Event {
                          trigger: trigger,
@@ -183,7 +183,7 @@ impl<Message: Clone> DomIter<Message> for Dom<Message> {
                      }
                  )
             )
-            .chain(self.children.iter_mut()
+            .chain(self.children.iter()
                .flat_map(|c| c.dom_iter())
             )
             .chain(iter::once(DomItem::Up));
@@ -201,8 +201,8 @@ pub struct DomVec<Message>(Vec<Dom<Message>>);
 impl<Message> DomIter<Message> for DomVec<Message> where
     Message: Clone + PartialEq,
 {
-    fn dom_iter<'a>(&'a mut self) -> Box<Iterator<Item = DomItem<'a, Message>> + 'a> {
-        Box::new(self.0.iter_mut().flat_map(|i| i.dom_iter()))
+    fn dom_iter<'a>(&'a self) -> Box<Iterator<Item = DomItem<'a, Message>> + 'a> {
+        Box::new(self.0.iter().flat_map(|i| i.dom_iter()))
     }
 }
 
