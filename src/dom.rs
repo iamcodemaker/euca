@@ -7,7 +7,7 @@ use std::iter;
 use crate::vdom::*;
 
 /// A DOM event handler.
-#[derive(PartialEq, Debug)]
+#[derive(PartialEq, Debug, Clone)]
 pub enum Handler<Message> {
     /// The message that will result from the event this handler is attached to.
     Msg(Message),
@@ -27,6 +27,13 @@ pub enum Handler<Message> {
     ///
     /// [`web_sys::InputEvent`]: https://rustwasm.github.io/wasm-bindgen/api/web_sys/struct.InputEvent.html
     InputEvent(fn(web_sys::InputEvent) -> Option<Message>),
+}
+
+#[cfg(feature = "typed-html")]
+impl<Message: std::fmt::Display + Clone> std::fmt::Display for Handler<Message> {
+    fn fmt(&self, _: &mut std::fmt::Formatter) -> std::fmt::Result {
+        unimplemented!()
+    }
 }
 
 /// A DOM event.

@@ -11,6 +11,9 @@ pub mod app;
 pub mod route;
 pub mod component;
 
+#[cfg(feature = "typed-html")]
+pub mod typed_html;
+
 pub use diff::diff;
 pub use app::AppBuilder;
 pub use component::ComponentBuilder;
