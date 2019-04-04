@@ -87,7 +87,8 @@ pub struct Attr {
 }
 
 impl Attr {
-    fn new(name: &'static str, value: &str) -> Self {
+    /// Create a new attribute name value pair.
+    pub fn new(name: &'static str, value: &str) -> Self {
         Attr { name, value: value.into() }
     }
 }
