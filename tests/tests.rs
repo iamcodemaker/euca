@@ -7,6 +7,7 @@ use euca::vdom::WebItem;
 use euca::vdom::Storage;
 use euca::vdom::DomItem;
 use euca::vdom::DomIter;
+use euca::dom::Dom;
 use euca::patch::Patch;
 use euca::patch::PatchSet;
 use euca::app::Dispatch;
@@ -20,90 +21,6 @@ fn e(name: &str) -> web_sys::Element {
     web_sys::window().expect("expected window")
         .document().expect("expected document")
         .create_element(name).expect("expected element")
-}
-
-#[derive(PartialEq)]
-struct Attr {
-    name: &'static str,
-    value: &'static str,
-}
-
-#[derive(PartialEq)]
-enum EventHandler<Message> {
-    Msg(Message),
-    Map(fn(web_sys::Event) -> Message),
-}
-
-struct Event<Message> {
-    trigger: String,
-    handler: EventHandler<Message>,
-}
-
-enum Node {
-    Elem { name: &'static str },
-    Text { text: &'static str },
-}
-
-impl Node {
-    fn elem(name: &'static str) -> Self {
-        Node::Elem {
-            name: name,
-        }
-    }
-
-    fn text(text: &'static str) -> Self {
-        Node::Text {
-            text: text,
-        }
-    }
-
-    fn elem_with_node(name: &'static str) -> Self {
-        Node::Elem {
-            name: name,
-        }
-    }
-}
-
-struct Dom<Message> {
-    element: Node,
-    attributes: Vec<Attr>,
-    events: Vec<Event<Message>>,
-    children: Vec<Dom<Message>>,
-}
-
-impl<Message: Clone> DomIter<Message> for Dom<Message> {
-    fn dom_iter<'a>(&'a self) -> Box<Iterator<Item = DomItem<'a, Message>> + 'a>
-    {
-        // until generators are stable, this is the best we can do
-        let iter = iter::once(&self.element)
-            .map(|node| match node {
-                Node::Elem { name } => DomItem::Element(name),
-                Node::Text { text } => DomItem::Text(text),
-            })
-        .chain(self.attributes.iter()
-            .map(|attr| DomItem::Attr {
-                name: attr.name,
-                value: attr.value
-            })
-        )
-        .chain(self.events.iter()
-            .map(|Event { trigger, handler }|
-                 DomItem::Event {
-                     trigger: trigger,
-                     handler: match handler {
-                         EventHandler::Msg(m) => euca::vdom::EventHandler::Msg(m),
-                         EventHandler::Map(f) => euca::vdom::EventHandler::Fn(*f),
-                     },
-                 }
-             )
-        )
-        .chain(self.children.iter()
-           .flat_map(|c| c.dom_iter())
-        )
-        .chain(iter::once(DomItem::Up));
-
-        Box::new(iter)
-    }
 }
 
 fn gen_storage<'a, Message, Iter>(iter: Iter) -> Storage where
@@ -191,12 +108,7 @@ fn basic_diff() {
     let old = iter::empty();
     let mut storage = vec![];
 
-    let new: Dom<Msg> = Dom {
-        element: Node::elem("span"),
-        attributes: vec!(),
-        events: vec!(),
-        children: vec!(),
-    };
+    let new = Dom::elem("span");
 
     let o = old.into_iter();
     let n = new.dom_iter();
@@ -216,19 +128,9 @@ fn diff_add_text() {
     let old = iter::empty();
     let mut storage = vec![];
 
-    let new: Dom<Msg> = Dom {
-        element: Node::elem("div"),
-        attributes: vec!(),
-        events: vec!(),
-        children: vec![
-            Dom {
-                element: Node::text("text"),
-                attributes: vec![],
-                events: vec![],
-                children: vec![],
-            },
-        ],
-    };
+    let new = Dom::elem("div")
+        .push(Dom::text("text"))
+    ;
 
     let o = old.into_iter();
     let n = new.dom_iter();
@@ -247,42 +149,19 @@ fn diff_add_text() {
 
 #[wasm_bindgen_test]
 fn new_child_nodes() {
-    let old: Dom<Msg> = Dom {
-        element: Node::elem_with_node("div"),
-        attributes: vec!(),
-        events: vec!(),
-        children: vec![],
-    };
-
-    let new: Dom<Msg> = Dom {
-        element: Node::elem("div"),
-        attributes: vec!(),
-        events: vec!(),
-        children: vec![
-            Dom {
-                element: Node::elem("b"),
-                attributes: vec![
-                    Attr { name: "class", value: "item" },
-                    Attr { name: "id", value: "id1" },
-                ],
-                events: vec![
-                    Event { trigger: "onclick".into(), handler: EventHandler::Msg(Msg {}) },
-                ],
-                children: vec![],
-            },
-            Dom {
-                element: Node::elem("i"),
-                attributes: vec![
-                    Attr { name: "class", value: "item" },
-                    Attr { name: "id", value: "id2" },
-                ],
-                events: vec![
-                    Event { trigger: "onclick".into(), handler: EventHandler::Msg(Msg {}) },
-                ],
-                children: vec![],
-            },
-        ],
-    };
+    let old = Dom::elem("div");
+    let new = Dom::elem("div")
+        .push(Dom::elem("b")
+            .attr("class", "item")
+            .attr("id", "id1")
+            .event("onclick", Msg {})
+        )
+        .push(Dom::elem("i")
+            .attr("class", "item")
+            .attr("id", "id2")
+            .event("onclick", Msg {})
+        )
+    ;
 
     let mut storage = gen_storage(old.dom_iter());
     let o = old.dom_iter();
@@ -310,35 +189,18 @@ fn new_child_nodes() {
 
 #[wasm_bindgen_test]
 fn from_empty() {
-    let new: Dom<Msg> = Dom {
-        element: Node::elem("div"),
-        attributes: vec!(),
-        events: vec!(),
-        children: vec![
-            Dom {
-                element: Node::elem("b"),
-                attributes: vec![
-                    Attr { name: "class", value: "item" },
-                    Attr { name: "id", value: "id1" },
-                ],
-                events: vec![
-                    Event { trigger: "onclick".into(), handler: EventHandler::Msg(Msg {}) },
-                ],
-                children: vec![],
-            },
-            Dom {
-                element: Node::elem("i"),
-                attributes: vec![
-                    Attr { name: "class", value: "item" },
-                    Attr { name: "id", value: "id2" },
-                ],
-                events: vec![
-                    Event { trigger: "onclick".into(), handler: EventHandler::Msg(Msg {}) },
-                ],
-                children: vec![],
-            },
-        ],
-    };
+    let new = Dom::elem("div")
+        .push(Dom::elem("b")
+            .attr("class", "item")
+            .attr("id", "id1")
+            .event("onclick", Msg {})
+        )
+        .push(Dom::elem("i")
+            .attr("class", "item")
+            .attr("id", "id2")
+            .event("onclick", Msg {})
+        )
+    ;
 
     let n = new.dom_iter();
     let mut storage = vec![];
@@ -365,35 +227,18 @@ fn from_empty() {
 
 #[wasm_bindgen_test]
 fn to_empty() {
-    let old: Dom<Msg> = Dom {
-        element: Node::elem_with_node("div"),
-        attributes: vec!(),
-        events: vec!(),
-        children: vec![
-            Dom {
-                element: Node::elem_with_node("b"),
-                attributes: vec![
-                    Attr { name: "class", value: "item" },
-                    Attr { name: "id", value: "id1" },
-                ],
-                events: vec![
-                    Event { trigger: "onclick".into(), handler: EventHandler::Msg(Msg {}) },
-                ],
-                children: vec![],
-            },
-            Dom {
-                element: Node::elem_with_node("i"),
-                attributes: vec![
-                    Attr { name: "class", value: "item" },
-                    Attr { name: "id", value: "id2" },
-                ],
-                events: vec![
-                    Event { trigger: "onclick".into(), handler: EventHandler::Msg(Msg {}) },
-                ],
-                children: vec![],
-            },
-        ],
-    };
+    let old = Dom::elem("div")
+        .push(Dom::elem("b")
+            .attr("class", "item")
+            .attr("id", "id1")
+            .event("onclick", Msg {})
+        )
+        .push(Dom::elem("i")
+            .attr("class", "item")
+            .attr("id", "id2")
+            .event("onclick", Msg {})
+        )
+    ;
 
     let mut storage = gen_storage(old.dom_iter());
     let o = old.dom_iter();
@@ -409,19 +254,8 @@ fn to_empty() {
 
 #[wasm_bindgen_test]
 fn no_difference() {
-    let old: Dom<Msg> = Dom {
-        element: Node::elem_with_node("div"),
-        attributes: vec!(),
-        events: vec!(),
-        children: vec!(),
-    };
-
-    let new: Dom<Msg> = Dom {
-        element: Node::elem("div"),
-        attributes: vec!(),
-        events: vec!(),
-        children: vec!(),
-    };
+    let old = Dom::elem("div");
+    let new = Dom::elem("div");
 
     let mut storage = gen_storage(old.dom_iter());
     let o = old.dom_iter();
@@ -439,19 +273,8 @@ fn no_difference() {
 
 #[wasm_bindgen_test]
 fn basic_diff_with_element() {
-    let old: Dom<Msg> = Dom {
-        element: Node::elem_with_node("div"),
-        attributes: vec!(),
-        events: vec!(),
-        children: vec!(),
-    };
-
-    let new: Dom<Msg> = Dom {
-        element: Node::elem("span"),
-        attributes: vec!(),
-        events: vec!(),
-        children: vec!(),
-    };
+    let old = Dom::elem("div");
+    let new = Dom::elem("span");
 
     let mut storage = gen_storage(old.dom_iter());
     let o = old.dom_iter();
@@ -470,23 +293,8 @@ fn basic_diff_with_element() {
 
 #[wasm_bindgen_test]
 fn diff_attributes() {
-    let old: Dom<Msg> = Dom {
-        element: Node::elem_with_node("div"),
-        attributes: vec![
-            Attr { name: "name", value: "value" },
-        ],
-        events: vec!(),
-        children: vec!(),
-    };
-
-    let new: Dom<Msg> = Dom {
-        element: Node::elem("div"),
-        attributes: vec![
-            Attr { name: "name", value: "new value" },
-        ],
-        events: vec!(),
-        children: vec!(),
-    };
+    let old = Dom::elem("div").attr("name", "value");
+    let new = Dom::elem("div").attr("name", "new value");
 
     let mut storage = gen_storage(old.dom_iter());
     let o = old.dom_iter();
@@ -505,23 +313,8 @@ fn diff_attributes() {
 
 #[wasm_bindgen_test]
 fn diff_checked() {
-    let old: Dom<Msg> = Dom {
-        element: Node::elem_with_node("input"),
-        attributes: vec![
-            Attr { name: "checked", value: "false" },
-        ],
-        events: vec!(),
-        children: vec!(),
-    };
-
-    let new: Dom<Msg> = Dom {
-        element: Node::elem("input"),
-        attributes: vec![
-            Attr { name: "checked", value: "false" },
-        ],
-        events: vec!(),
-        children: vec!(),
-    };
+    let old = Dom::elem("input").attr("checked", "false");
+    let new = Dom::elem("input").attr("checked", "false");
 
     let mut storage = gen_storage(old.dom_iter());
     let o = old.dom_iter();
@@ -540,40 +333,20 @@ fn diff_checked() {
 
 #[wasm_bindgen_test]
 fn old_child_nodes_with_element() {
-    let old: Dom<Msg> = Dom {
-        element: Node::elem_with_node("div"),
-        attributes: vec!(),
-        events: vec!(),
-        children: vec![
-            Dom {
-                element: Node::Elem { name: "b" },
-                attributes: vec![
-                    Attr { name: "class".into(), value: "item".into() },
-                    Attr { name: "id".into(), value: "id".into() },
-                ],
-                events: vec![
-                    Event { trigger: "onclick".into(), handler: EventHandler::Msg(Msg {}) },
-                ],
-                children: vec![],
-            },
-            Dom {
-                element: Node::elem_with_node("i"),
-                attributes: vec![
-                    Attr { name: "class".into(), value: "item".into() },
-                    Attr { name: "id".into(), value: "id".into() },
-                ],
-                events: vec![],
-                children: vec![],
-            },
-        ],
-    };
+    let old = Dom::elem("div")
+        .push(Dom::elem("b")
+            .attr("class", "item")
+            .attr("id", "id")
+            .event("onclick", Msg {})
+        )
+        .push(Dom::elem("i")
+            .attr("class", "item")
+            .attr("id", "id")
+            .event("onclick", Msg {})
+        )
+    ;
 
-    let new: Dom<Msg> = Dom {
-        element: Node::elem("div"),
-        attributes: vec!(),
-        events: vec!(),
-        children: vec!(),
-    };
+    let new = Dom::elem("div");
 
     let mut storage = gen_storage(old.dom_iter());
     let o = old.dom_iter();
@@ -592,43 +365,21 @@ fn old_child_nodes_with_element() {
 }
 
 #[wasm_bindgen_test]
-fn diff_old_child_nodes_with_element() {
-    let old: Dom<Msg> = Dom {
-        element: Node::elem_with_node("span"),
-        attributes: vec!(),
-        events: vec!(),
-        children: vec![
-            Dom {
-                element: Node::elem_with_node("b"),
-                attributes: vec![
-                    Attr { name: "class".into(), value: "item".into() },
-                    Attr { name: "id".into(), value: "id".into() },
-                ],
-                events: vec![
-                    Event { trigger: "onclick".into(), handler: EventHandler::Msg(Msg {}) },
-                ],
-                children: vec![],
-            },
-            Dom {
-                element: Node::elem_with_node("i"),
-                attributes: vec![
-                    Attr { name: "class".into(), value: "item".into() },
-                    Attr { name: "id".into(), value: "id".into() },
-                ],
-                events: vec![
-                    Event { trigger: "onclick".into(), handler: EventHandler::Msg(Msg {}) },
-                ],
-                children: vec![],
-            },
-        ],
-    };
+fn diff_old_child_nodes_with_new_element() {
+    let old = Dom::elem("span")
+        .push(Dom::elem("b")
+            .attr("class", "item")
+            .attr("id", "id")
+            .event("onclick", Msg {})
+        )
+        .push(Dom::elem("i")
+            .attr("class", "item")
+            .attr("id", "id")
+            .event("onclick", Msg {})
+        )
+    ;
 
-    let new: Dom<Msg> = Dom {
-        element: Node::elem("div"),
-        attributes: vec!(),
-        events: vec!(),
-        children: vec!(),
-    };
+    let new = Dom::elem("div");
 
     let mut storage = gen_storage(old.dom_iter());
     let o = old.dom_iter();
@@ -647,19 +398,8 @@ fn diff_old_child_nodes_with_element() {
 
 #[wasm_bindgen_test]
 fn null_patch_with_element() {
-    let old: Dom<Msg> = Dom {
-        element: Node::elem_with_node("div"),
-        attributes: vec!(),
-        events: vec!(),
-        children: vec!(),
-    };
-
-    let new: Dom<Msg> = Dom {
-        element: Node::elem("div"),
-        attributes: vec!(),
-        events: vec!(),
-        children: vec!(),
-    };
+    let old = Dom::elem("div");
+    let new = Dom::elem("div");
 
     let mut storage = gen_storage(old.dom_iter());
     let o = old.dom_iter();
@@ -684,21 +424,8 @@ fn null_patch_with_element() {
 #[wasm_bindgen_test]
 fn basic_patch_with_element() {
     let gen1 = iter::empty();
-    let mut storage = vec![];
-
-    let gen2: Dom<Msg> = Dom {
-        element: Node::elem("div"),
-        attributes: vec!(),
-        events: vec!(),
-        children: vec!(),
-    };
-
-    let gen3: Dom<Msg> = Dom {
-        element: Node::elem("span"),
-        attributes: vec!(),
-        events: vec!(),
-        children: vec!(),
-    };
+    let gen2 = Dom::elem("div");
+    let gen3 = Dom::elem("div");
 
     let parent = e("div");
     struct App {};
@@ -707,6 +434,7 @@ fn basic_patch_with_element() {
     }
 
     let app = Rc::new(RefCell::new(App {}));
+    let mut storage = vec![];
 
     // first gen create element
     let o = gen1.into_iter();
@@ -734,16 +462,7 @@ fn basic_patch_with_element() {
 #[wasm_bindgen_test]
 fn basic_event_test() {
     let gen1 = iter::empty();
-    let mut storage = vec![];
-
-    let gen2: Dom<Msg> = Dom {
-        element: Node::elem("button"),
-        attributes: vec!(),
-        events: vec![
-            Event { trigger: "click".into(), handler: EventHandler::Map(|_| Msg {}) },
-        ],
-        children: vec!(),
-    };
+    let gen2 = Dom::elem("button").event("click", Msg {});
 
     let parent = e("div");
     struct App(i32);
@@ -755,6 +474,7 @@ fn basic_event_test() {
     }
 
     let app = Rc::new(RefCell::new(App(0)));
+    let mut storage = vec![];
 
     let o = gen1.into_iter();
     let n = gen2.dom_iter();
@@ -776,16 +496,7 @@ fn basic_event_test() {
 #[wasm_bindgen_test]
 fn listener_copy() {
     let gen1 = iter::empty();
-    let mut storage = vec![];
-
-    let gen2: Dom<Msg> = Dom {
-        element: Node::elem("button"),
-        attributes: vec!(),
-        events: vec![
-            Event { trigger: "click".into(), handler: EventHandler::Msg(Msg {}) },
-        ],
-        children: vec!(),
-    };
+    let gen2 = Dom::elem("button").event("click", Msg {});
 
     let parent = e("div");
     struct App(i32);
@@ -797,6 +508,7 @@ fn listener_copy() {
     }
 
     let app = Rc::new(RefCell::new(App(0)));
+    let mut storage = vec![];
 
     let o = gen1.into_iter();
     let n = gen2.dom_iter();
@@ -812,14 +524,7 @@ fn listener_copy() {
         _ => panic!("expected node to be created"),
     }
 
-    let gen3: Dom<Msg> = Dom {
-        element: Node::elem("button"),
-        attributes: vec!(),
-        events: vec![
-            Event { trigger: "click".into(), handler: EventHandler::Msg(Msg {}) },
-        ],
-        children: vec!(),
-    };
+    let gen3 = Dom::elem("button").event("click", Msg {});
 
     let o = gen2.dom_iter();
     let n = gen3.dom_iter();
