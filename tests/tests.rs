@@ -91,6 +91,7 @@ macro_rules! compare {
                 (Patch::RemoveListener { trigger: t1, take: _ }, Patch::RemoveListener { trigger: t2, take: _ }) => {
                     assert_eq!(t1, t2, "[{}] trigger names don't match", i);
                 }
+                (Patch::CopyListener(_), Patch::CopyListener(_)) => {}
                 (Patch::RemoveElement(_), Patch::RemoveElement(_)) => {}
                 (Patch::RemoveText(_), Patch::RemoveText(_)) => {}
                 (Patch::Up, Patch::Up) => {}
