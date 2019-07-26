@@ -7,13 +7,14 @@ use std::iter;
 use crate::vdom::*;
 
 /// A DOM event handler.
-#[derive(PartialEq)]
+#[derive(PartialEq, Debug)]
 pub enum Handler<Message> {
     /// The message that will result from the event this handler is attached to.
     Msg(Message),
 }
 
 /// A DOM event.
+#[derive(Debug)]
 pub struct Event<Message> {
     /// The event trigger (e.g. click, change, etc.).
     trigger: &'static str,
@@ -22,6 +23,7 @@ pub struct Event<Message> {
 }
 
 /// Representation of a DOM node.
+#[derive(Debug)]
 pub enum Node {
     /// A DOM element node.
     Elem {
@@ -47,8 +49,8 @@ impl Node {
     }
 }
 
-#[derive(PartialEq)]
 /// An attribute on a node.
+#[derive(PartialEq, Debug)]
 pub struct Attr {
     /// The name of the attribute.
     name: &'static str,
@@ -77,6 +79,7 @@ impl From<(&'static str, String)> for Attr {
 }
 
 /// A node in the DOM.
+#[derive(Debug)]
 pub struct Dom<Message> {
     /// The element for this node.
     element: Node,
@@ -188,6 +191,7 @@ impl<Message: Clone> DomIter<Message> for Dom<Message> {
 ///
 /// This structure allows a top level sequence of DOM entries to be represented without requiring a
 /// containing DOM element.
+#[derive(Debug)]
 pub struct DomVec<Message>(Vec<Dom<Message>>);
 
 impl<Message> DomIter<Message> for DomVec<Message> where
