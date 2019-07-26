@@ -64,37 +64,37 @@ macro_rules! compare {
 
         assert_eq!($patch_set.len(), cmp.len(), "lengths don't match\n  left: {:?}\n right: {:?}", $patch_set, cmp);
 
-        for (l, r) in $patch_set.into_iter().zip(cmp) {
+        for (i, (l, r)) in $patch_set.into_iter().zip(cmp).enumerate() {
             match (l, r) {
                 (Patch::CreateElement { element: e1 }, Patch::CreateElement { element: e2 }) => {
-                    assert_eq!(e1, e2, "unexpected CreateElement");
+                    assert_eq!(e1, e2, "[{}] unexpected CreateElement", i);
                 }
                 (Patch::CopyElement(_), Patch::CopyElement(_)) => {}
                 (Patch::SetAttribute { name: n1, value: v1 }, Patch::SetAttribute { name: n2, value: v2 }) => {
-                    assert_eq!(n1, n2, "attribute names don't match");
-                    assert_eq!(v1, v2, "attribute values don't match");
+                    assert_eq!(n1, n2, "[{}] attribute names don't match", i);
+                    assert_eq!(v1, v2, "[{}] attribute values don't match", i);
                 }
                 (Patch::ReplaceText { take: _, text: t1 }, Patch::ReplaceText { take: _, text: t2 }) => {
-                    assert_eq!(t1, t2, "unexpected ReplaceText");
+                    assert_eq!(t1, t2, "[{}] unexpected ReplaceText", i);
                 }
                 (Patch::CreateText { text: t1 }, Patch::CreateText { text: t2 }) => {
-                    assert_eq!(t1, t2, "unexpected CreateText");
+                    assert_eq!(t1, t2, "[{}] unexpected CreateText", i);
                 }
                 (Patch::CopyText(_), Patch::CopyText(_)) => {}
                 (Patch::RemoveAttribute(a1), Patch::RemoveAttribute(a2)) => {
-                    assert_eq!(a1, a2, "attribute names don't match");
+                    assert_eq!(a1, a2, "[{}] attribute names don't match", i);
                 }
                 (Patch::AddListener { trigger: t1, handler: h1 }, Patch::AddListener { trigger: t2, handler: h2 }) => {
-                    assert_eq!(t1, t2, "trigger names don't match");
-                    assert_eq!(h1, h2, "handlers don't match");
+                    assert_eq!(t1, t2, "[{}] trigger names don't match", i);
+                    assert_eq!(h1, h2, "[{}] handlers don't match", i);
                 }
                 (Patch::RemoveListener { trigger: t1, take: _ }, Patch::RemoveListener { trigger: t2, take: _ }) => {
-                    assert_eq!(t1, t2, "trigger names don't match");
+                    assert_eq!(t1, t2, "[{}] trigger names don't match", i);
                 }
                 (Patch::RemoveElement(_), Patch::RemoveElement(_)) => {}
                 (Patch::RemoveText(_), Patch::RemoveText(_)) => {}
                 (Patch::Up, Patch::Up) => {}
-                (i1, i2) => panic!("patch items don't match: {:?} {:?}", i1, i2),
+                (item1, item2) => panic!("[{}] patch items don't match: {:?} {:?}", i, item1, item2),
             }
         }
     };
