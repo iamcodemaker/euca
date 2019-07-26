@@ -1,0 +1,4 @@
+#!/bin/bash -e
+
+cargo test
+wasm-pack test --headless --chrome
