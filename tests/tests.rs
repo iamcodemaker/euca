@@ -94,7 +94,7 @@ macro_rules! compare {
                 (Patch::RemoveElement(_), Patch::RemoveElement(_)) => {}
                 (Patch::RemoveText(_), Patch::RemoveText(_)) => {}
                 (Patch::Up, Patch::Up) => {}
-                (item1, item2) => panic!("[{}] patch items don't match: {:?} {:?}", i, item1, item2),
+                (item1, item2) => panic!("[{}] patch items don't match\n  left: {:?}\n right: {:?}", i, item1, item2),
             }
         }
     };
