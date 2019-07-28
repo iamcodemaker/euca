@@ -55,8 +55,7 @@ pub fn diff<'a, Message, I1, I2>(mut old: I1, mut new: I2, storage: &'a mut Stor
     enum NodeState {
         Create,
         Copy,
-        NewChild,
-        OldChild,
+        Child,
     }
 
     struct State(Vec<NodeState>);
@@ -81,21 +80,14 @@ pub fn diff<'a, Message, I1, I2>(mut old: I1, mut new: I2, storage: &'a mut Stor
         }
         fn is_child(&self) -> bool {
             self.0.last()
-                .map_or(false, |ns| *ns == NodeState::NewChild || *ns == NodeState::OldChild)
-        }
-        fn is_old_child(&self) -> bool {
-            self.0.last()
-                .map_or(false, |ns| *ns == NodeState::OldChild)
-        }
-        fn is_new_child(&self) -> bool {
-            self.0.last()
-                .map_or(false, |ns| *ns == NodeState::NewChild)
+                .map_or(false, |ns| *ns == NodeState::Child)
         }
     }
 
     let mut patch_set = PatchSet::new();
 
-    let mut state = State::new();
+    let mut o_state = State::new();
+    let mut n_state = State::new();
 
     let mut o_item = old.next();
     let mut n_item = new.next();
@@ -133,24 +125,26 @@ pub fn diff<'a, Message, I1, I2>(mut old: I1, mut new: I2, storage: &'a mut Stor
                         let web_item = sto.next().expect("dom storage to match dom iter");
 
                         // ignore child nodes
-                        if !state.is_child() {
+                        if !o_state.is_child() {
                             patch_set.push(Patch::RemoveElement(take_element(web_item)));
                         }
 
-                        state.push(NodeState::OldChild);
+                        o_state.push(NodeState::Child);
                     }
                     DomItem::Text(_) => {
                         let web_item = sto.next().expect("dom storage to match dom iter");
 
                         // ignore child nodes
-                        if !state.is_child() {
+                        if !o_state.is_child() {
                             patch_set.push(Patch::RemoveText(take_text(web_item)));
                         }
 
-                        state.push(NodeState::OldChild);
+                        o_state.push(NodeState::Child);
                     }
                     DomItem::Up => {
-                        state.pop();
+                        if o_state.is_child() {
+                            o_state.pop();
+                        }
                     }
                     DomItem::Event { .. } => {
                         let _ = sto.next().expect("dom storage to match dom iter");
@@ -166,48 +160,15 @@ pub fn diff<'a, Message, I1, I2>(mut old: I1, mut new: I2, storage: &'a mut Stor
                     (
                         DomItem::Element(o_element),
                         DomItem::Element(n_element)
-                    ) => { // compare elements
+                    ) if o_element == n_element => { // compare elements
                         let web_item = sto.next().expect("dom storage to match dom iter");
 
-                        // if the elements match, use the web_sys::Element
-                        if o_element == n_element {
-                            // copy the node
-                            patch_set.push(Patch::CopyElement(take_element(web_item)));
-                            state.push(NodeState::Copy);
+                        // copy the node
+                        patch_set.push(Patch::CopyElement(take_element(web_item)));
+                        o_state.push(NodeState::Copy);
 
-                            o_item = old.next();
-                            n_item = new.next();
-                        }
-                        // elements don't match, remove the old and make a new one
-                        else {
-                            patch_set.push(Patch::RemoveElement(take_element(web_item)));
-                            patch_set.push(Patch::CreateElement { element: n_element });
-                            state.push(NodeState::Create);
-                            
-                            // skip the rest of the items in the old tree for this element, this
-                            // will cause attributes and such to be created on the new element
-                            loop {
-                                o_item = old.next();
-                                match o_item.take() {
-                                    Some(DomItem::Element(_)) => {
-                                        let _ = sto.next().expect("dom storage to match dom iter");
-                                        state.push(NodeState::OldChild);
-                                    }
-                                    Some(DomItem::Up) if state.is_child() => {
-                                        state.pop();
-                                    }
-                                    Some(DomItem::Text(_)) | Some(DomItem::Event { .. }) => {
-                                        let _ = sto.next().expect("dom storage to match dom iter");
-                                    }
-                                    o @ Some(DomItem::Up) | o @ None => {
-                                        o_item = o;
-                                        break;
-                                    }
-                                    _ => {}
-                                }
-                            }
-                            n_item = new.next();
-                        }
+                        o_item = old.next();
+                        n_item = new.next();
                     }
                     (
                         DomItem::Text(o_text),
@@ -219,13 +180,13 @@ pub fn diff<'a, Message, I1, I2>(mut old: I1, mut new: I2, storage: &'a mut Stor
                         if o_text == n_text {
                             // copy the node
                             patch_set.push(Patch::CopyText(take_text(web_item)));
-                            state.push(NodeState::Copy);
                         }
                         // text doesn't match, update it
                         else {
                             patch_set.push(Patch::ReplaceText { take: take_text(web_item) , text: n_text });
-                            state.push(NodeState::Copy);
                         }
+                        o_state.push(NodeState::Copy);
+
                         o_item = old.next();
                         n_item = new.next();
                     }
@@ -233,13 +194,13 @@ pub fn diff<'a, Message, I1, I2>(mut old: I1, mut new: I2, storage: &'a mut Stor
                         DomItem::Attr { name: o_name, value: o_value },
                         DomItem::Attr { name: n_name, value: n_value }
                     ) => { // compare attributes
-                        if state.is_create() {
+                        if n_state.is_create() {
                             // add attribute
                             patch_set.push(Patch::SetAttribute { name: n_name, value: n_value });
                         }
                         // names are different
                         else if o_name != n_name {
-                            if state.is_copy() {
+                            if o_state.is_copy() {
                                 // remove old attribute
                                 patch_set.push(Patch::RemoveAttribute(o_name));
                             }
@@ -273,14 +234,14 @@ pub fn diff<'a, Message, I1, I2>(mut old: I1, mut new: I2, storage: &'a mut Stor
                         let web_item = sto.next().expect("dom storage to match dom iter");
 
                         if o_trigger != n_trigger || o_handler != n_handler {
-                            if state.is_copy() {
+                            if o_state.is_copy() {
                                 // remove old listener
                                 patch_set.push(Patch::RemoveListener { trigger: o_trigger, take: take_closure(web_item) });
                             }
                             // add new listener
                             patch_set.push(Patch::AddListener { trigger: n_trigger, handler: n_handler.into() });
                         }
-                        else if state.is_create() {
+                        else if n_state.is_create() {
                             // add listener
                             patch_set.push(Patch::AddListener { trigger: n_trigger, handler: n_handler.into() });
                         }
@@ -291,90 +252,222 @@ pub fn diff<'a, Message, I1, I2>(mut old: I1, mut new: I2, storage: &'a mut Stor
                         o_item = old.next();
                         n_item = new.next();
                     }
-                    (o @ DomItem::Up, n @ DomItem::Up) => { // end of two items
-                        // don't advance old if we are iterating through new's children
-                        if !state.is_new_child() {
-                            o_item = old.next();
-                        }
-                        else {
-                            o_item = Some(o);
-                        }
-                        // don't advance new if we are iterating through old's children
-                        if !state.is_old_child() {
-                            patch_set.push(Patch::Up);
-                            n_item = new.next();
-                        }
-                        else {
-                            n_item = Some(n);
+                    (DomItem::Up, DomItem::Up) => { // end of two items
+                        patch_set.push(Patch::Up);
+
+                        if o_state.is_copy() {
+                            o_state.pop();
                         }
 
-                        state.pop();
-                    }
-                    // add a new child node
-                    (o, DomItem::Element(element)) => {
-                        patch_set.push(Patch::CreateElement { element });
-                        state.push(NodeState::NewChild);
-                        o_item = Some(o);
-                        n_item = new.next();
-                    }
-                    // add a new text node
-                    (o, DomItem::Text(text)) => {
-                        patch_set.push(Patch::CreateText { text });
-                        state.push(NodeState::NewChild);
-                        o_item = Some(o);
-                        n_item = new.next();
-                    }
-                    // add attribute to new node
-                    (o, DomItem::Attr { name, value }) => {
-                        patch_set.push(Patch::SetAttribute { name, value });
-                        o_item = Some(o);
-                        n_item = new.next();
-                    }
-                    // add event to new node
-                    (o, DomItem::Event { trigger, handler }) => {
-                        patch_set.push(Patch::AddListener { trigger, handler: handler.into() });
-                        o_item = Some(o);
-                        n_item = new.next();
-                    }
-                    // remove the old node if present
-                    (DomItem::Element(_), n) => {
-                        let web_item = sto.next().expect("dom storage to match dom iter");
+                        if n_state.is_create() {
+                            n_state.pop();
+                        }
 
-                        if !state.is_child() {
-                            patch_set.push(Patch::RemoveElement(take_element(web_item)));
-                        }
-                        state.push(NodeState::OldChild);
                         o_item = old.next();
-                        n_item = Some(n);
+                        n_item = new.next();
                     }
-                    // remove the old text if present
-                    (DomItem::Text(_), n) => {
-                        let web_item = sto.next().expect("dom storage to match dom iter");
+                    (o, n) => { // no match
+                        // remove the old item
+                        match o {
+                            DomItem::Up => { // end of old item
+                                o_item = Some(o);
+                            }
+                            // remove the old node if present
+                            DomItem::Element(_) => {
+                                let web_item = sto.next().expect("dom storage to match dom iter");
 
-                        if !state.is_child() {
-                            patch_set.push(Patch::RemoveText(take_text(web_item)));
-                        }
-                        state.push(NodeState::OldChild);
-                        o_item = old.next();
-                        n_item = Some(n);
-                    }
-                    // remove attribute from old node
-                    (DomItem::Attr { name, value: _ }, n) => {
-                        if state.is_copy() {
-                            patch_set.push(Patch::RemoveAttribute(name));
-                        }
-                        o_item = old.next();
-                        n_item = Some(n);
-                    }
-                    // remove event from old node
-                    (DomItem::Event { trigger, .. }, n) => {
-                        let web_item = sto.next().expect("dom storage to match dom iter");
+                                patch_set.push(Patch::RemoveElement(take_element(web_item)));
 
-                        if state.is_copy() {
-                            patch_set.push(Patch::RemoveListener { trigger, take: take_closure(web_item) });
+                                // skip the rest of the items in the old tree for this element, this
+                                // will cause attributes and such to be created on the new element
+                                let mut depth = 0;
+                                loop {
+                                    match old.next() {
+                                        // child element: remove from storage, track sub-tree depth
+                                        Some(DomItem::Element(_)) => {
+                                            let _ = sto.next().expect("dom storage to match dom iter");
+                                            depth += 1;
+                                        }
+                                        // child text: remove from storage, track sub-tree depth
+                                        Some(DomItem::Text(_)) => {
+                                            let _ = sto.next().expect("dom storage to match dom iter");
+                                            depth += 1;
+                                        }
+                                        // end of child: track sub-tree depth
+                                        Some(DomItem::Up) if depth > 0 => {
+                                            depth -= 1;
+                                        }
+                                        // event: remove from storage
+                                        Some(DomItem::Event { .. }) => {
+                                            let _ = sto.next().expect("dom storage to match dom iter");
+                                        }
+                                        // attribute: ignore
+                                        Some(DomItem::Attr { .. }) => { }
+                                        // end of node: stop processing
+                                        Some(DomItem::Up) => {
+                                            o_item = old.next();
+                                            break;
+                                        }
+                                        o @ None => {
+                                            o_item = o;
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+                            // remove the old text if present
+                            DomItem::Text(_) => {
+                                let web_item = sto.next().expect("dom storage to match dom iter");
+
+                                patch_set.push(Patch::RemoveText(take_text(web_item)));
+
+                                // skip the rest of the items in the old tree for this element, this
+                                // will cause attributes and such to be created on the new element
+                                let mut depth = 0;
+                                loop {
+                                    match old.next() {
+                                        // child element: remove from storage, track sub-tree depth
+                                        Some(DomItem::Element(_)) => {
+                                            let _ = sto.next().expect("dom storage to match dom iter");
+                                            depth += 1;
+                                        }
+                                        // child text: remove from storage, track sub-tree depth
+                                        Some(DomItem::Text(_)) => {
+                                            let _ = sto.next().expect("dom storage to match dom iter");
+                                            depth += 1;
+                                        }
+                                        // end of child: track sub-tree depth
+                                        Some(DomItem::Up) if depth > 0 => {
+                                            depth -= 1;
+                                        }
+                                        // event: remove from storage
+                                        Some(DomItem::Event { .. }) => {
+                                            let _ = sto.next().expect("dom storage to match dom iter");
+                                        }
+                                        // attribute: ignore
+                                        Some(DomItem::Attr { .. }) => { }
+                                        // end of node: stop processing
+                                        Some(DomItem::Up) => {
+                                            o_item = old.next();
+                                            break;
+                                        }
+                                        o @ None => {
+                                            o_item = o;
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+                            // remove attribute from old node
+                            DomItem::Attr { name, value: _ } => {
+                                if o_state.is_copy() {
+                                    patch_set.push(Patch::RemoveAttribute(name));
+                                }
+                                o_item = old.next();
+                            }
+                            // remove event from old node
+                            DomItem::Event { trigger, .. } => {
+                                let web_item = sto.next().expect("dom storage to match dom iter");
+
+                                if o_state.is_copy() {
+                                    patch_set.push(Patch::RemoveListener { trigger, take: take_closure(web_item) });
+                                }
+                                o_item = old.next();
+                            }
                         }
-                        o_item = old.next();
-                        n_item = Some(n);
+
+                        // add the new item
+                        match n {
+                            DomItem::Up => { // end of new item
+                                n_item = Some(n);
+                            }
+                            // add a new child node
+                            DomItem::Element(element) => {
+                                patch_set.push(Patch::CreateElement { element });
+
+                                // add this entire element tree
+                                let mut depth = 0;
+                                loop {
+                                    match new.next() {
+                                        Some(DomItem::Element(element)) => {
+                                            patch_set.push(Patch::CreateElement { element });
+                                            depth += 1;
+                                        }
+                                        Some(DomItem::Text(text)) => {
+                                            patch_set.push(Patch::CreateText { text });
+                                            depth += 1;
+                                        }
+                                        Some(DomItem::Up) if depth > 0 => {
+                                            patch_set.push(Patch::Up);
+                                            depth -= 1;
+                                        }
+                                        Some(DomItem::Event { trigger, handler }) => {
+                                            patch_set.push(Patch::AddListener { trigger, handler: handler.into() });
+                                        }
+                                        Some(DomItem::Attr { name, value }) => {
+                                            patch_set.push(Patch::SetAttribute { name, value });
+                                        }
+                                        Some(DomItem::Up) => {
+                                            patch_set.push(Patch::Up);
+                                            n_item = new.next();
+                                            break;
+                                        }
+                                        n @ None => {
+                                            n_item = n;
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+                            // add a new text node
+                            DomItem::Text(text) => {
+                                patch_set.push(Patch::CreateText { text });
+
+                                // add this entire element tree
+                                let mut depth = 0;
+                                loop {
+                                    match new.next() {
+                                        Some(DomItem::Element(element)) => {
+                                            patch_set.push(Patch::CreateElement { element });
+                                            depth += 1;
+                                        }
+                                        Some(DomItem::Text(text)) => {
+                                            patch_set.push(Patch::CreateText { text });
+                                            depth += 1;
+                                        }
+                                        Some(DomItem::Up) if depth > 0 => {
+                                            patch_set.push(Patch::Up);
+                                            depth -= 1;
+                                        }
+                                        Some(DomItem::Event { trigger, handler }) => {
+                                            patch_set.push(Patch::AddListener { trigger, handler: handler.into() });
+                                        }
+                                        Some(DomItem::Attr { name, value }) => {
+                                            patch_set.push(Patch::SetAttribute { name, value });
+                                        }
+                                        Some(DomItem::Up) => {
+                                            patch_set.push(Patch::Up);
+                                            n_item = new.next();
+                                            break;
+                                        }
+                                        n @ None => {
+                                            n_item = n;
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+                            // add attribute to new node
+                            DomItem::Attr { name, value } => {
+                                patch_set.push(Patch::SetAttribute { name, value });
+                                n_item = new.next();
+                            }
+                            // add event to new node
+                            DomItem::Event { trigger, handler } => {
+                                patch_set.push(Patch::AddListener { trigger, handler: handler.into() });
+                                n_item = new.next();
+                            }
+                        }
                     }
                 }
             }
