@@ -8,6 +8,7 @@ use euca::vdom::Storage;
 use euca::vdom::DomItem;
 use euca::vdom::DomIter;
 use euca::dom::Dom;
+use euca::dom::DomVec;
 use euca::patch::Patch;
 use euca::patch::PatchSet;
 use euca::app::Dispatch;
@@ -21,6 +22,12 @@ fn e(name: &str) -> web_sys::Element {
     web_sys::window().expect("expected window")
         .document().expect("expected document")
         .create_element(name).expect("expected element")
+}
+
+fn t(text: &str) -> web_sys::Text {
+    web_sys::window().expect("expected window")
+        .document().expect("expected document")
+        .create_text_node(text)
 }
 
 fn gen_storage<'a, Message, Iter>(iter: Iter) -> Storage where
@@ -254,6 +261,32 @@ fn to_empty() {
 }
 
 #[wasm_bindgen_test]
+fn to_empty_vec() {
+    let old: DomVec<_> = vec![
+        Dom::elem("b")
+            .attr("class", "item")
+            .attr("id", "id1")
+            .event("onclick", Msg {}),
+        Dom::elem("i")
+            .attr("class", "item")
+            .attr("id", "id2")
+            .event("onclick", Msg {}),
+    ].into();
+
+    let mut storage = gen_storage(old.dom_iter());
+    let o = old.dom_iter();
+    let patch_set = diff::diff(o, iter::empty(), &mut storage);
+
+    compare!(
+        patch_set,
+        [
+            Patch::RemoveElement(Box::new(|| e("b"))),
+            Patch::RemoveElement(Box::new(|| e("i"))),
+        ]
+    );
+}
+
+#[wasm_bindgen_test]
 fn no_difference() {
     let old = Dom::elem("div");
     let new = Dom::elem("div");
@@ -360,6 +393,118 @@ fn old_child_nodes_with_element() {
             Patch::CopyElement(Box::new(|| e("div"))),
             Patch::RemoveElement(Box::new(|| e("b"))),
             Patch::RemoveElement(Box::new(|| e("i"))),
+            Patch::Up,
+        ]
+    );
+}
+
+#[wasm_bindgen_test]
+fn old_child_nodes_with_element_and_child() {
+    let old = Dom::elem("div")
+        .push(Dom::elem("b")
+            .attr("class", "item")
+            .attr("id", "id")
+            .event("onclick", Msg {})
+        )
+        .push(Dom::elem("i")
+            .attr("class", "item")
+            .attr("id", "id")
+            .event("onclick", Msg {})
+        )
+    ;
+
+    let new = Dom::elem("div")
+        .push(Dom::elem("i"))
+    ;
+
+    let mut storage = gen_storage(old.dom_iter());
+    let o = old.dom_iter();
+    let n = new.dom_iter();
+    let patch_set = diff::diff(o, n, &mut storage);
+
+    compare!(
+        patch_set,
+        [
+            Patch::CopyElement(Box::new(|| e("div"))),
+            Patch::RemoveElement(Box::new(|| e("b"))),
+            Patch::CreateElement { element: "i".into() },
+            Patch::Up,
+            Patch::RemoveElement(Box::new(|| e("i"))),
+            Patch::Up,
+        ]
+    );
+}
+
+#[wasm_bindgen_test]
+fn assorted_child_nodes() {
+    let old = Dom::elem("div")
+        .push(Dom::elem("h1")
+            .attr("id", "id")
+            .event("onclick", Msg {})
+            .push(Dom::text("h1"))
+        )
+        .push(Dom::elem("p")
+            .attr("class", "item")
+            .push(Dom::text("paragraph1"))
+        )
+        .push(Dom::elem("p")
+            .attr("class", "item")
+            .push(Dom::text("paragraph2"))
+        )
+        .push(Dom::elem("p")
+            .attr("class", "item")
+            .attr("style", "")
+            .push(Dom::text("paragraph3"))
+        )
+    ;
+
+    let new = Dom::elem("div")
+        .push(Dom::elem("h1")
+            .attr("id", "id")
+            .event("onclick", Msg {})
+            .push(Dom::text("header"))
+        )
+        .push(Dom::elem("p")
+            .attr("class", "item")
+            .push(Dom::elem("b").push("bold"))
+            .push(Dom::text("paragraph1"))
+        )
+        .push(Dom::elem("button")
+            .event("click", Msg {})
+            .push(Dom::text("submit"))
+        )
+    ;
+
+    let mut storage = gen_storage(old.dom_iter());
+    let o = old.dom_iter();
+    let n = new.dom_iter();
+    let patch_set = diff::diff(o, n, &mut storage);
+
+    compare!(
+        patch_set,
+        [
+            Patch::CopyElement(Box::new(|| e("div"))),
+            Patch::CopyElement(Box::new(|| e("h1"))),
+            Patch::CopyListener(Box::new(|| Closure::wrap(Box::new(|_|{}) as Box<FnMut(web_sys::Event)>))),
+            Patch::ReplaceText { take: Box::new(|| t("h1")), text: "header" },
+            Patch::Up,
+            Patch::Up,
+            Patch::CopyElement(Box::new(|| e("p"))),
+            Patch::RemoveText(Box::new(|| t("paragraph1"))),
+            Patch::CreateElement { element: "b".into() },
+            Patch::CreateText { text: "bold" },
+            Patch::Up,
+            Patch::Up,
+            Patch::CreateText { text: "paragraph1" },
+            Patch::Up,
+            Patch::Up,
+            Patch::RemoveElement(Box::new(|| e("p"))),
+            Patch::CreateElement { element: "button".into() },
+            Patch::AddListener { trigger: "click", handler: euca::vdom::EventHandler::Msg(&Msg {}) },
+            Patch::CreateText { text: "submit" },
+            Patch::Up,
+            Patch::Up,
+            Patch::RemoveElement(Box::new(|| e("p"))),
             Patch::Up,
         ]
     );
@@ -542,4 +687,44 @@ fn listener_copy() {
     }
 
     assert_eq!(app.borrow().0, 2);
+}
+
+#[wasm_bindgen_test]
+fn replace_element_with_text() {
+    let old = Dom::elem("div");
+    let new = Dom::text("div");
+
+    let mut storage = gen_storage(old.dom_iter());
+    let o = old.dom_iter();
+    let n = new.dom_iter();
+    let patch_set = diff::diff(o, n, &mut storage);
+
+    compare!(
+        patch_set,
+        [
+            Patch::RemoveElement(Box::new(|| e("div"))),
+            Patch::CreateText { text: "div".into() },
+            Patch::Up,
+        ]
+    );
+}
+
+#[wasm_bindgen_test]
+fn replace_text_with_element() {
+    let old = Dom::text("div");
+    let new = Dom::elem("div");
+
+    let mut storage = gen_storage(old.dom_iter());
+    let o = old.dom_iter();
+    let n = new.dom_iter();
+    let patch_set = diff::diff(o, n, &mut storage);
+
+    compare!(
+        patch_set,
+        [
+            Patch::RemoveText(Box::new(|| t("div"))),
+            Patch::CreateElement { element: "div".into() },
+            Patch::Up,
+        ]
+    );
 }
