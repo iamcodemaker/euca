@@ -13,6 +13,10 @@ pub enum Handler<Message> {
     Msg(Message),
     /// A function that will convert a String from an input element into a Message.
     InputValue(fn(String) -> Message),
+    /// A function that will convert a [`web_sys::InputEvent`] event to a Message.
+    ///
+    /// [`web_sys::InputEvent`]: https://rustwasm.github.io/wasm-bindgen/api/web_sys/struct.InputEvent.html
+    InputEvent(fn(web_sys::InputEvent) -> Message),
 }
 
 /// A DOM event.
@@ -141,6 +145,11 @@ impl<Message> Dom<Message> {
         self.on("change", Handler::InputValue(handler))
     }
 
+    /// Add an input event listener to this DOM element.
+    pub fn oninput(self, handler: fn(web_sys::InputEvent) -> Message) -> Self {
+        self.on("input", Handler::InputEvent(handler))
+    }
+
     /// Append the given element as a child on this DOM element.
     pub fn push(mut self, child: impl Into<Dom<Message>>) -> Self {
         self.children.push(child.into());
@@ -187,6 +196,7 @@ impl<Message: Clone> DomIter<Message> for Dom<Message> {
                          handler: match handler {
                              Handler::Msg(m) => EventHandler::Msg(m),
                              Handler::InputValue(h) => EventHandler::InputValue(*h),
+                             Handler::InputEvent(h) => EventHandler::InputEvent(*h),
                          },
                      }
                  )

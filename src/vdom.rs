@@ -27,6 +27,11 @@ pub enum EventHandler<'a, Message> {
 
     /// This callback will recieve the value of a form input and convert it to a message.
     InputValue(fn(String) -> Message),
+
+    /// A function that will convert a [`web_sys::InputEvent`] event to a Message.
+    ///
+    /// [`web_sys::InputEvent`]: https://rustwasm.github.io/wasm-bindgen/api/web_sys/struct.InputEvent.html
+    InputEvent(fn(web_sys::InputEvent) -> Message),
 }
 
 /// A DOM node or JS closure created when applying a patch.
