@@ -11,6 +11,8 @@ use crate::vdom::*;
 pub enum Handler<Message> {
     /// The message that will result from the event this handler is attached to.
     Msg(Message),
+    /// A function that will convert a String from an input element into a Message.
+    InputValue(fn(String) -> Message),
 }
 
 /// A DOM event.
@@ -134,6 +136,11 @@ impl<Message> Dom<Message> {
         self
     }
 
+    /// Add a change event listener to this DOM element.
+    pub fn onchange(self, handler: fn(String) -> Message) -> Self {
+        self.on("change", Handler::InputValue(handler))
+    }
+
     /// Append the given element as a child on this DOM element.
     pub fn push(mut self, child: impl Into<Dom<Message>>) -> Self {
         self.children.push(child.into());
@@ -179,6 +186,7 @@ impl<Message: Clone> DomIter<Message> for Dom<Message> {
                          trigger: trigger,
                          handler: match handler {
                              Handler::Msg(m) => EventHandler::Msg(m),
+                             Handler::InputValue(h) => EventHandler::InputValue(*h),
                          },
                      }
                  )
