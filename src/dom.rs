@@ -119,11 +119,16 @@ impl<Message> Dom<Message> {
     }
 
     /// Add an event listener to this DOM element.
-    pub fn event(mut self, trigger: &'static str, msg: Message) -> Self {
+    pub fn event(self, trigger: &'static str, msg: Message) -> Self {
+        self.on(trigger, Handler::Msg(msg))
+    }
+
+    /// Add an event listener to this DOM element.
+    pub fn on(mut self, trigger: &'static str, handler: Handler<Message>) -> Self {
         self.events.push(
             Event {
                 trigger: trigger,
-                handler: Handler::Msg(msg),
+                handler: handler,
             }
         );
         self
