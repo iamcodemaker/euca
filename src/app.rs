@@ -40,7 +40,7 @@ impl<Message> Command<Message> {
 }
 
 /// A list of side effect producing commands.
-type Commands<Message> = Vec<Command<Message>>;
+pub type Commands<Message> = Vec<Command<Message>>;
 
 /// Implemented on a model, used to process a message that updates the model.
 pub trait Update<Message> {
