@@ -51,7 +51,7 @@ fn gen_storage<'a, Message, Iter>(iter: Iter) -> Storage where
                 ),
                 DomItem::Event { .. } => WebItem::Closure(
                     Closure::wrap(
-                        Box::new(|_|()) as Box<FnMut(web_sys::Event)>
+                        Box::new(|_|()) as Box<dyn FnMut(web_sys::Event)>
                     )
                 ),
                 DomItem::Attr { .. } | DomItem::Up => {
@@ -485,7 +485,7 @@ fn assorted_child_nodes() {
         [
             Patch::CopyElement(Box::new(|| e("div"))),
             Patch::CopyElement(Box::new(|| e("h1"))),
-            Patch::CopyListener(Box::new(|| Closure::wrap(Box::new(|_|{}) as Box<FnMut(web_sys::Event)>))),
+            Patch::CopyListener(Box::new(|| Closure::wrap(Box::new(|_|{}) as Box<dyn FnMut(web_sys::Event)>))),
             Patch::ReplaceText { take: Box::new(|| t("h1")), text: "header" },
             Patch::Up,
             Patch::Up,

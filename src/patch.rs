@@ -33,20 +33,20 @@ use log::warn;
 /// [`Closure`]: https://rustwasm.github.io/wasm-bindgen/api/wasm_bindgen/closure/struct.Closure.html
 pub enum Patch<'a, Message> {
     /// Remove an element.
-    RemoveElement(Box<FnMut() -> web_sys::Element + 'a>),
+    RemoveElement(Box<dyn FnMut() -> web_sys::Element + 'a>),
     /// Create an element of the given type.
     CreateElement {
         /// The name/type of element that will be created.
         element: &'a str,
     },
     /// Copy and element from the old dom tree to the new dom tree.
-    CopyElement(Box<FnMut() -> web_sys::Element + 'a>),
+    CopyElement(Box<dyn FnMut() -> web_sys::Element + 'a>),
     /// Remove a text element.
-    RemoveText(Box<FnMut() -> web_sys::Text + 'a>),
+    RemoveText(Box<dyn FnMut() -> web_sys::Text + 'a>),
     /// Replace the value of a text element.
     ReplaceText {
         /// Called once to take an existing text node from the old virtual dom.
-        take: Box<FnMut() -> web_sys::Text + 'a>,
+        take: Box<dyn FnMut() -> web_sys::Text + 'a>,
         /// The replacement text for the existing text node.
         text: &'a str,
     },
@@ -56,7 +56,7 @@ pub enum Patch<'a, Message> {
         text: &'a str,
     },
     /// Copy the reference we have to the text element to the new dom.
-    CopyText(Box<FnMut() -> web_sys::Text + 'a>),
+    CopyText(Box<dyn FnMut() -> web_sys::Text + 'a>),
     /// Set an attribute.
     SetAttribute {
         /// The name of the attribute to set.
@@ -74,13 +74,13 @@ pub enum Patch<'a, Message> {
         handler: EventHandler<'a, Message>,
     },
     /// Copy an event listener from the old dom tree to the new dom tree.
-    CopyListener(Box<FnMut() -> Closure<FnMut(web_sys::Event)> + 'a>),
+    CopyListener(Box<dyn FnMut() -> Closure<dyn FnMut(web_sys::Event)> + 'a>),
     /// Remove an event listener.
     RemoveListener {
         /// The trigger for the event to remove.
         trigger: &'a str,
         /// Called once to take an existing closure from the old virtual dom.
-        take: Box<FnMut() -> Closure<FnMut(web_sys::Event)> + 'a>,
+        take: Box<dyn FnMut() -> Closure<dyn FnMut(web_sys::Event)> + 'a>,
     },
     /// This marks the end of operations on the last node.
     Up,
@@ -430,14 +430,14 @@ impl<'a, Message> PatchSet<'a, Message> {
                             Closure::wrap(
                                 Box::new(move |_| {
                                     D::dispatch(app.clone(), msg.clone())
-                                }) as Box<FnMut(web_sys::Event)>
+                                }) as Box<dyn FnMut(web_sys::Event)>
                             )
                         }
                         EventHandler::Fn(fun) => {
                             Closure::wrap(
                                 Box::new(move |event| {
                                     D::dispatch(app.clone(), fun(event))
-                                }) as Box<FnMut(web_sys::Event)>
+                                }) as Box<dyn FnMut(web_sys::Event)>
                             )
                         }
                         EventHandler::InputValue(fun) => {
@@ -461,7 +461,7 @@ impl<'a, Message> PatchSet<'a, Message> {
                                         }
                                     };
                                     D::dispatch(app.clone(), fun(value))
-                                }) as Box<FnMut(web_sys::Event)>
+                                }) as Box<dyn FnMut(web_sys::Event)>
                             )
                         }
                         EventHandler::InputEvent(fun) => {
@@ -473,7 +473,7 @@ impl<'a, Message> PatchSet<'a, Message> {
                                     else {
                                         warn!("InputEvent handler called for type other than InputEvent, ignoring");
                                     }
-                                }) as Box<FnMut(web_sys::Event)>
+                                }) as Box<dyn FnMut(web_sys::Event)>
                             )
                         }
                     };

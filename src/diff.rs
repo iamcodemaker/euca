@@ -9,7 +9,7 @@ use crate::vdom::DomItem;
 use crate::vdom::Storage;
 use crate::vdom::WebItem;
 
-fn take_element<'a>(item: &'a mut WebItem) -> Box<FnMut() -> web_sys::Element + 'a> {
+fn take_element<'a>(item: &'a mut WebItem) -> Box<dyn FnMut() -> web_sys::Element + 'a> {
     Box::new(move || {
         let mut taken_item = WebItem::Taken;
         mem::swap(item, &mut taken_item);
@@ -20,7 +20,7 @@ fn take_element<'a>(item: &'a mut WebItem) -> Box<FnMut() -> web_sys::Element + 
     })
 }
 
-fn take_text<'a>(item: &'a mut WebItem) -> Box<FnMut() -> web_sys::Text + 'a> {
+fn take_text<'a>(item: &'a mut WebItem) -> Box<dyn FnMut() -> web_sys::Text + 'a> {
     Box::new(move || {
         let mut taken_item = WebItem::Taken;
         mem::swap(item, &mut taken_item);
@@ -31,7 +31,7 @@ fn take_text<'a>(item: &'a mut WebItem) -> Box<FnMut() -> web_sys::Text + 'a> {
     })
 }
 
-fn take_closure<'a>(item: &'a mut WebItem) -> Box<FnMut() -> Closure<FnMut(web_sys::Event)> + 'a> {
+fn take_closure<'a>(item: &'a mut WebItem) -> Box<dyn FnMut() -> Closure<dyn FnMut(web_sys::Event)> + 'a> {
     Box::new(move || {
         let mut taken_item = WebItem::Taken;
         mem::swap(item, &mut taken_item);

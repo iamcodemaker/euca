@@ -176,7 +176,7 @@ impl<Message> Into<Dom<Message>> for &str {
 }
 
 impl<Message: Clone> DomIter<Message> for Dom<Message> {
-    fn dom_iter<'a>(&'a self) -> Box<Iterator<Item = DomItem<'a, Message>> + 'a>
+    fn dom_iter<'a>(&'a self) -> Box<dyn Iterator<Item = DomItem<'a, Message>> + 'a>
     {
         let iter = iter::once(&self.element)
             .map(|node| match node {
@@ -220,7 +220,7 @@ pub struct DomVec<Message>(Vec<Dom<Message>>);
 impl<Message> DomIter<Message> for DomVec<Message> where
     Message: Clone + PartialEq,
 {
-    fn dom_iter<'a>(&'a self) -> Box<Iterator<Item = DomItem<'a, Message>> + 'a> {
+    fn dom_iter<'a>(&'a self) -> Box<dyn Iterator<Item = DomItem<'a, Message>> + 'a> {
         Box::new(self.0.iter().flat_map(|i| i.dom_iter()))
     }
 }

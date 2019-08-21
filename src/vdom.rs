@@ -41,7 +41,7 @@ pub enum WebItem {
     /// A DOM text node.
     Text(web_sys::Text),
     /// A JS closure.
-    Closure(Closure<FnMut(web_sys::Event)>),
+    Closure(Closure<dyn FnMut(web_sys::Event)>),
     /// A previously occupied, now empty storage entry.
     Taken,
 }
@@ -98,5 +98,5 @@ pub enum DomItem<'a, Message> {
 /// This trait provides a way to iterate over a virtual dom representation.
 pub trait DomIter<Message: Clone> {
     /// Return an iterator over the virtual dom.
-    fn dom_iter<'a>(&'a self) -> Box<Iterator<Item = DomItem<'a, Message>> + 'a>;
+    fn dom_iter<'a>(&'a self) -> Box<dyn Iterator<Item = DomItem<'a, Message>> + 'a>;
 }

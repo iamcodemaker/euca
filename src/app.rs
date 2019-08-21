@@ -21,12 +21,12 @@ use crate::vdom::Storage;
 #[derive(PartialEq)]
 pub struct Command<Message> {
     msg: Message,
-    cmd: fn(Message, Rc<RefCell<Dispatch<Message>>>),
+    cmd: fn(Message, Rc<RefCell<dyn Dispatch<Message>>>),
 }
 
 impl<Message> Command<Message> {
     /// Create a new command.
-    pub fn new(msg: Message, cmd: fn(Message, Rc<RefCell<Dispatch<Message>>>)) -> Self {
+    pub fn new(msg: Message, cmd: fn(Message, Rc<RefCell<dyn Dispatch<Message>>>)) -> Self {
         Command {
             msg: msg,
             cmd: cmd,
@@ -34,7 +34,7 @@ impl<Message> Command<Message> {
     }
 
     /// Execute this command.
-    pub fn exec(self, app: Rc<RefCell<Dispatch<Message>>>) {
+    pub fn exec(self, app: Rc<RefCell<dyn Dispatch<Message>>>) {
         (self.cmd)(self.msg, app);
     }
 }
