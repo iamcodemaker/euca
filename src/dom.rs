@@ -11,6 +11,10 @@ use crate::vdom::*;
 pub enum Handler<Message> {
     /// The message that will result from the event this handler is attached to.
     Msg(Message),
+    /// A function that will convert a [`web_sys::Event`] event to a Message.
+    ///
+    /// [`web_sys::Event`]: https://rustwasm.github.io/wasm-bindgen/api/web_sys/struct.Event.html
+    Event(fn(web_sys::Event) -> Message),
     /// A function that will convert a String from an input element into a Message.
     InputValue(fn(String) -> Message),
     /// A function that will convert a [`web_sys::InputEvent`] event to a Message.
@@ -195,6 +199,7 @@ impl<Message: Clone> DomIter<Message> for Dom<Message> {
                          trigger: trigger,
                          handler: match handler {
                              Handler::Msg(m) => EventHandler::Msg(m),
+                             Handler::Event(h) => EventHandler::Fn(*h),
                              Handler::InputValue(h) => EventHandler::InputValue(*h),
                              Handler::InputEvent(h) => EventHandler::InputEvent(*h),
                          },
