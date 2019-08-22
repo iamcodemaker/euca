@@ -112,7 +112,9 @@ impl<Model, DomTree> App<Model, DomTree> {
     ///
     /// The app will be attached at the given parent node and initialized with the given model.
     /// Event handlers will be registered as necessary.
-    pub fn attach<Message>(parent: web_sys::Element, model: Model) where
+    pub fn attach<Message>(parent: web_sys::Element, model: Model)
+    -> Rc<RefCell<dyn Dispatch<Message>>>
+    where
         Model: Update<Message> + Render<DomTree> + 'static,
         DomTree: DomIter<Message> + 'static,
         Message: fmt::Debug + Clone + PartialEq + 'static,
@@ -143,6 +145,8 @@ impl<Model, DomTree> App<Model, DomTree> {
         let n = dom.dom_iter();
         let patch_set = diff::diff(iter::empty(), n, storage);
         app.storage = patch_set.apply(parent, app_rc.clone());
+
+        app_rc.clone()
     }
 
     /// Detach the app from the dom.
