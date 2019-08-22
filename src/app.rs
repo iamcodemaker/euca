@@ -108,7 +108,7 @@ impl<Message, Model, DomTree> Dispatch<Message> for App<Model, DomTree> where
 }
 
 impl<Model, DomTree> App<Model, DomTree> {
-    /// Attach this app to the dom.
+    /// Attach an app to the dom.
     ///
     /// The app will be attached at the given parent node and initialized with the given model.
     /// Event handlers will be registered as necessary.
