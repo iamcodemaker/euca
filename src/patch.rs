@@ -467,12 +467,8 @@ impl<'a, Message> PatchSet<'a, Message> {
                         EventHandler::InputEvent(fun) => {
                             Closure::wrap(
                                 Box::new(move |event: web_sys::Event| {
-                                    if let Ok(event) = event.dyn_into::<web_sys::InputEvent>() {
-                                        D::dispatch(app.clone(), fun(event))
-                                    }
-                                    else {
-                                        warn!("InputEvent handler called for type other than InputEvent, ignoring");
-                                    }
+                                    let event = event.dyn_into::<web_sys::InputEvent>().expect_throw("expected web_sys::InputEvent");
+                                    D::dispatch(app.clone(), fun(event))
                                 }) as Box<dyn FnMut(web_sys::Event)>
                             )
                         }
