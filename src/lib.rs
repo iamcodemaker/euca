@@ -8,5 +8,6 @@ pub mod diff;
 pub mod dom;
 pub mod vdom;
 pub mod app;
+pub mod route;
 
 pub use diff::diff;
