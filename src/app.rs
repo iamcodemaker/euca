@@ -67,6 +67,7 @@ pub struct App<Model, DomTree> {
     parent: web_sys::Element,
     model: Model,
     storage: Storage,
+    listeners: Vec<(String, Closure<dyn FnMut(web_sys::Event)>)>,
 }
 
 impl<Message, Model, DomTree> Dispatch<Message> for App<Model, DomTree> where
@@ -81,6 +82,7 @@ impl<Message, Model, DomTree> Dispatch<Message> for App<Model, DomTree> where
             ref mut model,
             ref mut storage,
             ref dom,
+            ..
         } = *app;
 
         // update the model
@@ -130,6 +132,7 @@ impl<Model, DomTree> App<Model, DomTree> {
             parent: parent.clone(),
             model: model,
             storage: vec![],
+            listeners: vec![],
         }));
 
         // render the initial app
@@ -164,8 +167,19 @@ impl<Model, DomTree> App<Model, DomTree> {
             ref parent,
             ref mut storage,
             ref dom,
+            ref mut listeners,
             ..
         } = *app;
+
+        // remove listeners
+        let window = web_sys::window()
+            .expect("couldn't get window handle");
+
+        for (event, listener) in listeners.drain(..) {
+            window
+                .remove_event_listener_with_callback(&event, listener.as_ref().unchecked_ref())
+                .expect("failed to remove event listener");
+        }
 
         // remove the current app from the browser's dom by diffing it with an empty virtual dom.
         let o = dom.dom_iter();
