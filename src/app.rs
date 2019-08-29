@@ -60,6 +60,27 @@ pub trait Dispatch<Message> {
     fn dispatch(app: Rc<RefCell<Self>>, msg: Message) where Self: Sized;
 }
 
+/// Struct used to configure and attach an application to the DOM.
+#[derive(Default)]
+pub struct AppBuilder {}
+
+impl AppBuilder {
+    /// Attach an app to the dom.
+    ///
+    /// The app will be attached at the given parent node and initialized with the given model.
+    /// Event handlers will be registered as necessary.
+    pub fn attach<Message, Model, DomTree>(self, parent: web_sys::Element, model: Model)
+    -> Rc<RefCell<App<Model, DomTree>>>
+    where
+        Model: Update<Message> + Render<DomTree> + 'static,
+        DomTree: DomIter<Message> + 'static,
+        Message: fmt::Debug + Clone + PartialEq + 'static,
+    {
+        // attach the app to the dom
+        App::attach(parent, model)
+    }
+}
+
 /// A wasm application consisting of a model, a virtual dom representation, and the parent element
 /// where this app lives in the dom.
 pub struct App<Model, DomTree> {
@@ -114,7 +135,7 @@ impl<Model, DomTree> App<Model, DomTree> {
     ///
     /// The app will be attached at the given parent node and initialized with the given model.
     /// Event handlers will be registered as necessary.
-    pub fn attach<Message>(parent: web_sys::Element, model: Model)
+    fn attach<Message>(parent: web_sys::Element, model: Model)
     -> Rc<RefCell<App<Model, DomTree>>>
     where
         Model: Update<Message> + Render<DomTree> + 'static,
