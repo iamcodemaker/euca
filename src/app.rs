@@ -113,7 +113,7 @@ impl<Model, DomTree> App<Model, DomTree> {
     /// The app will be attached at the given parent node and initialized with the given model.
     /// Event handlers will be registered as necessary.
     pub fn attach<Message>(parent: web_sys::Element, model: Model)
-    -> Rc<RefCell<dyn Dispatch<Message>>>
+    -> Rc<RefCell<App<Model, DomTree>>>
     where
         Model: Update<Message> + Render<DomTree> + 'static,
         DomTree: DomIter<Message> + 'static,
