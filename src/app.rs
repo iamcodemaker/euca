@@ -48,7 +48,7 @@ pub type Commands<Message> = Vec<Command<Message>>;
 /// Implemented on a model, used to process a message that updates the model.
 pub trait Update<Message> {
     /// Update the model using the given message.
-    fn update(&mut self, msg: Message) -> Commands<Message>;
+    fn update(&mut self, msg: Message, commands: &mut Commands<Message>);
 }
 
 /// Implemented on a model, used to render (or view) the model as a virtual dom.
@@ -120,7 +120,7 @@ impl AppWithRouting {
             .expect("url");
 
         if let Some(msg) = Model::route(&url) {
-            commands.extend(model.update(msg));
+            model.update(msg, &mut commands);
         }
 
         // attach the app to the dom
@@ -189,7 +189,8 @@ impl<Message, Model, DomTree> Dispatch<Message> for App<Model, DomTree> where
         } = *app;
 
         // update the model
-        let commands = model.update(msg);
+        let mut commands = vec![];
+        model.update(msg, &mut commands);
 
         // execute side effects
         for cmd in commands {
