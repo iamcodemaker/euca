@@ -70,11 +70,19 @@ pub struct AppBuilder {}
 impl AppBuilder {
     /// Handle popstate and hashchange events for this app.
     ///
-    /// The model will need to implement the [`Route`] trait.
+    /// The router will need to implement the [`Route`] trait.
     ///
     /// [`Route`]: ../route/trait.Route.html
-    pub fn with_routing(self) -> AppWithRouting {
-        AppWithRouting(self)
+    pub fn router<Message, Router>(self, router: Router)
+    -> AppWithRouting<Message, Router>
+    where
+        Router: Route<Message>
+    {
+        AppWithRouting {
+            builder: self,
+            router: Rc::new(router),
+            message: std::marker::PhantomData,
+        }
     }
 
     /// Attach an app to the dom.
@@ -94,18 +102,21 @@ impl AppBuilder {
 }
 
 /// Struct used to configure and attach an application (with routing support) to the DOM.
-#[derive(Default)]
-pub struct AppWithRouting(AppBuilder);
+pub struct AppWithRouting<Message, Router: Route<Message>> {
+    builder: AppBuilder,
+    router: Rc<Router>,
+    message: std::marker::PhantomData<Message>,
+}
 
-impl AppWithRouting {
+impl<Message, Router: Route<Message> + 'static> AppWithRouting<Message, Router> {
     /// Attach an app to the dom.
     ///
     /// The app will be attached at the given parent node and initialized with the given model.
     /// Event handlers will be registered as necessary.
-    pub fn attach<Message, Model, DomTree>(self, parent: web_sys::Element, mut model: Model)
+    pub fn attach<Model, DomTree>(self, parent: web_sys::Element, mut model: Model)
     -> Rc<RefCell<App<Model, DomTree>>>
     where
-        Model: Update<Message> + Render<DomTree> + Route<Message> + 'static,
+        Model: Update<Message> + Render<DomTree> + 'static,
         DomTree: DomIter<Message> + 'static,
         Message: fmt::Debug + Clone + PartialEq + 'static,
     {
@@ -119,12 +130,12 @@ impl AppWithRouting {
             .url()
             .expect("url");
 
-        if let Some(msg) = Model::route(&url) {
+        if let Some(msg) = self.router.route(&url) {
             model.update(msg, &mut commands);
         }
 
         // attach the app to the dom
-        let app_rc = self.0.attach(parent, model);
+        let app_rc = self.builder.attach(parent, model);
 
         let window = web_sys::window()
             .expect("couldn't get window handle");
@@ -136,12 +147,13 @@ impl AppWithRouting {
         for event in ["popstate", "hashchange"].iter() {
             let app = app_rc.clone();
             let document = document.clone();
+            let router = self.router.clone();
             let closure = Closure::wrap(
                 Box::new(move |_event| {
                     let url = document.url()
                         .expect_throw("couldn't get document url");
 
-                    if let Some(msg) = Model::route(&url) {
+                    if let Some(msg) = router.route(&url) {
                         App::dispatch(app.clone(), msg)
                     }
                 }) as Box<dyn FnMut(web_sys::Event)>
