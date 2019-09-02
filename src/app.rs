@@ -21,7 +21,7 @@ use crate::vdom::Storage;
 use crate::route::Route;
 
 /// A side effect producing command.
-#[derive(PartialEq)]
+#[derive(PartialEq,Debug)]
 pub struct Command<Message> {
     msg: Message,
     cmd: fn(Message, Rc<RefCell<dyn Dispatch<Message>>>),
