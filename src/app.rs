@@ -204,11 +204,6 @@ impl<Message, Model, DomTree> Dispatch<Message> for App<Model, DomTree> where
         let mut commands = vec![];
         model.update(msg, &mut commands);
 
-        // execute side effects
-        for cmd in commands {
-            cmd.exec(app_rc.clone());
-        }
-
         // render a new dom from the updated model
         let new_dom = model.render();
 
@@ -219,6 +214,11 @@ impl<Message, Model, DomTree> Dispatch<Message> for App<Model, DomTree> where
         app.storage = patch_set.apply(parent.clone(), app_rc.clone());
 
         app.dom = new_dom;
+
+        // execute side effects
+        for cmd in commands {
+            cmd.exec(app_rc.clone());
+        }
 
         // TODO: evaluate speedup or lack there of from using patch_set.is_noop() to check if we
         // actually need to apply this patch before applying the patch
