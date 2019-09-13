@@ -19,6 +19,7 @@ use crate::diff;
 use crate::vdom::DomIter;
 use crate::vdom::Storage;
 use crate::route::Route;
+use crate::generic_helpers;
 
 /// A side effect producing command.
 #[derive(PartialEq,Debug)]
@@ -64,51 +65,38 @@ pub trait Dispatch<Message> {
 }
 
 /// Struct used to configure and attach an application to the DOM.
-#[derive(Default)]
-pub struct AppBuilder {}
+pub struct AppBuilder<Message, Router: Route<Message>> {
+    router: Option<Rc<Router>>,
+    message: std::marker::PhantomData<Message>,
+}
 
-impl AppBuilder {
+impl<Message> Default for AppBuilder<Message, generic_helpers::Router<Message>> {
+    fn default() -> Self {
+        AppBuilder {
+            router: None,
+            message: std::marker::PhantomData,
+        }
+    }
+}
+
+impl<Message, Router: Route<Message> + 'static> AppBuilder<Message, Router> {
     /// Handle popstate and hashchange events for this app.
     ///
     /// The router will need to implement the [`Route`] trait.
     ///
     /// [`Route`]: ../route/trait.Route.html
-    pub fn router<Message, Router>(self, router: Router)
-    -> AppWithRouting<Message, Router>
-    where
-        Router: Route<Message>
-    {
-        AppWithRouting {
-            builder: self,
-            router: Rc::new(router),
-            message: std::marker::PhantomData,
+    pub fn router<R: Route<Message>>(self, router: R) -> AppBuilder<Message, R> {
+        let AppBuilder {
+            message,
+            ..
+        } = self;
+
+        AppBuilder {
+            message: message,
+            router: Some(Rc::new(router)),
         }
     }
 
-    /// Attach an app to the dom.
-    ///
-    /// The app will be attached at the given parent node and initialized with the given model.
-    /// Event handlers will be registered as necessary.
-    pub fn attach<Message, Model, DomTree>(self, parent: web_sys::Element, model: Model)
-    -> Rc<RefCell<App<Model, DomTree>>>
-    where
-        Model: Update<Message> + Render<DomTree> + 'static,
-        DomTree: DomIter<Message> + 'static,
-        Message: fmt::Debug + Clone + PartialEq + 'static,
-    {
-        // attach the app to the dom
-        App::attach(parent, model)
-    }
-}
-
-/// Struct used to configure and attach an application (with routing support) to the DOM.
-pub struct AppWithRouting<Message, Router: Route<Message>> {
-    builder: AppBuilder,
-    router: Rc<Router>,
-    message: std::marker::PhantomData<Message>,
-}
-
-impl<Message, Router: Route<Message> + 'static> AppWithRouting<Message, Router> {
     /// Attach an app to the dom.
     ///
     /// The app will be attached at the given parent node and initialized with the given model.
@@ -122,53 +110,57 @@ impl<Message, Router: Route<Message> + 'static> AppWithRouting<Message, Router> 
     {
         let mut commands = vec![];
 
-        // initialize the model with the initial URL
-        let url = web_sys::window()
-            .expect("window")
-            .document()
-            .expect("document")
-            .url()
-            .expect("url");
+        if let Some(ref router) = self.router {
+            // initialize the model with the initial URL
+            let url = web_sys::window()
+                .expect("window")
+                .document()
+                .expect("document")
+                .url()
+                .expect("url");
 
-        if let Some(msg) = self.router.route(&url) {
-            model.update(msg, &mut commands);
+            if let Some(msg) = router.route(&url) {
+                model.update(msg, &mut commands);
+            }
         }
 
         // attach the app to the dom
-        let app_rc = self.builder.attach(parent, model);
+        let app_rc = App::attach(parent, model);
 
-        let window = web_sys::window()
-            .expect("couldn't get window handle");
+        if let Some(ref router) = self.router {
+            let window = web_sys::window()
+                .expect("couldn't get window handle");
 
-        let document = window.document()
-            .expect("couldn't get document handle");
+            let document = window.document()
+                .expect("couldn't get document handle");
 
-        // register event handlers
-        for event in ["popstate", "hashchange"].iter() {
-            let app = app_rc.clone();
-            let document = document.clone();
-            let router = self.router.clone();
-            let closure = Closure::wrap(
-                Box::new(move |_event| {
-                    let url = document.url()
-                        .expect_throw("couldn't get document url");
+            // register event handlers
+            for event in ["popstate", "hashchange"].iter() {
+                let app = app_rc.clone();
+                let document = document.clone();
+                let router = router.clone();
+                let closure = Closure::wrap(
+                    Box::new(move |_event| {
+                        let url = document.url()
+                            .expect_throw("couldn't get document url");
 
-                    if let Some(msg) = router.route(&url) {
-                        App::dispatch(app.clone(), msg)
-                    }
-                }) as Box<dyn FnMut(web_sys::Event)>
-            );
+                        if let Some(msg) = router.route(&url) {
+                            App::dispatch(app.clone(), msg)
+                        }
+                    }) as Box<dyn FnMut(web_sys::Event)>
+                );
 
-            window
-                .add_event_listener_with_callback(event, closure.as_ref().unchecked_ref())
-                .expect("failed to add event listener");
+                window
+                    .add_event_listener_with_callback(event, closure.as_ref().unchecked_ref())
+                    .expect("failed to add event listener");
 
-            app_rc.borrow_mut().listeners.push((event.to_string(), closure));
-        }
+                app_rc.borrow_mut().listeners.push((event.to_string(), closure));
+            }
 
-        // execute side effects
-        for cmd in commands {
-            cmd.exec(app_rc.clone());
+            // execute side effects
+            for cmd in commands {
+                cmd.exec(app_rc.clone());
+            }
         }
 
         app_rc
