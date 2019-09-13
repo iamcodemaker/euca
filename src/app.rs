@@ -24,8 +24,10 @@ use crate::generic_helpers;
 /// A side effect producing command.
 #[derive(PartialEq,Debug)]
 pub struct Command<Message> {
-    msg: Message,
-    cmd: fn(Message, Rc<RefCell<dyn Dispatch<Message>>>),
+    /// The data for this command.
+    pub msg: Message,
+    /// The function for this command.
+    pub cmd: fn(Message, Rc<RefCell<dyn Dispatch<Message>>>),
 }
 
 impl<Message> Command<Message> {
