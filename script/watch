@@ -1,0 +1,4 @@
+#!/bin/bash
+set -euo pipefail
+
+fd -e rs -e toml "" | entr script/test
