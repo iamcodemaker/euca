@@ -21,37 +21,22 @@ use crate::vdom::Storage;
 use crate::route::Route;
 use crate::generic_helpers;
 
-/// A side effect producing command.
-#[derive(PartialEq,Debug)]
-pub struct Command<Message> {
-    /// The data for this command.
-    pub msg: Message,
-    /// The function for this command.
-    pub cmd: fn(Message, Rc<RefCell<dyn Dispatch<Message>>>),
+/// A shared app handle.
+///
+/// Since events need to be dispatched from event handlers in the browser, they will need a way to
+/// relay messages back to the app.
+pub type Dispatcher<Message> =  Rc<RefCell<dyn Dispatch<Message>>>;
+
+/// Processor for side-effecting commands.
+pub trait SideEffect<Message> {
+    /// Process a side-effecting command.
+    fn process(self, dispatcher: Dispatcher<Message>);
 }
-
-impl<Message> Command<Message> {
-    /// Create a new command.
-    pub fn new(msg: Message, cmd: fn(Message, Rc<RefCell<dyn Dispatch<Message>>>)) -> Self {
-        Command {
-            msg: msg,
-            cmd: cmd,
-        }
-    }
-
-    /// Execute this command.
-    pub fn exec(self, app: Rc<RefCell<dyn Dispatch<Message>>>) {
-        (self.cmd)(self.msg, app);
-    }
-}
-
-/// A list of side effect producing commands.
-pub type Commands<Message> = Vec<Command<Message>>;
 
 /// Implemented on a model, used to process a message that updates the model.
-pub trait Update<Message> {
+pub trait Update<Message, Command> {
     /// Update the model using the given message.
-    fn update(&mut self, msg: Message, commands: &mut Commands<Message>);
+    fn update(&mut self, msg: Message, commands: &mut Vec<Command>);
 }
 
 /// Implemented on a model, used to render (or view) the model as a virtual dom.
@@ -103,12 +88,13 @@ impl<Message, Router: Route<Message> + 'static> AppBuilder<Message, Router> {
     ///
     /// The app will be attached at the given parent node and initialized with the given model.
     /// Event handlers will be registered as necessary.
-    pub fn attach<Model, DomTree>(self, parent: web_sys::Element, mut model: Model)
-    -> Rc<RefCell<App<Model, DomTree>>>
+    pub fn attach<Model, Command, DomTree>(self, parent: web_sys::Element, mut model: Model)
+    -> Rc<RefCell<App<Model, DomTree, Command>>>
     where
-        Model: Update<Message> + Render<DomTree> + 'static,
+        Model: Update<Message, Command> + Render<DomTree> + 'static,
         DomTree: DomIter<Message> + 'static,
         Message: fmt::Debug + Clone + PartialEq + 'static,
+        Command: SideEffect<Message> + 'static,
     {
         let mut commands = vec![];
 
@@ -161,7 +147,7 @@ impl<Message, Router: Route<Message> + 'static> AppBuilder<Message, Router> {
 
             // execute side effects
             for cmd in commands {
-                cmd.exec(app_rc.clone());
+                cmd.process(app_rc.clone());
             }
         }
 
@@ -171,20 +157,24 @@ impl<Message, Router: Route<Message> + 'static> AppBuilder<Message, Router> {
 
 /// A wasm application consisting of a model, a virtual dom representation, and the parent element
 /// where this app lives in the dom.
-pub struct App<Model, DomTree> {
+pub struct App<Model, DomTree, Command> {
     dom: DomTree,
     parent: web_sys::Element,
     model: Model,
     storage: Storage,
     listeners: Vec<(String, Closure<dyn FnMut(web_sys::Event)>)>,
+    command: std::marker::PhantomData<Command>,
 }
 
-impl<Message, Model, DomTree> Dispatch<Message> for App<Model, DomTree> where
+impl<Message, Command, Model, DomTree> Dispatch<Message> for App<Model, DomTree, Command>
+where
+    Model: Update<Message, Command> + Render<DomTree> + 'static,
+    Command: SideEffect<Message> + 'static,
     Message: fmt::Debug + Clone + PartialEq + 'static,
-    Model: Update<Message> + Render<DomTree> + 'static,
     DomTree: DomIter<Message> + 'static,
 {
-    fn dispatch(app_rc: Rc<RefCell<Self>>, msg: Message) {
+    fn dispatch(app_rc: Rc<RefCell<Self>>, msg: Message)
+    {
         let mut app = app_rc.borrow_mut();
         let App {
             ref parent,
@@ -211,7 +201,7 @@ impl<Message, Model, DomTree> Dispatch<Message> for App<Model, DomTree> where
 
         // execute side effects
         for cmd in commands {
-            cmd.exec(app_rc.clone());
+            cmd.process(app_rc.clone());
         }
 
         // TODO: evaluate speedup or lack there of from using patch_set.is_noop() to check if we
@@ -219,17 +209,18 @@ impl<Message, Model, DomTree> Dispatch<Message> for App<Model, DomTree> where
     }
 }
 
-impl<Model, DomTree> App<Model, DomTree> {
+impl<Model, DomTree, Command> App<Model, DomTree, Command> {
     /// Attach an app to the dom.
     ///
     /// The app will be attached at the given parent node and initialized with the given model.
     /// Event handlers will be registered as necessary.
-    fn attach<Message>(parent: web_sys::Element, model: Model)
-    -> Rc<RefCell<App<Model, DomTree>>>
+    fn attach<Message>(parent: web_sys::Element, model: Model, )
+    -> Rc<RefCell<App<Model, DomTree, Command>>>
     where
-        Model: Update<Message> + Render<DomTree> + 'static,
+        Model: Update<Message, Command> + Render<DomTree> + 'static,
         DomTree: DomIter<Message> + 'static,
         Message: fmt::Debug + Clone + PartialEq + 'static,
+        Command: SideEffect<Message> + 'static,
     {
         // render our initial model
         let dom = model.render();
@@ -243,6 +234,7 @@ impl<Model, DomTree> App<Model, DomTree> {
             model: model,
             storage: vec![],
             listeners: vec![],
+            command: std::marker::PhantomData,
         }));
 
         // render the initial app
@@ -265,10 +257,11 @@ impl<Model, DomTree> App<Model, DomTree> {
     /// Detach the app from the dom.
     ///
     /// Any elements that were created will be destroyed and event handlers will be removed.
-    pub fn detach<Message>(app_rc: Rc<RefCell<App<Model, DomTree>>>) where
-        Model: Update<Message> + Render<DomTree> + 'static,
+    pub fn detach<Message>(app_rc: Rc<RefCell<App<Model, DomTree, Command>>>) where
+        Model: Update<Message, Command> + Render<DomTree> + 'static,
         DomTree: DomIter<Message> + 'static,
         Message: fmt::Debug + Clone + PartialEq + 'static,
+        Command: SideEffect<Message> + 'static,
     {
         use std::iter;
 
