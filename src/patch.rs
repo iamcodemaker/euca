@@ -440,6 +440,14 @@ impl<'a, Message> PatchSet<'a, Message> {
                                 }) as Box<dyn FnMut(web_sys::Event)>
                             )
                         }
+                        EventHandler::FnMsg(msg, fun) => {
+                            let msg = msg.clone();
+                            Closure::wrap(
+                                Box::new(move |event| {
+                                    D::dispatch(app.clone(), fun(msg.clone(), event))
+                                }) as Box<dyn FnMut(web_sys::Event)>
+                            )
+                        }
                         EventHandler::InputValue(fun) => {
                             Closure::wrap(
                                 Box::new(move |event: web_sys::Event| {

@@ -25,6 +25,13 @@ pub enum EventHandler<'a, Message> {
     /// [`web_sys::Event`]: https://rustwasm.github.io/wasm-bindgen/api/web_sys/struct.Event.html
     Fn(fn(web_sys::Event) -> Message),
 
+    /// A callback that will convert a [`web_sys::Event`] into a message.
+    ///
+    /// This variation accepts a message to pass data into the callback.
+    ///
+    /// [`web_sys::Event`]: https://rustwasm.github.io/wasm-bindgen/api/web_sys/struct.Event.html
+    FnMsg(&'a Message, fn(Message, web_sys::Event) -> Message),
+
     /// This callback will recieve the value of a form input and convert it to a message.
     InputValue(fn(String) -> Message),
 
