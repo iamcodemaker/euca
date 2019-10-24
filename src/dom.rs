@@ -15,6 +15,12 @@ pub enum Handler<Message> {
     ///
     /// [`web_sys::Event`]: https://rustwasm.github.io/wasm-bindgen/api/web_sys/struct.Event.html
     Event(fn(web_sys::Event) -> Message),
+    /// A function that will convert a [`web_sys::Event`] event to a Message.
+    ///
+    /// This variation allows passing data to the event handler via a Message.
+    ///
+    /// [`web_sys::Event`]: https://rustwasm.github.io/wasm-bindgen/api/web_sys/struct.Event.html
+    MsgEvent(Message, fn(Message, web_sys::Event) -> Message),
     /// A function that will convert a String from an input element into a Message.
     InputValue(fn(String) -> Message),
     /// A function that will convert a [`web_sys::InputEvent`] event to a Message.
@@ -200,6 +206,7 @@ impl<Message: Clone> DomIter<Message> for Dom<Message> {
                          handler: match handler {
                              Handler::Msg(m) => EventHandler::Msg(m),
                              Handler::Event(h) => EventHandler::Fn(*h),
+                             Handler::MsgEvent(m, h) => EventHandler::FnMsg(m, *h),
                              Handler::InputValue(h) => EventHandler::InputValue(*h),
                              Handler::InputEvent(h) => EventHandler::InputEvent(*h),
                          },
