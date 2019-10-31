@@ -161,13 +161,16 @@ macro_rules! attribute_setter {
         match $name {
             $( $attr => { attribute_setter_match_arm!($node, $setter, $attr, $value, [ $($node_type),* ]) } )*
             _ => {
-                $node.dyn_ref::<web_sys::Element>()
-                    .expect("attributes can only be added to elements")
-                    .set_attribute($name, $value)
-                    .expect("failed to set attribute");
+                attribute_setter!($node, $name, $value);
             }
         }
-    }
+    };
+    ( $node:ident, $name:ident, $value:ident ) => {
+        $node.dyn_ref::<web_sys::Element>()
+            .expect("attributes can only be added to elements")
+            .set_attribute($name, $value)
+            .expect("failed to set attribute");
+    };
 }
 
 macro_rules! attribute_unsetter_match_arm {
@@ -265,6 +268,7 @@ impl<'a, Message> PatchSet<'a, Message> {
         D: Dispatch<Message> + 'static,
     {
         let mut node_stack: Vec<web_sys::Node> = vec![parent.unchecked_into()];
+        let mut special_attributes: Vec<(web_sys::Node, &str, &str)> = vec![];
 
         let PatchSet { patches, mut storage } = self;
 
@@ -321,64 +325,14 @@ impl<'a, Message> PatchSet<'a, Message> {
                 }
                 Patch::SetAttribute { name, value } => {
                     let node = node_stack.last().expect("no previous node");
-
-                    let mut set_value = false;
-
-                    // handle the "value" attribute for certain elements
-                    if name == "value" {
-                        set_value = true;
-                        if let Some(input) = node.dyn_ref::<web_sys::HtmlInputElement>() {
-                            input.set_value(value);
+                    match name {
+                        "autofocus" | "checked" | "disabled" | "draggable" |  "hidden"
+                        | "selected" | "spellcheck" | "value"
+                        => {
+                            // delay setting special attributes until after everything else is done
+                            special_attributes.push((node.clone(), name, value));
                         }
-                        else if let Some(input) = node.dyn_ref::<web_sys::HtmlTextAreaElement>() {
-                            input.set_value(value);
-                        }
-                        else if let Some(input) = node.dyn_ref::<web_sys::HtmlSelectElement>() {
-                            input.set_value(value);
-                        }
-                        else {
-                            set_value = false;
-                        }
-                    }
-
-                    if !set_value {
-                        // properly handle boolean attributes using special setters
-                        attribute_setter!(node, name, value, [
-                            "autofocus" => set_autofocus [
-                                web_sys::HtmlButtonElement,
-                                web_sys::HtmlInputElement,
-                                web_sys::HtmlSelectElement,
-                                web_sys::HtmlTextAreaElement,
-                            ],
-                            "checked" => set_checked [
-                                web_sys::HtmlInputElement,
-                                web_sys::HtmlMenuItemElement,
-                            ],
-                            "disabled" => set_disabled [
-                                web_sys::HtmlButtonElement,
-                                web_sys::HtmlFieldSetElement,
-                                web_sys::HtmlInputElement,
-                                web_sys::HtmlLinkElement,
-                                web_sys::HtmlMenuItemElement,
-                                web_sys::HtmlOptGroupElement,
-                                web_sys::HtmlOptionElement,
-                                web_sys::HtmlSelectElement,
-                                web_sys::HtmlStyleElement,
-                                web_sys::HtmlTextAreaElement,
-                            ],
-                            "draggable" => set_draggable [
-                                web_sys::HtmlElement,
-                            ],
-                            "hidden" => set_hidden [
-                                web_sys::HtmlElement,
-                            ],
-                            "selected" => set_selected [
-                                web_sys::HtmlOptionElement,
-                            ],
-                            "spellcheck" => set_spellcheck [
-                                web_sys::HtmlElement,
-                            ],
-                        ]);
+                        _ => attribute_setter!(node, name, value),
                     }
                 }
                 Patch::RemoveAttribute(name) => {
@@ -502,6 +456,71 @@ impl<'a, Message> PatchSet<'a, Message> {
             }
         }
 
+        // set special attributes. These must be done last or strange things can happen when
+        // rendering in the browser. I have observed range inputs not properly updating (appears to
+        // be caused by `value` getting set before `max`) and option inputs not getting set.
+        for (node, name, value) in special_attributes.into_iter() {
+            let mut set_value = false;
+
+            // handle the "value" attribute for non boolean values
+            if name == "value" {
+                set_value = true;
+                if let Some(input) = node.dyn_ref::<web_sys::HtmlInputElement>() {
+                    input.set_value(value);
+                }
+                else if let Some(input) = node.dyn_ref::<web_sys::HtmlTextAreaElement>() {
+                    input.set_value(value);
+                }
+                else if let Some(input) = node.dyn_ref::<web_sys::HtmlSelectElement>() {
+                    input.set_value(value);
+                }
+                else {
+                    set_value = false;
+                }
+            }
+
+            if !set_value {
+                // properly handle boolean attributes using special setters
+                attribute_setter!(node, name, value, [
+                    "autofocus" => set_autofocus [
+                        web_sys::HtmlButtonElement,
+                        web_sys::HtmlInputElement,
+                        web_sys::HtmlSelectElement,
+                        web_sys::HtmlTextAreaElement,
+                    ],
+                    "checked" => set_checked [
+                        web_sys::HtmlInputElement,
+                        web_sys::HtmlMenuItemElement,
+                    ],
+                    "disabled" => set_disabled [
+                        web_sys::HtmlButtonElement,
+                        web_sys::HtmlFieldSetElement,
+                        web_sys::HtmlInputElement,
+                        web_sys::HtmlLinkElement,
+                        web_sys::HtmlMenuItemElement,
+                        web_sys::HtmlOptGroupElement,
+                        web_sys::HtmlOptionElement,
+                        web_sys::HtmlSelectElement,
+                        web_sys::HtmlStyleElement,
+                        web_sys::HtmlTextAreaElement,
+                    ],
+                    "draggable" => set_draggable [
+                        web_sys::HtmlElement,
+                    ],
+                    "hidden" => set_hidden [
+                        web_sys::HtmlElement,
+                    ],
+                    "selected" => set_selected [
+                        web_sys::HtmlOptionElement,
+                    ],
+                    "spellcheck" => set_spellcheck [
+                        web_sys::HtmlElement,
+                    ],
+                ]);
+            }
+        }
+
+        // return storage so it can be stored by the caller
         storage
     }
 }
