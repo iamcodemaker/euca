@@ -163,6 +163,7 @@ pub struct App<Model, DomTree, Command> {
     model: Model,
     storage: Storage,
     listeners: Vec<(String, Closure<dyn FnMut(web_sys::Event)>)>,
+    animation_frame_handle: Option<(i32, Closure<dyn FnMut(f64)>)>,
     command: std::marker::PhantomData<Command>,
 }
 
@@ -173,31 +174,51 @@ where
     Message: fmt::Debug + Clone + PartialEq + 'static,
     DomTree: DomIter<Message> + 'static,
 {
-    fn dispatch(app_rc: Rc<RefCell<Self>>, msg: Message)
-    {
+    fn dispatch(app_rc: Rc<RefCell<Self>>, msg: Message) {
         let mut app = app_rc.borrow_mut();
-        let App {
-            ref parent,
-            ref mut model,
-            ref mut storage,
-            ref dom,
-            ..
-        } = *app;
 
         // update the model
         let mut commands = vec![];
-        model.update(msg, &mut commands);
+        app.model.update(msg, &mut commands);
 
-        // render a new dom from the updated model
-        let new_dom = model.render();
+        // request an animation frame for rendering if we don't already have a request out
+        if app.animation_frame_handle.is_none() {
+            let app_rc = app_rc.clone();
 
-        // push changes to the browser
-        let old = dom.dom_iter();
-        let new = new_dom.dom_iter();
-        let patch_set = diff::diff(old, new, storage);
-        app.storage = patch_set.apply(parent.clone(), app_rc.clone());
+            let window = web_sys::window()
+                .expect_throw("couldn't get window handle");
 
-        app.dom = new_dom;
+            let closure = Closure::wrap(
+                Box::new(move |_| {
+                    let mut app = app_rc.borrow_mut();
+                    let App {
+                        ref parent,
+                        ref mut model,
+                        ref mut storage,
+                        ref dom,
+                        ..
+                    } = *app;
+
+                    // render a new dom from the updated model
+                    let new_dom = model.render();
+
+                    // push changes to the browser
+                    let old = dom.dom_iter();
+                    let new = new_dom.dom_iter();
+                    let patch_set = diff::diff(old, new, storage);
+                    app.storage = patch_set.apply(parent.clone(), app_rc.clone());
+
+                    app.dom = new_dom;
+                    app.animation_frame_handle = None;
+
+                }) as Box<dyn FnMut(f64)>
+            );
+
+            let handle = window.request_animation_frame(closure.as_ref().unchecked_ref())
+                .expect_throw("error with requestion_animation_frame");
+
+            app.animation_frame_handle = Some((handle, closure));
+        }
 
         // execute side effects
         for cmd in commands {
@@ -234,6 +255,7 @@ impl<Model, DomTree, Command> App<Model, DomTree, Command> {
             model: model,
             storage: vec![],
             listeners: vec![],
+            animation_frame_handle: None,
             command: std::marker::PhantomData,
         }));
 
