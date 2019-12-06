@@ -51,6 +51,12 @@ pub trait Dispatch<Message> {
     fn dispatch(app: Rc<RefCell<Self>>, msg: Message) where Self: Sized;
 }
 
+/// Partially dispatch a message, returning any resulting Commands instead of executing them.
+pub trait PartialDispatch<Message, Command> {
+    /// Dispatch a message to the app but don't execute commands.
+    fn update(app: Rc<RefCell<Self>>, msg: Message) -> Vec<Command> where Self: Sized;
+}
+
 /// Struct used to configure and attach an application to the DOM.
 pub struct AppBuilder<Message, Router: Route<Message>> {
     router: Option<Rc<Router>>,
@@ -167,14 +173,14 @@ pub struct App<Model, DomTree, Command> {
     command: std::marker::PhantomData<Command>,
 }
 
-impl<Message, Command, Model, DomTree> Dispatch<Message> for App<Model, DomTree, Command>
+impl<Message, Command, Model, DomTree> PartialDispatch<Message, Command> for App<Model, DomTree, Command>
 where
     Model: Update<Message, Command> + Render<DomTree> + 'static,
     Command: SideEffect<Message> + 'static,
     Message: fmt::Debug + Clone + PartialEq + 'static,
     DomTree: DomIter<Message> + 'static,
 {
-    fn dispatch(app_rc: Rc<RefCell<Self>>, msg: Message) {
+    fn update(app_rc: Rc<RefCell<Self>>, msg: Message) -> Vec<Command> {
         let mut app = app_rc.borrow_mut();
 
         // update the model
@@ -220,13 +226,27 @@ where
             app.animation_frame_handle = Some((handle, closure));
         }
 
-        // execute side effects
-        for cmd in commands {
-            cmd.process(app_rc.clone());
-        }
+        commands
 
         // TODO: evaluate speedup or lack there of from using patch_set.is_noop() to check if we
         // actually need to apply this patch before applying the patch
+    }
+}
+
+impl<Message, Command, Model, DomTree> Dispatch<Message> for App<Model, DomTree, Command>
+where
+    Model: Update<Message, Command> + Render<DomTree> + 'static,
+    Command: SideEffect<Message> + 'static,
+    Message: fmt::Debug + Clone + PartialEq + 'static,
+    DomTree: DomIter<Message> + 'static,
+{
+    fn dispatch(app_rc: Rc<RefCell<Self>>, msg: Message) {
+        let commands = PartialDispatch::update(Rc::clone(&app_rc), msg);
+
+        // execute side effects
+        for cmd in commands {
+            cmd.process(Rc::clone(&app_rc) as Dispatcher<Message>);
+        }
     }
 }
 
