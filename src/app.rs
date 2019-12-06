@@ -9,6 +9,10 @@
 //!
 //! [The Elm Architecture]: https://guide.elm-lang.org/architecture/
 
+pub mod detach;
+
+pub use crate::app::detach::Detach;
+
 use web_sys;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
@@ -295,16 +299,19 @@ impl<Model, DomTree, Command> App<Model, DomTree, Command> {
 
         Rc::clone(&app_rc)
     }
+}
 
+impl<Model, DomTree, Message, Command> Detach<Message> for App<Model, DomTree, Command>
+where
+    Model: Update<Message, Command> + Render<DomTree> + 'static,
+    DomTree: DomIter<Message> + 'static,
+    Message: fmt::Debug + Clone + PartialEq + 'static,
+    Command: SideEffect<Message> + 'static,
+{
     /// Detach the app from the dom.
     ///
     /// Any elements that were created will be destroyed and event handlers will be removed.
-    pub fn detach<Message>(app_rc: Rc<RefCell<App<Model, DomTree, Command>>>) where
-        Model: Update<Message, Command> + Render<DomTree> + 'static,
-        DomTree: DomIter<Message> + 'static,
-        Message: fmt::Debug + Clone + PartialEq + 'static,
-        Command: SideEffect<Message> + 'static,
-    {
+    fn detach(app_rc: Rc<RefCell<Self>>) {
         use std::iter;
 
         let mut app = app_rc.borrow_mut();
