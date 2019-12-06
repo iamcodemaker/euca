@@ -377,20 +377,20 @@ impl<'a, Message> PatchSet<'a, Message> {
                     ]);
                 }
                 Patch::AddListener { trigger, handler } => {
-                    let app = app.clone();
+                    let app = Rc::clone(&app) as Rc<RefCell<D>>;
                     let closure = match handler {
                         EventHandler::Msg(msg) => {
                             let msg = msg.clone();
                             Closure::wrap(
                                 Box::new(move |_| {
-                                    D::dispatch(app.clone(), msg.clone())
+                                    D::dispatch(Rc::clone(&app), msg.clone())
                                 }) as Box<dyn FnMut(web_sys::Event)>
                             )
                         }
                         EventHandler::Fn(fun) => {
                             Closure::wrap(
                                 Box::new(move |event| {
-                                    D::dispatch(app.clone(), fun(event))
+                                    D::dispatch(Rc::clone(&app), fun(event))
                                 }) as Box<dyn FnMut(web_sys::Event)>
                             )
                         }
@@ -398,7 +398,7 @@ impl<'a, Message> PatchSet<'a, Message> {
                             let msg = msg.clone();
                             Closure::wrap(
                                 Box::new(move |event| {
-                                    D::dispatch(app.clone(), fun(msg.clone(), event))
+                                    D::dispatch(Rc::clone(&app), fun(msg.clone(), event))
                                 }) as Box<dyn FnMut(web_sys::Event)>
                             )
                         }
@@ -422,7 +422,7 @@ impl<'a, Message> PatchSet<'a, Message> {
                                             }
                                         }
                                     };
-                                    D::dispatch(app.clone(), fun(value))
+                                    D::dispatch(Rc::clone(&app), fun(value))
                                 }) as Box<dyn FnMut(web_sys::Event)>
                             )
                         }
@@ -430,7 +430,7 @@ impl<'a, Message> PatchSet<'a, Message> {
                             Closure::wrap(
                                 Box::new(move |event: web_sys::Event| {
                                     let event = event.dyn_into::<web_sys::InputEvent>().expect_throw("expected web_sys::InputEvent");
-                                    D::dispatch(app.clone(), fun(event))
+                                    D::dispatch(Rc::clone(&app), fun(event))
                                 }) as Box<dyn FnMut(web_sys::Event)>
                             )
                         }

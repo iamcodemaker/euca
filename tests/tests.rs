@@ -559,7 +559,7 @@ fn null_patch_with_element() {
     }
 
     let app = Rc::new(RefCell::new(App {}));
-    storage = patch_set.apply(parent.clone(), app.clone());
+    storage = patch_set.apply(parent.clone(), Rc::clone(&app));
 
     match storage[0] {
         WebItem::Element(_) => {}
@@ -586,7 +586,7 @@ fn basic_patch_with_element() {
     let o = gen1.into_iter();
     let n = gen2.dom_iter();
     let patch_set = diff::diff(o, n, &mut storage);
-    storage = patch_set.apply(parent.clone(), app.clone());
+    storage = patch_set.apply(parent.clone(), Rc::clone(&app));
 
     match storage[0] {
         WebItem::Element(_) => {}
@@ -597,7 +597,7 @@ fn basic_patch_with_element() {
     let o = gen2.dom_iter();
     let n = gen3.dom_iter();
     let patch_set = diff::diff(o, n, &mut storage);
-    storage = patch_set.apply(parent.clone(), app.clone());
+    storage = patch_set.apply(parent.clone(), Rc::clone(&app));
 
     match storage[0] {
         WebItem::Element(_) => {}
@@ -625,7 +625,7 @@ fn basic_event_test() {
     let o = gen1.into_iter();
     let n = gen2.dom_iter();
     let patch_set = diff::diff(o, n, &mut storage);
-    storage = patch_set.apply(parent.clone(), app.clone());
+    storage = patch_set.apply(parent.clone(), Rc::clone(&app));
 
     match storage[0] {
         WebItem::Element(ref node) => {
@@ -659,7 +659,7 @@ fn listener_copy() {
     let o = gen1.into_iter();
     let n = gen2.dom_iter();
     let patch_set = diff::diff(o, n, &mut storage);
-    storage = patch_set.apply(parent.clone(), app.clone());
+    storage = patch_set.apply(parent.clone(), Rc::clone(&app));
 
     match storage[0] {
         WebItem::Element(ref node) => {
@@ -675,7 +675,7 @@ fn listener_copy() {
     let o = gen2.dom_iter();
     let n = gen3.dom_iter();
     let patch_set = diff::diff(o, n, &mut storage);
-    storage = patch_set.apply(parent.clone(), app.clone());
+    storage = patch_set.apply(parent.clone(), Rc::clone(&app));
 
     match storage[0] {
         WebItem::Element(ref node) => {

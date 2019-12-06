@@ -130,7 +130,7 @@ impl<Message, Router: Route<Message> + 'static> AppBuilder<Message, Router> {
 
             // register event handlers
             for event in ["popstate", "hashchange"].iter() {
-                let app = app_rc.clone();
+                let app = Rc::clone(&app_rc);
                 let document = document.clone();
                 let router = router.clone();
                 let closure = Closure::wrap(
@@ -139,7 +139,7 @@ impl<Message, Router: Route<Message> + 'static> AppBuilder<Message, Router> {
                             .expect_throw("couldn't get document url");
 
                         if let Some(msg) = router.route(&url) {
-                            App::dispatch(app.clone(), msg)
+                            App::dispatch(Rc::clone(&app), msg)
                         }
                     }) as Box<dyn FnMut(web_sys::Event)>
                 );
@@ -153,7 +153,7 @@ impl<Message, Router: Route<Message> + 'static> AppBuilder<Message, Router> {
 
             // execute side effects
             for cmd in commands {
-                cmd.process(app_rc.clone());
+                cmd.process(Rc::clone(&app_rc) as Dispatcher<Message>);
             }
         }
 
@@ -189,7 +189,7 @@ where
 
         // request an animation frame for rendering if we don't already have a request out
         if app.animation_frame_handle.is_none() {
-            let app_rc = app_rc.clone();
+            let app_rc = Rc::clone(&app_rc);
 
             let window = web_sys::window()
                 .expect_throw("couldn't get window handle");
@@ -212,7 +212,7 @@ where
                     let old = dom.dom_iter();
                     let new = new_dom.dom_iter();
                     let patch_set = diff::diff(old, new, storage);
-                    app.storage = patch_set.apply(parent.clone(), app_rc.clone());
+                    app.storage = patch_set.apply(parent.clone(), Rc::clone(&app_rc));
 
                     app.dom = new_dom;
                     app.animation_frame_handle = None;
@@ -291,9 +291,9 @@ impl<Model, DomTree, Command> App<Model, DomTree, Command> {
 
         let n = dom.dom_iter();
         let patch_set = diff::diff(iter::empty(), n, storage);
-        app.storage = patch_set.apply(parent, app_rc.clone());
+        app.storage = patch_set.apply(parent, Rc::clone(&app_rc));
 
-        app_rc.clone()
+        Rc::clone(&app_rc)
     }
 
     /// Detach the app from the dom.
@@ -329,6 +329,6 @@ impl<Model, DomTree, Command> App<Model, DomTree, Command> {
         // remove the current app from the browser's dom by diffing it with an empty virtual dom.
         let o = dom.dom_iter();
         let patch_set = diff::diff(o, iter::empty(), storage);
-        app.storage = patch_set.apply(parent.clone(), app_rc.clone());
+        app.storage = patch_set.apply(parent.clone(), Rc::clone(&app_rc));
     }
 }
