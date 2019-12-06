@@ -10,8 +10,10 @@
 //! [The Elm Architecture]: https://guide.elm-lang.org/architecture/
 
 pub mod detach;
+pub mod model;
 
 pub use crate::app::detach::Detach;
+pub use crate::app::model::{Update, Render};
 
 use web_sys;
 use wasm_bindgen::prelude::*;
@@ -35,18 +37,6 @@ pub type Dispatcher<Message> =  Rc<RefCell<dyn Dispatch<Message>>>;
 pub trait SideEffect<Message> {
     /// Process a side-effecting command.
     fn process(self, dispatcher: Dispatcher<Message>);
-}
-
-/// Implemented on a model, used to process a message that updates the model.
-pub trait Update<Message, Command> {
-    /// Update the model using the given message.
-    fn update(&mut self, msg: Message, commands: &mut Vec<Command>);
-}
-
-/// Implemented on a model, used to render (or view) the model as a virtual dom.
-pub trait Render<DomTree> {
-    /// Render the model as a virtual dom.
-    fn render(&self) -> DomTree;
 }
 
 /// Dispatch a message from an event handler.
