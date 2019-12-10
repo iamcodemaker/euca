@@ -10,6 +10,8 @@ pub mod vdom;
 pub mod app;
 pub mod route;
 pub mod generic_helpers;
+pub mod component;
 
 pub use diff::diff;
 pub use app::AppBuilder;
+pub use component::ComponentBuilder;
