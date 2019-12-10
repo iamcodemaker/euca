@@ -12,6 +12,7 @@ use euca::dom::DomVec;
 use euca::patch::Patch;
 use euca::patch::PatchSet;
 use euca::app::Dispatch;
+use euca::component::Component;
 use euca::diff;
 
 use wasm_bindgen_test::*;
@@ -30,14 +31,30 @@ fn t(text: &str) -> web_sys::Text {
         .create_text_node(text)
 }
 
+#[derive(Default)]
+struct FakeComponent { }
+
+impl FakeComponent {
+    fn new() -> Box<Self> {
+        Box::new(FakeComponent { })
+    }
+}
+
+impl<Message> Component<Message> for FakeComponent {
+    fn update(&self, _: Message) { }
+    fn detach(&self) { }
+}
+
 fn gen_storage<'a, Message, Iter>(iter: Iter) -> Storage<Message> where
     Message: 'a,
     Iter: Iterator<Item = DomItem<'a, Message>>,
 {
     iter
+        // filter items that do not have storage
         .filter(|i| {
             match i {
-                DomItem::Element(_) | DomItem::Text(_) | DomItem::Event { .. } => true,
+                DomItem::Element(_) | DomItem::Text(_) | DomItem::Event { .. }
+                | DomItem::Component { .. } => true,
                 DomItem::Attr { .. } | DomItem::Up => false,
             }
         })
@@ -54,6 +71,7 @@ fn gen_storage<'a, Message, Iter>(iter: Iter) -> Storage<Message> where
                         Box::new(|_|()) as Box<dyn FnMut(web_sys::Event)>
                     )
                 ),
+                DomItem::Component { .. } => WebItem::Component(FakeComponent::new()),
                 DomItem::Attr { .. } | DomItem::Up => {
                     unreachable!("attribute and up nodes should have been filtered out")
                 },

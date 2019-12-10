@@ -17,7 +17,8 @@ use wasm_bindgen::JsCast;
 use crate::vdom::EventHandler;
 use crate::vdom::WebItem;
 use crate::vdom::Storage;
-use crate::app::Dispatch;
+use crate::app::{Dispatch, Dispatcher};
+use crate::component::Component;
 use log::warn;
 
 /// This enum describes all of the operations we need to preform to move the dom to the desired
@@ -57,6 +58,24 @@ pub enum Patch<'a, Message> {
     },
     /// Copy the reference we have to the text element to the new dom.
     CopyText(Box<dyn FnMut() -> web_sys::Text + 'a>),
+    /// Create a Component.
+    CreateComponent {
+        /// The initial message to send to the component.
+        msg: Message,
+        /// The function used to create the component.
+        create: fn(web_sys::Element, Dispatcher<Message>) -> Box<dyn Component<Message>>,
+    },
+    /// Move a component from the old dom to the new one.
+    CopyComponent(Box<dyn FnMut() -> Box<dyn Component<Message>> + 'a>),
+    /// Send a message to a component.
+    UpdateComponent {
+        /// Called once to take an existing component node from the old virtual dom.
+        take: Box<dyn FnMut() -> Box<dyn Component<Message>> + 'a>,
+        /// The message to send.
+        msg: Message,
+    },
+    /// Remove a component.
+    RemoveComponent(Box<dyn FnMut() -> Box<dyn Component<Message>> + 'a>),
     /// Set an attribute.
     SetAttribute {
         /// The name of the attribute to set.
@@ -98,6 +117,10 @@ impl<'a, Message> fmt::Debug for Patch<'a, Message> where
             Patch::ReplaceText { take: _, text: t }  => write!(f, "ReplaceText {{ take: _, text: {:?} }}", t),
             Patch::CreateText { text: t } => write!(f, "CreateText {{ text: {:?} }}", t),
             Patch::CopyText(_) => write!(f, "CopyText(_)"),
+            Patch::CreateComponent { msg, create: _ } => write!(f, "CreateComponent {{ msg: {:?}, create: _ }}", msg),
+            Patch::UpdateComponent { take: _, msg } => write!(f, "CreateComponent {{ take: _, msg: {:?} }}", msg),
+            Patch::CopyComponent(_) => write!(f, "CopyComponent(_)"),
+            Patch::RemoveComponent(_) => write!(f, "CopyComponent(_)"),
             Patch::SetAttribute { name: n, value: v } => write!(f, "SetAttribute {{ name: {:?}, value: {:?} }}", n, v),
             Patch::RemoveAttribute(s) => write!(f, "RemoveAttribute({:?})", s),
             Patch::AddListener { trigger: t, handler: h } => write!(f, "AddListener {{ trigger: {:?}, handler: {:?} }}", t, h),
@@ -247,10 +270,12 @@ impl<'a, Message> PatchSet<'a, Message> {
             // these patches just copy stuff into the new virtual dom tree, thus if we just keep
             // the old dom tree, the end result is the same
             CopyElement(_) | CopyListener(_)
-            | CopyText(_) | Up
+            | CopyText(_) | CopyComponent(_) | Up
             => true,
             // these patches change the dom
             RemoveElement(_) | CreateElement { .. }
+            | CreateComponent { .. } | UpdateComponent { .. }
+            | RemoveComponent(_)
             | RemoveListener { .. } | AddListener { .. }
             | RemoveAttribute(_) | SetAttribute { .. }
             | RemoveText(_) | CreateText { .. } | ReplaceText { .. }
@@ -449,6 +474,29 @@ impl<'a, Message> PatchSet<'a, Message> {
                     (node.as_ref() as &web_sys::EventTarget)
                         .remove_event_listener_with_callback(&trigger, take().as_ref().unchecked_ref())
                         .expect("failed to remove event listener");
+                }
+                Patch::CreateComponent { msg, create } => {
+                    let node = node_stack.last()
+                        .expect("no previous node")
+                        .dyn_ref::<web_sys::Element>()
+                        .expect("components can only be added to elements")
+                        .clone();
+
+                    let component = create(node, Rc::clone(&app) as Dispatcher<Message>);
+                    component.update(msg);
+                    storage.push(WebItem::Component(component));
+                }
+                Patch::UpdateComponent { mut take, msg } => {
+                    let component = take();
+                    component.update(msg);
+                    storage.push(WebItem::Component(component));
+                }
+                Patch::CopyComponent(mut take) => {
+                    storage.push(WebItem::Component(take()));
+                }
+                Patch::RemoveComponent(mut take) => {
+                    let component = take();
+                    component.detach();
                 }
                 Patch::Up => {
                     node_stack.pop();

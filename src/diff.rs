@@ -43,7 +43,16 @@ fn take_closure<'a, Message>(item: &'a mut WebItem<Message>) -> Box<dyn FnMut() 
     })
 }
 
-
+fn take_component<'a, Message>(item: &'a mut WebItem<Message>) -> Box<dyn FnMut() -> Box<dyn Component<Message>> + 'a> {
+    Box::new(move || {
+        let mut taken_item = WebItem::Taken;
+        mem::swap(item, &mut taken_item);
+        match taken_item {
+            WebItem::Component(i) => i,
+            _ => panic!("storage type mismatch"),
+        }
+    })
+}
 
 /// Return the series of steps required to move from the given old/existing virtual dom to the
 /// given new virtual dom.
@@ -116,6 +125,9 @@ pub fn diff<'a, Message, I1, I2>(mut old: I1, mut new: I2, storage: &'a mut Stor
                     DomItem::Up => {
                         patch_set.push(Patch::Up);
                     }
+                    DomItem::Component { msg, create } => {
+                        patch_set.push(Patch::CreateComponent { msg, create });
+                    }
                 }
 
                 n_item = new.next();
@@ -149,6 +161,10 @@ pub fn diff<'a, Message, I1, I2>(mut old: I1, mut new: I2, storage: &'a mut Stor
                     }
                     DomItem::Event { .. } => {
                         let _ = sto.next().expect("dom storage to match dom iter");
+                    }
+                    DomItem::Component { .. } => {
+                        let web_item = sto.next().expect("dom storage to match dom iter");
+                        patch_set.push(Patch::RemoveComponent(take_component(web_item)));
                     }
                     // ignore attributes
                     DomItem::Attr { .. } => {}
@@ -187,6 +203,24 @@ pub fn diff<'a, Message, I1, I2>(mut old: I1, mut new: I2, storage: &'a mut Stor
                             patch_set.push(Patch::ReplaceText { take: take_text(web_item) , text: n_text });
                         }
                         o_state.push(NodeState::Copy);
+
+                        o_item = old.next();
+                        n_item = new.next();
+                    }
+                    (
+                        DomItem::Component { msg: o_msg, create: o_create },
+                        DomItem::Component { msg: n_msg, create: n_create }
+                    ) => if o_create == n_create { // compare components
+                        let web_item = sto.next().expect("dom storage to match dom iter");
+
+                        // message matches, copy the storage
+                        if o_msg == n_msg {
+                            patch_set.push(Patch::CopyComponent(take_component(web_item)));
+                        }
+                        // message doesn't match, dispatch it to the component
+                        else {
+                            patch_set.push(Patch::UpdateComponent { take: take_component(web_item), msg: n_msg });
+                        }
 
                         o_item = old.next();
                         n_item = new.next();
@@ -309,6 +343,11 @@ pub fn diff<'a, Message, I1, I2>(mut old: I1, mut new: I2, storage: &'a mut Stor
                                             o_item = old.next();
                                             break;
                                         }
+                                        // component: remove it from storage and the dom
+                                        Some(DomItem::Component { .. }) => {
+                                            let web_item = sto.next().expect("dom storage to match dom iter");
+                                            patch_set.push(Patch::RemoveComponent(take_component(web_item)));
+                                        }
                                         o @ None => {
                                             o_item = o;
                                             break;
@@ -352,6 +391,12 @@ pub fn diff<'a, Message, I1, I2>(mut old: I1, mut new: I2, storage: &'a mut Stor
                                             o_item = old.next();
                                             break;
                                         }
+                                        // component: shouldn't be possible as the child of a text
+                                        // node, but remove it anyway
+                                        Some(DomItem::Component { .. }) => {
+                                            let web_item = sto.next().expect("dom storage to match dom iter");
+                                            patch_set.push(Patch::RemoveComponent(take_component(web_item)));
+                                        }
                                         o @ None => {
                                             o_item = o;
                                             break;
@@ -373,6 +418,12 @@ pub fn diff<'a, Message, I1, I2>(mut old: I1, mut new: I2, storage: &'a mut Stor
                                 if o_state.is_copy() {
                                     patch_set.push(Patch::RemoveListener { trigger, take: take_closure(web_item) });
                                 }
+                                o_item = old.next();
+                            }
+                            // remove old component
+                            DomItem::Component { .. } => {
+                                let web_item = sto.next().expect("dom storage to match dom iter");
+                                patch_set.push(Patch::RemoveComponent(take_component(web_item)));
                                 o_item = old.next();
                             }
                         }
@@ -413,6 +464,9 @@ pub fn diff<'a, Message, I1, I2>(mut old: I1, mut new: I2, storage: &'a mut Stor
                                             n_item = new.next();
                                             break;
                                         }
+                                        Some(DomItem::Component { msg, create }) => {
+                                            patch_set.push(Patch::CreateComponent { msg, create });
+                                        }
                                         n @ None => {
                                             n_item = n;
                                             break;
@@ -451,12 +505,20 @@ pub fn diff<'a, Message, I1, I2>(mut old: I1, mut new: I2, storage: &'a mut Stor
                                             n_item = new.next();
                                             break;
                                         }
+                                        Some(DomItem::Component { msg, create }) => {
+                                            patch_set.push(Patch::CreateComponent { msg, create });
+                                        }
                                         n @ None => {
                                             n_item = n;
                                             break;
                                         }
                                     }
                                 }
+                            }
+                            // add a new component
+                            DomItem::Component { msg, create } => {
+                                patch_set.push(Patch::CreateComponent { msg, create });
+                                n_item = new.next();
                             }
                             // add attribute to new node
                             DomItem::Attr { name, value } => {

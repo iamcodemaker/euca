@@ -105,6 +105,13 @@ pub enum DomItem<'a, Message> {
     },
     /// We are finished processing children nodes, the next node is a sibling.
     Up,
+    /// A component.
+    Component {
+        /// A message to send to the component.
+        msg: Message,
+        /// A function to create the component if necessary.
+        create: fn(web_sys::Element, Dispatcher<Message>) -> Box<dyn Component<Message>>,
+    }
 }
 
 /// This trait provides a way to iterate over a virtual dom representation.
