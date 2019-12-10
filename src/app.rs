@@ -11,9 +11,11 @@
 
 pub mod detach;
 pub mod model;
+pub mod dispatch;
 
 pub use crate::app::detach::Detach;
 pub use crate::app::model::{Update, Render};
+pub use crate::app::dispatch::{PartialDispatch, Dispatch, Dispatcher};
 
 use web_sys;
 use wasm_bindgen::prelude::*;
@@ -27,28 +29,10 @@ use crate::vdom::Storage;
 use crate::route::Route;
 use crate::generic_helpers;
 
-/// A shared app handle.
-///
-/// Since events need to be dispatched from event handlers in the browser, they will need a way to
-/// relay messages back to the app.
-pub type Dispatcher<Message> =  Rc<RefCell<dyn Dispatch<Message>>>;
-
 /// Processor for side-effecting commands.
 pub trait SideEffect<Message> {
     /// Process a side-effecting command.
     fn process(self, dispatcher: Dispatcher<Message>);
-}
-
-/// Dispatch a message from an event handler.
-pub trait Dispatch<Message> {
-    /// Dispatch the given message to the given app.
-    fn dispatch(app: Rc<RefCell<Self>>, msg: Message) where Self: Sized;
-}
-
-/// Partially dispatch a message, returning any resulting Commands instead of executing them.
-pub trait PartialDispatch<Message, Command> {
-    /// Dispatch a message to the app but don't execute commands.
-    fn update(app: Rc<RefCell<Self>>, msg: Message) -> Vec<Command> where Self: Sized;
 }
 
 /// Struct used to configure and attach an application to the DOM.
