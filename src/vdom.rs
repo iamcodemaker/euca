@@ -9,8 +9,8 @@
 
 use std::fmt;
 use wasm_bindgen::prelude::*;
-use crate::component::Component;
-use crate::app::Dispatcher;
+pub use crate::component::Component;
+pub use crate::app::Dispatcher;
 
 /// This represents an event handler. The handler can either always map to a specific message, or a
 /// function can be provided that will transform the given [`web_sys::Event`] into a message. This

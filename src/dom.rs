@@ -40,7 +40,7 @@ pub struct Event<Message> {
 
 /// Representation of a DOM node.
 #[derive(Debug)]
-pub enum Node {
+pub enum Node<Message> {
     /// A DOM element node.
     Elem {
         /// The element name/type.
@@ -51,9 +51,16 @@ pub enum Node {
         /// The text of this node.
         text: String,
     },
+    /// A component.
+    Component {
+        /// A message to pass to the component.
+        msg: Message,
+        /// A function to create the component.
+        create: fn(web_sys::Element, Dispatcher<Message>) -> Box<dyn Component<Message>>,
+    }
 }
 
-impl Node {
+impl<Message> Node<Message> {
     /// Generate an element node of the given type.
     pub fn elem(name: &'static str) -> Self {
         Node::Elem { name }
@@ -62,6 +69,11 @@ impl Node {
     /// Generate a text node with the given value.
     pub fn text(value: String) -> Self {
         Node::Text { text: value }
+    }
+
+    /// Generate a component.
+    pub fn component(msg: Message, create: fn(web_sys::Element, Dispatcher<Message>) -> Box<dyn Component<Message>>) -> Self {
+        Node::Component { msg, create }
     }
 }
 
@@ -98,7 +110,7 @@ impl From<(&'static str, String)> for Attr {
 #[derive(Debug)]
 pub struct Dom<Message> {
     /// The element for this node.
-    element: Node,
+    element: Node<Message>,
     /// Attributes on this node.
     pub attributes: Vec<Attr>,
     /// Event handlers associated with this node.
@@ -122,6 +134,16 @@ impl<Message> Dom<Message> {
     pub fn text(value: impl Into<String>) -> Self {
         Dom {
             element: Node::text(value.into()),
+            events: vec![],
+            attributes: vec![],
+            children: vec![],
+        }
+    }
+
+    /// Create a component.
+    pub fn component(msg: Message, create: fn(web_sys::Element, Dispatcher<Message>) -> Box<dyn Component<Message>>) -> Self {
+        Dom {
+            element: Node::component(msg, create),
             events: vec![],
             attributes: vec![],
             children: vec![],
@@ -192,6 +214,7 @@ impl<Message: Clone> DomIter<Message> for Dom<Message> {
             .map(|node| match node {
                 Node::Elem { name } => DomItem::Element(name),
                 Node::Text { text } => DomItem::Text(text),
+                Node::Component { msg, create } => DomItem::Component { msg: msg.clone(), create: *create },
             })
             .chain(self.attributes.iter()
                 .map(|attr| DomItem::Attr {
