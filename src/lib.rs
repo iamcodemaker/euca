@@ -12,3 +12,4 @@ pub mod route;
 pub mod generic_helpers;
 
 pub use diff::diff;
+pub use app::AppBuilder;
