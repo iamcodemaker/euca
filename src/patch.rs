@@ -216,7 +216,7 @@ macro_rules! attribute_unsetter {
 pub struct PatchSet<'a, Message> {
     /// The patches in this patch set.
     pub patches: Vec<Patch<'a, Message>>,
-    storage: Vec<WebItem>,
+    storage: Storage<Message>,
 }
 
 impl<'a, Message> PatchSet<'a, Message> {
@@ -262,7 +262,7 @@ impl<'a, Message> PatchSet<'a, Message> {
     /// dispatched via the given [`Dispatch`]er.
     ///
     /// [`Dispatch`]: ../app/trait.Dispatch.html
-    pub fn apply<D>(self, parent: web_sys::Element, app: Rc<RefCell<D>>) -> Storage where
+    pub fn apply<D>(self, parent: web_sys::Element, app: Rc<RefCell<D>>) -> Storage<Message> where
         Message: 'static + Clone,
         EventHandler<'a, Message>: Clone,
         D: Dispatch<Message> + 'static,

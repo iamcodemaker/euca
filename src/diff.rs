@@ -8,8 +8,9 @@ use crate::patch::Patch;
 use crate::vdom::DomItem;
 use crate::vdom::Storage;
 use crate::vdom::WebItem;
+use crate::component::Component;
 
-fn take_element<'a>(item: &'a mut WebItem) -> Box<dyn FnMut() -> web_sys::Element + 'a> {
+fn take_element<'a, Message>(item: &'a mut WebItem<Message>) -> Box<dyn FnMut() -> web_sys::Element + 'a> {
     Box::new(move || {
         let mut taken_item = WebItem::Taken;
         mem::swap(item, &mut taken_item);
@@ -20,7 +21,7 @@ fn take_element<'a>(item: &'a mut WebItem) -> Box<dyn FnMut() -> web_sys::Elemen
     })
 }
 
-fn take_text<'a>(item: &'a mut WebItem) -> Box<dyn FnMut() -> web_sys::Text + 'a> {
+fn take_text<'a, Message>(item: &'a mut WebItem<Message>) -> Box<dyn FnMut() -> web_sys::Text + 'a> {
     Box::new(move || {
         let mut taken_item = WebItem::Taken;
         mem::swap(item, &mut taken_item);
@@ -31,7 +32,7 @@ fn take_text<'a>(item: &'a mut WebItem) -> Box<dyn FnMut() -> web_sys::Text + 'a
     })
 }
 
-fn take_closure<'a>(item: &'a mut WebItem) -> Box<dyn FnMut() -> Closure<dyn FnMut(web_sys::Event)> + 'a> {
+fn take_closure<'a, Message>(item: &'a mut WebItem<Message>) -> Box<dyn FnMut() -> Closure<dyn FnMut(web_sys::Event)> + 'a> {
     Box::new(move || {
         let mut taken_item = WebItem::Taken;
         mem::swap(item, &mut taken_item);
@@ -46,7 +47,7 @@ fn take_closure<'a>(item: &'a mut WebItem) -> Box<dyn FnMut() -> Closure<dyn FnM
 
 /// Return the series of steps required to move from the given old/existing virtual dom to the
 /// given new virtual dom.
-pub fn diff<'a, Message, I1, I2>(mut old: I1, mut new: I2, storage: &'a mut Storage) -> PatchSet<'a, Message> where
+pub fn diff<'a, Message, I1, I2>(mut old: I1, mut new: I2, storage: &'a mut Storage<Message>) -> PatchSet<'a, Message> where
     Message: 'a + PartialEq + Clone + fmt::Debug,
     I1: Iterator<Item = DomItem<'a, Message>>,
     I2: Iterator<Item = DomItem<'a, Message>>,

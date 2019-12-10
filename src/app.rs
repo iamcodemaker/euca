@@ -73,7 +73,7 @@ impl<Message, Router: Route<Message> + 'static> AppBuilder<Message, Router> {
     /// The app will be attached at the given parent node and initialized with the given model.
     /// Event handlers will be registered as necessary.
     pub fn attach<Model, Command, DomTree>(self, parent: web_sys::Element, mut model: Model)
-    -> Rc<RefCell<App<Model, DomTree, Command>>>
+    -> Rc<RefCell<App<Model, DomTree, Message, Command>>>
     where
         Model: Update<Message, Command> + Render<DomTree> + 'static,
         DomTree: DomIter<Message> + 'static,
@@ -141,17 +141,17 @@ impl<Message, Router: Route<Message> + 'static> AppBuilder<Message, Router> {
 
 /// A wasm application consisting of a model, a virtual dom representation, and the parent element
 /// where this app lives in the dom.
-pub struct App<Model, DomTree, Command> {
+pub struct App<Model, DomTree, Message, Command> {
     dom: DomTree,
     parent: web_sys::Element,
     model: Model,
-    storage: Storage,
+    storage: Storage<Message>,
     listeners: Vec<(String, Closure<dyn FnMut(web_sys::Event)>)>,
     animation_frame_handle: Option<(i32, Closure<dyn FnMut(f64)>)>,
     command: std::marker::PhantomData<Command>,
 }
 
-impl<Message, Command, Model, DomTree> PartialDispatch<Message, Command> for App<Model, DomTree, Command>
+impl<Message, Command, Model, DomTree> PartialDispatch<Message, Command> for App<Model, DomTree, Message, Command>
 where
     Model: Update<Message, Command> + Render<DomTree> + 'static,
     Command: SideEffect<Message> + 'static,
@@ -211,7 +211,7 @@ where
     }
 }
 
-impl<Message, Command, Model, DomTree> Dispatch<Message> for App<Model, DomTree, Command>
+impl<Message, Command, Model, DomTree> Dispatch<Message> for App<Model, DomTree, Message, Command>
 where
     Model: Update<Message, Command> + Render<DomTree> + 'static,
     Command: SideEffect<Message> + 'static,
@@ -228,13 +228,13 @@ where
     }
 }
 
-impl<Model, DomTree, Command> App<Model, DomTree, Command> {
+impl<Model, DomTree, Message, Command> App<Model, DomTree, Message, Command> {
     /// Attach an app to the dom.
     ///
     /// The app will be attached at the given parent node and initialized with the given model.
     /// Event handlers will be registered as necessary.
-    fn attach<Message>(parent: web_sys::Element, model: Model, )
-    -> Rc<RefCell<App<Model, DomTree, Command>>>
+    fn attach(parent: web_sys::Element, model: Model, )
+    -> Rc<RefCell<App<Model, DomTree, Message, Command>>>
     where
         Model: Update<Message, Command> + Render<DomTree> + 'static,
         DomTree: DomIter<Message> + 'static,
@@ -275,7 +275,7 @@ impl<Model, DomTree, Command> App<Model, DomTree, Command> {
     }
 }
 
-impl<Model, DomTree, Message, Command> Detach<Message> for App<Model, DomTree, Command>
+impl<Model, DomTree, Message, Command> Detach<Message> for App<Model, DomTree, Message, Command>
 where
     Model: Update<Message, Command> + Render<DomTree> + 'static,
     DomTree: DomIter<Message> + 'static,

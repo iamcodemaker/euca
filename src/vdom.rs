@@ -9,6 +9,8 @@
 
 use std::fmt;
 use wasm_bindgen::prelude::*;
+use crate::component::Component;
+use crate::app::Dispatcher;
 
 /// This represents an event handler. The handler can either always map to a specific message, or a
 /// function can be provided that will transform the given [`web_sys::Event`] into a message. This
@@ -42,23 +44,26 @@ pub enum EventHandler<'a, Message> {
 }
 
 /// A DOM node or JS closure created when applying a patch.
-pub enum WebItem {
+pub enum WebItem<Message> {
     /// A DOM element.
     Element(web_sys::Element),
     /// A DOM text node.
     Text(web_sys::Text),
     /// A JS closure.
     Closure(Closure<dyn FnMut(web_sys::Event)>),
+    /// A component.
+    Component(Box<dyn Component<Message>>),
     /// A previously occupied, now empty storage entry.
     Taken,
 }
 
-impl fmt::Debug for WebItem {
+impl<Message> fmt::Debug for WebItem<Message> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             WebItem::Element(node) => write!(f, "Element({:?})", node),
             WebItem::Text(text) => write!(f, "Text({:?})", text),
             WebItem::Closure(_) => write!(f, "Closure(_)"),
+            WebItem::Component(_) => write!(f, "Component(_)"),
             WebItem::Taken => write!(f, "Taken"),
         }
     }
@@ -69,7 +74,7 @@ impl fmt::Debug for WebItem {
 /// The list should match the traversal order of the vDOM tree we are operating on.
 ///
 /// [`WebItem`]: enum.WebItem.html
-pub type Storage = Vec<WebItem>;
+pub type Storage<Message> = Vec<WebItem<Message>>;
 
 /// Items representing all of the data in the DOM tree.
 ///

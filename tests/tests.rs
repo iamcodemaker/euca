@@ -30,7 +30,7 @@ fn t(text: &str) -> web_sys::Text {
         .create_text_node(text)
 }
 
-fn gen_storage<'a, Message, Iter>(iter: Iter) -> Storage where
+fn gen_storage<'a, Message, Iter>(iter: Iter) -> Storage<Message> where
     Message: 'a,
     Iter: Iterator<Item = DomItem<'a, Message>>,
 {
