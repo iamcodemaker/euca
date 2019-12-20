@@ -11,9 +11,10 @@ use euca::dom::Dom;
 use euca::dom::DomVec;
 use euca::patch::Patch;
 use euca::patch::PatchSet;
-use euca::app::Dispatch;
 use euca::component::Component;
 use euca::diff;
+
+use euca::test::{ App, Msg, Cmd };
 
 use wasm_bindgen_test::*;
 use wasm_bindgen_test::wasm_bindgen_test_configure;
@@ -45,9 +46,9 @@ impl<Message> Component<Message> for FakeComponent {
     fn detach(&self) { }
 }
 
-fn gen_storage<'a, Message, Iter>(iter: Iter) -> Storage<Message> where
+fn gen_storage<'a, Message, Command, Iter>(iter: Iter) -> Storage<Message> where
     Message: 'a,
-    Iter: Iterator<Item = DomItem<'a, Message>>,
+    Iter: Iterator<Item = DomItem<'a, Message, Command>>,
 {
     iter
         // filter items that do not have storage
@@ -85,7 +86,7 @@ macro_rules! compare {
         compare!($patch_set, [ $($x),* ]);
     };
     ( $patch_set:ident, [ $( $x:expr),* ] ) => {
-        let cmp: PatchSet<Msg> = vec!($($x),*).into();
+        let cmp: PatchSet<Msg, Cmd> = vec!($($x),*).into();
 
         assert_eq!($patch_set.len(), cmp.len(), "lengths don't match\n  left: {:?}\n right: {:?}", $patch_set, cmp);
 
@@ -126,15 +127,12 @@ macro_rules! compare {
     };
 }
 
-#[derive(Debug, Clone, PartialEq)]
-struct Msg {}
-
 #[test]
 fn basic_diff() {
     let old = iter::empty();
     let mut storage = vec![];
 
-    let new = Dom::elem("span");
+    let new = Dom::<_, Cmd>::elem("span");
 
     let o = old.into_iter();
     let n = new.dom_iter();
@@ -154,7 +152,7 @@ fn diff_add_text() {
     let old = iter::empty();
     let mut storage = vec![];
 
-    let new = Dom::elem("div")
+    let new = Dom::<_, Cmd>::elem("div")
         .push(Dom::text("text"))
     ;
 
@@ -175,8 +173,8 @@ fn diff_add_text() {
 
 #[wasm_bindgen_test]
 fn new_child_nodes() {
-    let old = Dom::elem("div");
-    let new = Dom::elem("div")
+    let old = Dom::<_, Cmd>::elem("div");
+    let new = Dom::<_, Cmd>::elem("div")
         .push(Dom::elem("b")
             .attr("class", "item")
             .attr("id", "id1")
@@ -215,7 +213,7 @@ fn new_child_nodes() {
 
 #[wasm_bindgen_test]
 fn from_empty() {
-    let new = Dom::elem("div")
+    let new = Dom::<_, Cmd>::elem("div")
         .push(Dom::elem("b")
             .attr("class", "item")
             .attr("id", "id1")
@@ -253,7 +251,7 @@ fn from_empty() {
 
 #[wasm_bindgen_test]
 fn to_empty() {
-    let old = Dom::elem("div")
+    let old = Dom::<_, Cmd>::elem("div")
         .push(Dom::elem("b")
             .attr("class", "item")
             .attr("id", "id1")
@@ -280,7 +278,7 @@ fn to_empty() {
 
 #[wasm_bindgen_test]
 fn to_empty_vec() {
-    let old: DomVec<_> = vec![
+    let old: DomVec<_, Cmd> = vec![
         Dom::elem("b")
             .attr("class", "item")
             .attr("id", "id1")
@@ -306,8 +304,8 @@ fn to_empty_vec() {
 
 #[wasm_bindgen_test]
 fn no_difference() {
-    let old = Dom::elem("div");
-    let new = Dom::elem("div");
+    let old = Dom::<_, Cmd>::elem("div");
+    let new = Dom::<_, Cmd>::elem("div");
 
     let mut storage = gen_storage(old.dom_iter());
     let o = old.dom_iter();
@@ -325,8 +323,8 @@ fn no_difference() {
 
 #[wasm_bindgen_test]
 fn basic_diff_with_element() {
-    let old = Dom::elem("div");
-    let new = Dom::elem("span");
+    let old = Dom::<_, Cmd>::elem("div");
+    let new = Dom::<_, Cmd>::elem("span");
 
     let mut storage = gen_storage(old.dom_iter());
     let o = old.dom_iter();
@@ -345,8 +343,8 @@ fn basic_diff_with_element() {
 
 #[wasm_bindgen_test]
 fn diff_attributes() {
-    let old = Dom::elem("div").attr("name", "value");
-    let new = Dom::elem("div").attr("name", "new value");
+    let old = Dom::<_, Cmd>::elem("div").attr("name", "value");
+    let new = Dom::<_, Cmd>::elem("div").attr("name", "new value");
 
     let mut storage = gen_storage(old.dom_iter());
     let o = old.dom_iter();
@@ -365,8 +363,8 @@ fn diff_attributes() {
 
 #[wasm_bindgen_test]
 fn diff_checked() {
-    let old = Dom::elem("input").attr("checked", "false");
-    let new = Dom::elem("input").attr("checked", "false");
+    let old = Dom::<_, Cmd>::elem("input").attr("checked", "false");
+    let new = Dom::<_, Cmd>::elem("input").attr("checked", "false");
 
     let mut storage = gen_storage(old.dom_iter());
     let o = old.dom_iter();
@@ -385,7 +383,7 @@ fn diff_checked() {
 
 #[wasm_bindgen_test]
 fn old_child_nodes_with_element() {
-    let old = Dom::elem("div")
+    let old = Dom::<_, Cmd>::elem("div")
         .push(Dom::elem("b")
             .attr("class", "item")
             .attr("id", "id")
@@ -398,7 +396,7 @@ fn old_child_nodes_with_element() {
         )
     ;
 
-    let new = Dom::elem("div");
+    let new = Dom::<_, Cmd>::elem("div");
 
     let mut storage = gen_storage(old.dom_iter());
     let o = old.dom_iter();
@@ -418,7 +416,7 @@ fn old_child_nodes_with_element() {
 
 #[wasm_bindgen_test]
 fn old_child_nodes_with_element_and_child() {
-    let old = Dom::elem("div")
+    let old = Dom::<_, Cmd>::elem("div")
         .push(Dom::elem("b")
             .attr("class", "item")
             .attr("id", "id")
@@ -455,7 +453,7 @@ fn old_child_nodes_with_element_and_child() {
 
 #[wasm_bindgen_test]
 fn assorted_child_nodes() {
-    let old = Dom::elem("div")
+    let old = Dom::<_, Cmd>::elem("div")
         .push(Dom::elem("h1")
             .attr("id", "id")
             .event("onclick", Msg {})
@@ -530,7 +528,7 @@ fn assorted_child_nodes() {
 
 #[wasm_bindgen_test]
 fn diff_old_child_nodes_with_new_element() {
-    let old = Dom::elem("span")
+    let old = Dom::<_, Cmd>::elem("span")
         .push(Dom::elem("b")
             .attr("class", "item")
             .attr("id", "id")
@@ -562,7 +560,7 @@ fn diff_old_child_nodes_with_new_element() {
 
 #[wasm_bindgen_test]
 fn null_patch_with_element() {
-    let old = Dom::elem("div");
+    let old = Dom::<_, Cmd>::elem("div");
     let new = Dom::elem("div");
 
     let mut storage = gen_storage(old.dom_iter());
@@ -571,13 +569,8 @@ fn null_patch_with_element() {
     let patch_set = diff::diff(o, n, &mut storage);
 
     let parent = e("div");
-    struct App {};
-    impl Dispatch<Msg> for App {
-        fn dispatch(_: Rc<RefCell<Self>>, _: Msg) {}
-    }
-
-    let app = Rc::new(RefCell::new(App {}));
-    storage = patch_set.apply(parent.clone(), Rc::clone(&app));
+    let app = App::dispatcher();
+    storage = patch_set.apply(&parent, &app);
 
     match storage[0] {
         WebItem::Element(_) => {}
@@ -588,23 +581,18 @@ fn null_patch_with_element() {
 #[wasm_bindgen_test]
 fn basic_patch_with_element() {
     let gen1 = iter::empty();
-    let gen2 = Dom::elem("div");
+    let gen2 = Dom::<_, Cmd>::elem("div");
     let gen3 = Dom::elem("div");
 
     let parent = e("div");
-    struct App {};
-    impl Dispatch<Msg> for App {
-        fn dispatch(_: Rc<RefCell<Self>>, _: Msg) {}
-    }
-
-    let app = Rc::new(RefCell::new(App {}));
+    let app = App::dispatcher();
     let mut storage = vec![];
 
     // first gen create element
     let o = gen1.into_iter();
     let n = gen2.dom_iter();
     let patch_set = diff::diff(o, n, &mut storage);
-    storage = patch_set.apply(parent.clone(), Rc::clone(&app));
+    storage = patch_set.apply(&parent, &app);
 
     match storage[0] {
         WebItem::Element(_) => {}
@@ -615,7 +603,7 @@ fn basic_patch_with_element() {
     let o = gen2.dom_iter();
     let n = gen3.dom_iter();
     let patch_set = diff::diff(o, n, &mut storage);
-    storage = patch_set.apply(parent.clone(), Rc::clone(&app));
+    storage = patch_set.apply(&parent, &app);
 
     match storage[0] {
         WebItem::Element(_) => {}
@@ -629,21 +617,14 @@ fn basic_event_test() {
     let gen2 = Dom::elem("button").event("click", Msg {});
 
     let parent = e("div");
-    struct App(i32);
-    impl Dispatch<Msg> for App {
-        fn dispatch(app: Rc<RefCell<Self>>, _: Msg) {
-            let mut app = app.borrow_mut();
-            app.0 += 1;
-        }
-    }
-
-    let app = Rc::new(RefCell::new(App(0)));
+    let messages = Rc::new(RefCell::new(vec![]));
+    let app = App::dispatcher_with_vec(Rc::clone(&messages));
     let mut storage = vec![];
 
     let o = gen1.into_iter();
     let n = gen2.dom_iter();
     let patch_set = diff::diff(o, n, &mut storage);
-    storage = patch_set.apply(parent.clone(), Rc::clone(&app));
+    storage = patch_set.apply(&parent, &app);
 
     match storage[0] {
         WebItem::Element(ref node) => {
@@ -654,7 +635,7 @@ fn basic_event_test() {
         _ => panic!("expected node to be created"),
     }
 
-    assert_eq!(app.borrow().0, 1);
+    assert_eq!(messages.borrow().len(), 1);
 }
 
 #[wasm_bindgen_test]
@@ -663,21 +644,14 @@ fn listener_copy() {
     let gen2 = Dom::elem("button").event("click", Msg {});
 
     let parent = e("div");
-    struct App(i32);
-    impl Dispatch<Msg> for App {
-        fn dispatch(app: Rc<RefCell<Self>>, _: Msg) {
-            let mut app = app.borrow_mut();
-            app.0 += 1;
-        }
-    }
-
-    let app = Rc::new(RefCell::new(App(0)));
+    let messages = Rc::new(RefCell::new(vec![]));
+    let app = App::dispatcher_with_vec(Rc::clone(&messages));
     let mut storage = vec![];
 
     let o = gen1.into_iter();
     let n = gen2.dom_iter();
     let patch_set = diff::diff(o, n, &mut storage);
-    storage = patch_set.apply(parent.clone(), Rc::clone(&app));
+    storage = patch_set.apply(&parent, &app);
 
     match storage[0] {
         WebItem::Element(ref node) => {
@@ -693,7 +667,7 @@ fn listener_copy() {
     let o = gen2.dom_iter();
     let n = gen3.dom_iter();
     let patch_set = diff::diff(o, n, &mut storage);
-    storage = patch_set.apply(parent.clone(), Rc::clone(&app));
+    storage = patch_set.apply(&parent, &app);
 
     match storage[0] {
         WebItem::Element(ref node) => {
@@ -704,12 +678,12 @@ fn listener_copy() {
         _ => panic!("expected node to be created"),
     }
 
-    assert_eq!(app.borrow().0, 2);
+    assert_eq!(messages.borrow().len(), 2);
 }
 
 #[wasm_bindgen_test]
 fn replace_element_with_text() {
-    let old = Dom::elem("div");
+    let old = Dom::<_, Cmd>::elem("div");
     let new = Dom::text("div");
 
     let mut storage = gen_storage(old.dom_iter());
@@ -729,7 +703,7 @@ fn replace_element_with_text() {
 
 #[wasm_bindgen_test]
 fn replace_text_with_element() {
-    let old = Dom::text("div");
+    let old = Dom::<_, Cmd>::text("div");
     let new = Dom::elem("div");
 
     let mut storage = gen_storage(old.dom_iter());

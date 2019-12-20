@@ -10,14 +10,13 @@
 //! [`PatchSet::apply`]: struct.PatchSet.html#method.apply
 
 use std::fmt;
-use std::rc::Rc;
-use std::cell::RefCell;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 use crate::vdom::EventHandler;
 use crate::vdom::WebItem;
 use crate::vdom::Storage;
 use crate::app::{Dispatch, Dispatcher};
+use crate::app::dispatch::SideEffect;
 use crate::component::Component;
 use log::warn;
 
@@ -32,7 +31,7 @@ use log::warn;
 /// [`web_sys::Element`]: https://rustwasm.github.io/wasm-bindgen/api/web_sys/struct.Element.html
 /// [`web_sys::Text`]: https://rustwasm.github.io/wasm-bindgen/api/web_sys/struct.Text.html
 /// [`Closure`]: https://rustwasm.github.io/wasm-bindgen/api/wasm_bindgen/closure/struct.Closure.html
-pub enum Patch<'a, Message> {
+pub enum Patch<'a, Message, Command> {
     /// Remove an element.
     RemoveElement(Box<dyn FnMut() -> web_sys::Element + 'a>),
     /// Create an element of the given type.
@@ -63,7 +62,7 @@ pub enum Patch<'a, Message> {
         /// The initial message to send to the component.
         msg: Message,
         /// The function used to create the component.
-        create: fn(web_sys::Element, Dispatcher<Message>) -> Box<dyn Component<Message>>,
+        create: fn(web_sys::Element, Dispatcher<Message, Command>) -> Box<dyn Component<Message>>,
     },
     /// Move a component from the old dom to the new one.
     CopyComponent(Box<dyn FnMut() -> Box<dyn Component<Message>> + 'a>),
@@ -105,7 +104,7 @@ pub enum Patch<'a, Message> {
     Up,
 }
 
-impl<'a, Message> fmt::Debug for Patch<'a, Message> where
+impl<'a, Message, Command> fmt::Debug for Patch<'a, Message, Command> where
     Message: fmt::Debug
 {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -236,13 +235,13 @@ macro_rules! attribute_unsetter {
 ///
 /// [`Patch`]: enum.Patch.html
 #[derive(Default, Debug)]
-pub struct PatchSet<'a, Message> {
+pub struct PatchSet<'a, Message, Command> {
     /// The patches in this patch set.
-    pub patches: Vec<Patch<'a, Message>>,
+    pub patches: Vec<Patch<'a, Message, Command>>,
     storage: Storage<Message>,
 }
 
-impl<'a, Message> PatchSet<'a, Message> {
+impl<'a, Message, Command> PatchSet<'a, Message, Command> {
     /// Create an empty PatchSet.
     pub fn new() -> Self {
         PatchSet {
@@ -252,7 +251,7 @@ impl<'a, Message> PatchSet<'a, Message> {
     }
 
     /// Push a patch on to the end of the PatchSet.
-    pub fn push(&mut self, patch: Patch<'a, Message>) {
+    pub fn push(&mut self, patch: Patch<'a, Message, Command>) {
         self.patches.push(patch)
     }
 
@@ -287,12 +286,12 @@ impl<'a, Message> PatchSet<'a, Message> {
     /// dispatched via the given [`Dispatch`]er.
     ///
     /// [`Dispatch`]: ../app/trait.Dispatch.html
-    pub fn apply<D>(self, parent: web_sys::Element, app: Rc<RefCell<D>>) -> Storage<Message> where
-        Message: 'static + Clone,
+    pub fn apply(self, parent: &web_sys::Element, app: &Dispatcher<Message, Command>) -> Storage<Message> where
+        Message: Clone + PartialEq + fmt::Debug + 'static,
+        Command: SideEffect<Message> + 'static,
         EventHandler<'a, Message>: Clone,
-        D: Dispatch<Message> + 'static,
     {
-        let mut node_stack: Vec<web_sys::Node> = vec![parent.unchecked_into()];
+        let mut node_stack: Vec<web_sys::Node> = vec![parent.clone().unchecked_into()];
         let mut special_attributes: Vec<(web_sys::Node, &str, &str)> = vec![];
 
         let PatchSet { patches, mut storage } = self;
@@ -402,20 +401,20 @@ impl<'a, Message> PatchSet<'a, Message> {
                     ]);
                 }
                 Patch::AddListener { trigger, handler } => {
-                    let app = Rc::clone(&app) as Rc<RefCell<D>>;
+                    let app = app.clone();
                     let closure = match handler {
                         EventHandler::Msg(msg) => {
                             let msg = msg.clone();
                             Closure::wrap(
                                 Box::new(move |_| {
-                                    D::dispatch(Rc::clone(&app), msg.clone())
+                                    Dispatch::dispatch(&app, msg.clone())
                                 }) as Box<dyn FnMut(web_sys::Event)>
                             )
                         }
                         EventHandler::Fn(fun) => {
                             Closure::wrap(
                                 Box::new(move |event| {
-                                    D::dispatch(Rc::clone(&app), fun(event))
+                                    Dispatch::dispatch(&app, fun(event))
                                 }) as Box<dyn FnMut(web_sys::Event)>
                             )
                         }
@@ -423,7 +422,7 @@ impl<'a, Message> PatchSet<'a, Message> {
                             let msg = msg.clone();
                             Closure::wrap(
                                 Box::new(move |event| {
-                                    D::dispatch(Rc::clone(&app), fun(msg.clone(), event))
+                                    Dispatch::dispatch(&app, fun(msg.clone(), event))
                                 }) as Box<dyn FnMut(web_sys::Event)>
                             )
                         }
@@ -447,7 +446,7 @@ impl<'a, Message> PatchSet<'a, Message> {
                                             }
                                         }
                                     };
-                                    D::dispatch(Rc::clone(&app), fun(value))
+                                    Dispatch::dispatch(&app, fun(value))
                                 }) as Box<dyn FnMut(web_sys::Event)>
                             )
                         }
@@ -455,7 +454,7 @@ impl<'a, Message> PatchSet<'a, Message> {
                             Closure::wrap(
                                 Box::new(move |event: web_sys::Event| {
                                     let event = event.dyn_into::<web_sys::InputEvent>().expect_throw("expected web_sys::InputEvent");
-                                    D::dispatch(Rc::clone(&app), fun(event))
+                                    Dispatch::dispatch(&app, fun(event))
                                 }) as Box<dyn FnMut(web_sys::Event)>
                             )
                         }
@@ -482,7 +481,7 @@ impl<'a, Message> PatchSet<'a, Message> {
                         .expect("components can only be added to elements")
                         .clone();
 
-                    let component = create(node, Rc::clone(&app) as Dispatcher<Message>);
+                    let component = create(node, app.clone());
                     component.update(msg);
                     storage.push(WebItem::Component(component));
                 }
@@ -573,8 +572,8 @@ impl<'a, Message> PatchSet<'a, Message> {
     }
 }
 
-impl<'a, Message> From<Vec<Patch<'a, Message>>> for PatchSet<'a, Message> {
-    fn from(v: Vec<Patch<'a, Message>>) -> Self {
+impl<'a, Message, Command> From<Vec<Patch<'a, Message, Command>>> for PatchSet<'a, Message, Command> {
+    fn from(v: Vec<Patch<'a, Message, Command>>) -> Self {
         PatchSet {
             patches: v,
             storage: vec![],
@@ -582,9 +581,9 @@ impl<'a, Message> From<Vec<Patch<'a, Message>>> for PatchSet<'a, Message> {
     }
 }
 
-impl<'a, Message> IntoIterator for PatchSet<'a, Message> {
-    type Item = Patch<'a, Message>;
-    type IntoIter = ::std::vec::IntoIter<Patch<'a, Message>>;
+impl<'a, Message, Command> IntoIterator for PatchSet<'a, Message, Command> {
+    type Item = Patch<'a, Message, Command>;
+    type IntoIter = ::std::vec::IntoIter<Patch<'a, Message, Command>>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.patches.into_iter()
@@ -599,23 +598,22 @@ mod tests {
     use wasm_bindgen_test::wasm_bindgen_test_configure;
     wasm_bindgen_test_configure!(run_in_browser);
 
+    use crate::test::{App, Msg, Cmd};
+
     fn elem(name: &str) -> web_sys::Element {
         web_sys::window().expect("expected window")
             .document().expect("expected document")
             .create_element(name).expect("expected element")
     }
 
-    #[derive(Clone)]
-    enum Msg {}
-
     #[test]
     fn empty_patch_set_is_noop() {
-        assert!(PatchSet::<Msg>::new().is_noop());
+        assert!(PatchSet::<Msg, Cmd>::new().is_noop());
     }
 
     #[wasm_bindgen_test]
     fn noop_patch_set_is_noop() {
-        let patch_set: PatchSet<Msg> = vec![
+        let patch_set: PatchSet<Msg, Cmd> = vec![
             Patch::CopyElement(Box::new(|| elem("test"))),
             Patch::Up,
         ].into();
@@ -625,7 +623,7 @@ mod tests {
 
     #[test]
     fn not_noop() {
-        let patch_set: PatchSet<Msg> = vec![
+        let patch_set: PatchSet<Msg, Cmd> = vec![
             Patch::CreateElement {
                 element: "",
             },
@@ -636,19 +634,15 @@ mod tests {
 
     #[wasm_bindgen_test]
     fn copy_element() {
-        let patch_set: PatchSet<Msg> = vec![
+        let patch_set: PatchSet<Msg, Cmd> = vec![
             Patch::CopyElement(Box::new(|| elem("test"))),
             Patch::Up,
         ].into();
 
-        struct App {};
-        impl Dispatch<Msg> for App {
-            fn dispatch(_: Rc<RefCell<Self>>, _: Msg) {}
-        }
 
-        let app = Rc::new(RefCell::new(App {}));
+        let app = App::dispatcher();
         let parent = elem("div");
-        let storage = patch_set.apply(parent, app);
+        let storage = patch_set.apply(&parent, &app);
 
         assert!(!storage.is_empty());
     }
@@ -657,7 +651,7 @@ mod tests {
     fn add_attribute() {
         use Patch::*;
 
-        let patch_set: PatchSet<Msg> = vec![
+        let patch_set: PatchSet<Msg, Cmd> = vec![
             CopyElement(
                 Box::new(|| {
                     let e = elem("test");
@@ -669,14 +663,9 @@ mod tests {
             Up,
         ].into();
 
-        struct App {};
-        impl Dispatch<Msg> for App {
-            fn dispatch(_: Rc<RefCell<Self>>, _: Msg) {}
-        }
-
-        let app = Rc::new(RefCell::new(App {}));
+        let app = App::dispatcher();
         let parent = elem("div");
-        let storage = patch_set.apply(parent, app);
+        let storage = patch_set.apply(&parent, &app);
 
         let attribute = match storage[0] {
             WebItem::Element(ref e) => e.get_attribute("name"),
@@ -690,7 +679,7 @@ mod tests {
     fn add_attribute_checked() {
         use Patch::*;
 
-        let patch_set: PatchSet<Msg> = vec![
+        let patch_set: PatchSet<Msg, Cmd> = vec![
             CreateElement {
                 element: "input",
             },
@@ -698,14 +687,9 @@ mod tests {
             Up,
         ].into();
 
-        struct App {};
-        impl Dispatch<Msg> for App {
-            fn dispatch(_: Rc<RefCell<Self>>, _: Msg) {}
-        }
-
-        let app = Rc::new(RefCell::new(App {}));
+        let app = App::dispatcher();
         let parent = elem("div");
-        let storage = patch_set.apply(parent, app);
+        let storage = patch_set.apply(&parent, &app);
 
         let element = match storage[0] {
             WebItem::Element(ref e) => e,
@@ -720,7 +704,7 @@ mod tests {
     fn add_attribute_disabled() {
         use Patch::*;
 
-        let patch_set: PatchSet<Msg> = vec![
+        let patch_set: PatchSet<Msg, Cmd> = vec![
             CreateElement {
                 element: "input",
             },
@@ -728,14 +712,9 @@ mod tests {
             Up,
         ].into();
 
-        struct App {};
-        impl Dispatch<Msg> for App {
-            fn dispatch(_: Rc<RefCell<Self>>, _: Msg) {}
-        }
-
-        let app = Rc::new(RefCell::new(App {}));
+        let app = App::dispatcher();
         let parent = elem("div");
-        let storage = patch_set.apply(parent, app);
+        let storage = patch_set.apply(&parent, &app);
 
         let element = match storage[0] {
             WebItem::Element(ref e) => e,
@@ -750,7 +729,7 @@ mod tests {
     fn remove_attribute() {
         use Patch::*;
 
-        let patch_set: PatchSet<Msg> = vec![
+        let patch_set: PatchSet<Msg, Cmd> = vec![
             CopyElement(
                 Box::new(|| {
                     let e = elem("test");
@@ -762,14 +741,9 @@ mod tests {
             Up,
         ].into();
 
-        struct App {};
-        impl Dispatch<Msg> for App {
-            fn dispatch(_: Rc<RefCell<Self>>, _: Msg) {}
-        }
-
-        let app = Rc::new(RefCell::new(App {}));
+        let app = App::dispatcher();
         let parent = elem("div");
-        let storage = patch_set.apply(parent, app);
+        let storage = patch_set.apply(&parent, &app);
 
         let attribute = match storage[0] {
             WebItem::Element(ref e) => e.get_attribute("name"),
@@ -782,7 +756,7 @@ mod tests {
     fn remove_attribute_checked() {
         use Patch::*;
 
-        let patch_set: PatchSet<Msg> = vec![
+        let patch_set: PatchSet<Msg, Cmd> = vec![
             CopyElement(
                 Box::new(|| {
                     let e = elem("input");
@@ -794,14 +768,9 @@ mod tests {
             Up,
         ].into();
 
-        struct App {};
-        impl Dispatch<Msg> for App {
-            fn dispatch(_: Rc<RefCell<Self>>, _: Msg) {}
-        }
-
-        let app = Rc::new(RefCell::new(App {}));
+        let app = App::dispatcher();
         let parent = elem("div");
-        let storage = patch_set.apply(parent, app);
+        let storage = patch_set.apply(&parent, &app);
 
         let element = match storage[0] {
             WebItem::Element(ref e) => e,
@@ -816,7 +785,7 @@ mod tests {
     fn remove_attribute_disabled() {
         use Patch::*;
 
-        let patch_set: PatchSet<Msg> = vec![
+        let patch_set: PatchSet<Msg, Cmd> = vec![
             CopyElement(
                 Box::new(|| {
                     let e = elem("input");
@@ -828,14 +797,9 @@ mod tests {
             Up,
         ].into();
 
-        struct App {};
-        impl Dispatch<Msg> for App {
-            fn dispatch(_: Rc<RefCell<Self>>, _: Msg) {}
-        }
-
-        let app = Rc::new(RefCell::new(App {}));
+        let app = App::dispatcher();
         let parent = elem("div");
-        let storage = patch_set.apply(parent, app);
+        let storage = patch_set.apply(&parent, &app);
 
         let element = match storage[0] {
             WebItem::Element(ref e) => e,
@@ -850,7 +814,7 @@ mod tests {
     fn set_attribute_checked_false() {
         use Patch::*;
 
-        let patch_set: PatchSet<Msg> = vec![
+        let patch_set: PatchSet<Msg, Cmd> = vec![
             CreateElement {
                 element: "input",
             },
@@ -858,14 +822,9 @@ mod tests {
             Up,
         ].into();
 
-        struct App {};
-        impl Dispatch<Msg> for App {
-            fn dispatch(_: Rc<RefCell<Self>>, _: Msg) {}
-        }
-
-        let app = Rc::new(RefCell::new(App {}));
+        let app = App::dispatcher();
         let parent = elem("div");
-        let storage = patch_set.apply(parent, app);
+        let storage = patch_set.apply(&parent, &app);
 
         let element = match storage[0] {
             WebItem::Element(ref e) => e,
@@ -880,7 +839,7 @@ mod tests {
     fn set_attribute_disabled_false() {
         use Patch::*;
 
-        let patch_set: PatchSet<Msg> = vec![
+        let patch_set: PatchSet<Msg, Cmd> = vec![
             CreateElement {
                 element: "input",
             },
@@ -888,14 +847,9 @@ mod tests {
             Up,
         ].into();
 
-        struct App {};
-        impl Dispatch<Msg> for App {
-            fn dispatch(_: Rc<RefCell<Self>>, _: Msg) {}
-        }
-
-        let app = Rc::new(RefCell::new(App {}));
+        let app = App::dispatcher();
         let parent = elem("div");
-        let storage = patch_set.apply(parent, app);
+        let storage = patch_set.apply(&parent, &app);
 
         let element = match storage[0] {
             WebItem::Element(ref e) => e,
@@ -910,7 +864,7 @@ mod tests {
     fn set_attribute_autofocus_false() {
         use Patch::*;
 
-        let patch_set: PatchSet<Msg> = vec![
+        let patch_set: PatchSet<Msg, Cmd> = vec![
             CreateElement {
                 element: "input",
             },
@@ -918,14 +872,9 @@ mod tests {
             Up,
         ].into();
 
-        struct App {};
-        impl Dispatch<Msg> for App {
-            fn dispatch(_: Rc<RefCell<Self>>, _: Msg) {}
-        }
-
-        let app = Rc::new(RefCell::new(App {}));
+        let app = App::dispatcher();
         let parent = elem("div");
-        let storage = patch_set.apply(parent, app);
+        let storage = patch_set.apply(&parent, &app);
 
         let element = match storage[0] {
             WebItem::Element(ref e) => e,
@@ -940,7 +889,7 @@ mod tests {
     fn set_attribute_selected_false() {
         use Patch::*;
 
-        let patch_set: PatchSet<Msg> = vec![
+        let patch_set: PatchSet<Msg, Cmd> = vec![
             CreateElement {
                 element: "option",
             },
@@ -948,14 +897,9 @@ mod tests {
             Up,
         ].into();
 
-        struct App {};
-        impl Dispatch<Msg> for App {
-            fn dispatch(_: Rc<RefCell<Self>>, _: Msg) {}
-        }
-
-        let app = Rc::new(RefCell::new(App {}));
+        let app = App::dispatcher();
         let parent = elem("div");
-        let storage = patch_set.apply(parent, app);
+        let storage = patch_set.apply(&parent, &app);
 
         let element = match storage[0] {
             WebItem::Element(ref e) => e,

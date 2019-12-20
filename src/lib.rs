@@ -15,3 +15,7 @@ pub mod component;
 pub use diff::diff;
 pub use app::AppBuilder;
 pub use component::ComponentBuilder;
+
+pub use app::model;
+
+pub mod test;

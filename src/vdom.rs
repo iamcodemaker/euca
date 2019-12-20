@@ -84,7 +84,7 @@ pub type Storage<Message> = Vec<WebItem<Message>>;
 /// things seen if we were to walk the DOM tree depth first going through all nodes and their
 /// various attributes and events.
 #[derive(Debug, PartialEq)]
-pub enum DomItem<'a, Message> {
+pub enum DomItem<'a, Message, Command> {
     /// An element in the tree.
     Element(&'a str),
     /// A text node in the tree.
@@ -108,14 +108,15 @@ pub enum DomItem<'a, Message> {
     /// A component.
     Component {
         /// A message to send to the component.
+        // XXX msg: &'a Message,
         msg: Message,
         /// A function to create the component if necessary.
-        create: fn(web_sys::Element, Dispatcher<Message>) -> Box<dyn Component<Message>>,
+        create: fn(web_sys::Element, Dispatcher<Message, Command>) -> Box<dyn Component<Message>>,
     }
 }
 
 /// This trait provides a way to iterate over a virtual dom representation.
-pub trait DomIter<Message: Clone> {
+pub trait DomIter<Message: Clone, Command> {
     /// Return an iterator over the virtual dom.
-    fn dom_iter<'a>(&'a self) -> Box<dyn Iterator<Item = DomItem<'a, Message>> + 'a>;
+    fn dom_iter<'a>(&'a self) -> Box<dyn Iterator<Item = DomItem<'a, Message, Command>> + 'a>;
 }

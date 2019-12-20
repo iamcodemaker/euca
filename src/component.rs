@@ -51,8 +51,8 @@ impl<Message, Command, ParentMessage> ComponentBuilder<Message, Command, ParentM
         ParentMessage: 'static,
         Message: 'static,
         Command: 'static,
-        App: PartialDispatch<Message, Command> + Detach<Message> + 'static,
-        Parent: Dispatch<ParentMessage> + 'static,
+        Rc<RefCell<App>>: PartialDispatch<Message, Command> + Detach<Message> + 'static,
+        Rc<RefCell<Parent>>: Dispatch<ParentMessage> + 'static,
     {
         let ComponentBuilder {
             map,
@@ -70,27 +70,31 @@ impl<Message, Command, ParentMessage> ComponentBuilder<Message, Command, ParentM
 
 /// A wasm application consisting of a model, a virtual dom representation, and the parent element
 /// where this app lives in the dom.
-struct ComponentImpl<Message, Command, ParentMessage, App: PartialDispatch<Message, Command>, Parent: Dispatch<ParentMessage>> {
+struct ComponentImpl<Message, Command, ParentMessage, App, Parent> {
     app: Rc<RefCell<App>>,
     parent: Rc<RefCell<Parent>>,
     map: fn(ParentMessage) -> Option<Message>,
     unmap: fn(Command) -> Option<ParentMessage>,
 }
 
-impl<Message, Command, ParentMessage, App: PartialDispatch<Message, Command> + Detach<Message>, Parent: Dispatch<ParentMessage>> Component<ParentMessage> for ComponentImpl<Message, Command, ParentMessage, App, Parent> {
+impl<Message, Command, ParentMessage, App, Parent> Component<ParentMessage> for ComponentImpl<Message, Command, ParentMessage, App, Parent>
+where
+    Rc<RefCell<App>>: PartialDispatch<Message, Command> + Detach<Message>,
+    Rc<RefCell<Parent>>: Dispatch<ParentMessage>,
+{
     fn update(&self, msg: ParentMessage) {
         if let Some(msg) = (self.map)(msg) {
-            let commands = PartialDispatch::update(Rc::clone(&self.app), msg);
+            let commands = PartialDispatch::update(&self.app, msg);
             for cmd in commands {
                 // XXX execute command?
                 if let Some(cmd) = (self.unmap)(cmd) {
-                    Dispatch::dispatch(Rc::clone(&self.parent), cmd);
+                    Dispatch::dispatch(&self.parent, cmd);
                 }
             }
         }
     }
 
     fn detach(&self) {
-        Detach::detach(Rc::clone(&self.app));
+        Detach::detach(&self.app);
     }
 }

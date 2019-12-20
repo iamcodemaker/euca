@@ -56,10 +56,10 @@ fn take_component<'a, Message>(item: &'a mut WebItem<Message>) -> Box<dyn FnMut(
 
 /// Return the series of steps required to move from the given old/existing virtual dom to the
 /// given new virtual dom.
-pub fn diff<'a, Message, I1, I2>(mut old: I1, mut new: I2, storage: &'a mut Storage<Message>) -> PatchSet<'a, Message> where
+pub fn diff<'a, Message, Command, I1, I2>(mut old: I1, mut new: I2, storage: &'a mut Storage<Message>) -> PatchSet<'a, Message, Command> where
     Message: 'a + PartialEq + Clone + fmt::Debug,
-    I1: Iterator<Item = DomItem<'a, Message>>,
-    I2: Iterator<Item = DomItem<'a, Message>>,
+    I1: Iterator<Item = DomItem<'a, Message, Command>>,
+    I2: Iterator<Item = DomItem<'a, Message, Command>>,
 {
     #[derive(PartialEq)]
     enum NodeState {
