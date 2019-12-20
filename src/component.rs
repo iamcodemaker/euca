@@ -2,9 +2,13 @@
 
 use std::rc::Rc;
 use std::cell::RefCell;
+use std::fmt;
 use crate::app::PartialDispatch;
 use crate::app::Dispatch;
+use crate::app::Dispatcher;
 use crate::app::Detach;
+use crate::app::Application;
+use crate::app::SideEffect;
 
 /// A self containted component that can live inside another app.
 pub trait Component<Message> {
@@ -33,26 +37,25 @@ impl<Message, Command, ParentMessage> Default for ComponentBuilder<Message, Comm
 
 impl<Message, Command, ParentMessage> ComponentBuilder<Message, Command, ParentMessage> {
     /// A function to optionally map a message from the parent to the component.
-    pub fn map(&mut self, f: fn(ParentMessage) -> Option<Message>) -> &mut Self {
+    pub fn map(mut self, f: fn(ParentMessage) -> Option<Message>) -> Self {
         self.map = f;
         self
     }
 
     /// A funciton to optionally map a command from the component to the parent.
-    pub fn unmap(&mut self, f: fn(Command) -> Option<ParentMessage>) -> &mut Self {
+    pub fn unmap(mut self, f: fn(Command) -> Option<ParentMessage>) -> Self {
         self.unmap = f;
         self
     }
 
     /// Create a component from the given app, and it's parent.
-    pub fn build<App, Parent>(self, app: Rc<RefCell<App>>, parent: Rc<RefCell<Parent>>)
+    pub fn build<ParentCommand>(self, app: Rc<RefCell<Box<dyn Application<Message, Command>>>>, parent: Dispatcher<ParentMessage, ParentCommand>)
     -> Box<dyn Component<ParentMessage>>
     where
-        ParentMessage: 'static,
-        Message: 'static,
-        Command: 'static,
-        Rc<RefCell<App>>: PartialDispatch<Message, Command> + Detach<Message> + 'static,
-        Rc<RefCell<Parent>>: Dispatch<ParentMessage> + 'static,
+        ParentMessage: fmt::Debug + Clone + PartialEq + 'static,
+        ParentCommand: SideEffect<ParentMessage> + 'static,
+        Message: fmt::Debug + Clone + PartialEq + 'static,
+        Command: SideEffect<Message> + 'static,
     {
         let ComponentBuilder {
             map,
@@ -70,17 +73,20 @@ impl<Message, Command, ParentMessage> ComponentBuilder<Message, Command, ParentM
 
 /// A wasm application consisting of a model, a virtual dom representation, and the parent element
 /// where this app lives in the dom.
-struct ComponentImpl<Message, Command, ParentMessage, App, Parent> {
-    app: Rc<RefCell<App>>,
-    parent: Rc<RefCell<Parent>>,
+struct ComponentImpl<Message, Command, ParentMessage, ParentCommand> {
+    app: Rc<RefCell<Box<dyn Application<Message, Command>>>>,
+    parent: Dispatcher<ParentMessage, ParentCommand>,
     map: fn(ParentMessage) -> Option<Message>,
     unmap: fn(Command) -> Option<ParentMessage>,
 }
 
-impl<Message, Command, ParentMessage, App, Parent> Component<ParentMessage> for ComponentImpl<Message, Command, ParentMessage, App, Parent>
+impl<Message, Command, ParentMessage, ParentCommand> Component<ParentMessage>
+for ComponentImpl<Message, Command, ParentMessage, ParentCommand>
 where
-    Rc<RefCell<App>>: PartialDispatch<Message, Command> + Detach<Message>,
-    Rc<RefCell<Parent>>: Dispatch<ParentMessage>,
+    Message: fmt::Debug + Clone + PartialEq + 'static,
+    Command: SideEffect<Message> + 'static,
+    ParentMessage: fmt::Debug + Clone + PartialEq + 'static,
+    ParentCommand: SideEffect<ParentMessage> + 'static,
 {
     fn update(&self, msg: ParentMessage) {
         if let Some(msg) = (self.map)(msg) {
