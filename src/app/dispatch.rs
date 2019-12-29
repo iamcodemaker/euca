@@ -45,12 +45,6 @@ pub trait Dispatch<Message> {
     fn dispatch(&self, msg: Message);
 }
 
-/// Partially dispatch a message, returning any resulting Commands instead of executing them.
-pub trait PartialDispatch<Message, Command> {
-    /// Dispatch a message to the app but don't execute commands.
-    fn update(&self, msg: Message) -> Vec<Command>;
-}
-
 impl<Message, Command> Dispatch<Message> for Dispatcher<Message, Command>
 where
     Command: SideEffect<Message> + 'static,
@@ -58,22 +52,5 @@ where
 {
     fn dispatch(&self, msg: Message) {
         Dispatch::dispatch(&self.app, msg);
-    }
-}
-
-impl<Message, Command> Dispatch<Message> for Rc<RefCell<Box<dyn Application<Message, Command>>>>
-where
-    Command: SideEffect<Message> + 'static,
-    Message: fmt::Debug + Clone + PartialEq + 'static,
-{
-    fn dispatch(&self, msg: Message) {
-        let commands = PartialDispatch::update(self, msg);
-
-        // execute side effects
-        let dispatcher = self.into();
-        let app = self.borrow();
-        for cmd in commands {
-            Application::process(&**app, cmd, &dispatcher);
-        }
     }
 }

@@ -16,7 +16,7 @@ pub mod side_effect;
 
 pub use crate::app::detach::Detach;
 pub use crate::app::model::{Update, Render};
-pub use crate::app::dispatch::{PartialDispatch, Dispatch, Dispatcher};
+pub use crate::app::dispatch::{Dispatch, Dispatcher};
 pub use crate::app::side_effect::{SideEffect, Processor};
 
 use web_sys;
@@ -327,12 +327,12 @@ where
     command: std::marker::PhantomData<Command>,
 }
 
-impl<Message, Command> PartialDispatch<Message, Command> for Rc<RefCell<Box<dyn Application<Message, Command>>>>
+impl<Message, Command> Dispatch<Message> for Rc<RefCell<Box<dyn Application<Message, Command>>>>
 where
     Command: SideEffect<Message> + 'static,
     Message: fmt::Debug + Clone + PartialEq + 'static,
 {
-    fn update(&self, msg: Message) -> Vec<Command> {
+    fn dispatch(&self, msg: Message) {
         // update the model
         let mut app = self.borrow_mut();
         let commands = Application::update(&mut **app, msg);
@@ -357,7 +357,11 @@ where
             Application::set_scheduled_render(&mut **app, (handle, closure));
         }
 
-        commands
+        // execute side effects
+        let dispatcher = self.into();
+        for cmd in commands {
+            Application::process(&**app, cmd, &dispatcher);
+        }
 
         // TODO: evaluate speedup or lack there of from using patch_set.is_noop() to check if we
         // actually need to apply this patch before applying the patch
