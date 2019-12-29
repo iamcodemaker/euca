@@ -362,9 +362,6 @@ where
         for cmd in commands {
             Application::process(&**app, cmd, &dispatcher);
         }
-
-        // TODO: evaluate speedup or lack there of from using patch_set.is_noop() to check if we
-        // actually need to apply this patch before applying the patch
     }
 }
 
