@@ -58,7 +58,7 @@ impl<Message, Command, ParentMessage> ComponentBuilder<Message, Command, ParentM
         ParentMessage: fmt::Debug + Clone + PartialEq + 'static,
         ParentCommand: SideEffect<ParentMessage> + 'static,
         Message: fmt::Debug + Clone + PartialEq + 'static,
-        Command: SideEffect<Message> + 'static,
+        Command: SideEffect<Message> + Clone + 'static,
         Model: Update<Message, Command> + Render<DomTree> + 'static,
         DomTree: DomIter<Message, Command> + 'static,
     {
@@ -101,13 +101,12 @@ impl<Message, Command, ParentMessage, ParentCommand>
 side_effect::Processor<Message, Command>
 for ComponentProcessor<Message, Command, ParentMessage, ParentCommand>
 where
-    Command: SideEffect<Message> + 'static,
+    Command: SideEffect<Message> + Clone + 'static,
     ParentMessage: fmt::Debug + Clone + PartialEq + 'static,
     ParentCommand: SideEffect<ParentMessage> + 'static,
 {
-    fn process(&self, cmd: Command, _app: &Dispatcher<Message, Command>) {
-        // XXX execute command?
-        // cmd.clone().process(app)
+    fn process(&self, cmd: Command, app: &Dispatcher<Message, Command>) {
+        cmd.clone().process(app);
         if let Some(cmd) = (self.unmap)(cmd) {
             Dispatch::dispatch(&self.parent, cmd);
         }
