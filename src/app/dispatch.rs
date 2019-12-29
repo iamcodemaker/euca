@@ -3,7 +3,7 @@
 use std::rc::Rc;
 use std::cell::RefCell;
 use std::fmt;
-use crate::app::Application;
+use crate::app::{Application, SideEffect};
 
 /// A shared app handle.
 ///
@@ -51,12 +51,6 @@ pub trait PartialDispatch<Message, Command> {
     fn update(&self, msg: Message) -> Vec<Command>;
 }
 
-/// Processor for side-effecting commands.
-pub trait SideEffect<Message> {
-    /// Process a side-effecting command.
-    fn process(self, dispatcher: &Dispatcher<Message, Self>) where Self: Sized;
-}
-
 impl<Message, Command> Dispatch<Message> for Dispatcher<Message, Command>
 where
     Command: SideEffect<Message> + 'static,
@@ -77,8 +71,9 @@ where
 
         // execute side effects
         let dispatcher = self.into();
+        let app = self.borrow();
         for cmd in commands {
-            cmd.process(&dispatcher);
+            Application::process(&**app, cmd, &dispatcher);
         }
     }
 }

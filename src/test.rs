@@ -53,6 +53,7 @@ impl Application<Msg, Cmd> for App {
         vec![]
     }
     fn render(&mut self, _app: &Dispatcher<Msg, Cmd>) { }
+    fn process(&self, _cmd: Cmd, _app: &Dispatcher<Msg, Cmd>) { }
     fn get_scheduled_render(&self) -> &Option<(i32, Closure<dyn FnMut(f64)>)> {
         &self.render
     }

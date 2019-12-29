@@ -3,17 +3,20 @@
 use std::rc::Rc;
 use std::cell::RefCell;
 use std::fmt;
-use crate::app::PartialDispatch;
 use crate::app::Dispatch;
 use crate::app::Dispatcher;
 use crate::app::Detach;
 use crate::app::Application;
+use crate::app::AppBuilder;
 use crate::app::SideEffect;
+use crate::app::side_effect;
+use crate::app::{Update, Render};
+use crate::vdom::DomIter;
 
 /// A self containted component that can live inside another app.
 pub trait Component<Message> {
     /// Dispatch a message to this component.
-    fn update(&self, message: Message);
+    fn dispatch(&self, message: Message);
 
     /// Detach the component from the dom.
     fn detach(&self);
@@ -49,54 +52,85 @@ impl<Message, Command, ParentMessage> ComponentBuilder<Message, Command, ParentM
     }
 
     /// Create a component from the given app, and it's parent.
-    pub fn build<ParentCommand>(self, app: Rc<RefCell<Box<dyn Application<Message, Command>>>>, parent: Dispatcher<ParentMessage, ParentCommand>)
+    pub fn attach<ParentCommand, Model, DomTree>(self, parent: web_sys::Element, model: Model, parent_app: Dispatcher<ParentMessage, ParentCommand>)
     -> Box<dyn Component<ParentMessage>>
     where
         ParentMessage: fmt::Debug + Clone + PartialEq + 'static,
         ParentCommand: SideEffect<ParentMessage> + 'static,
         Message: fmt::Debug + Clone + PartialEq + 'static,
         Command: SideEffect<Message> + 'static,
+        Model: Update<Message, Command> + Render<DomTree> + 'static,
+        DomTree: DomIter<Message, Command> + 'static,
     {
         let ComponentBuilder {
             map,
             unmap,
         } = self;
 
+        let processor = ComponentProcessor::new(parent_app, unmap);
+        let app = AppBuilder::default()
+            .processor(processor)
+            .attach(parent, model);
+
         Box::new(ComponentImpl {
             app: app,
-            parent: parent,
             map: map,
-            unmap: unmap,
         })
+    }
+}
+
+struct ComponentProcessor<Message, Command, ParentMessage, ParentCommand> {
+    parent: Dispatcher<ParentMessage, ParentCommand>,
+    unmap: fn(Command) -> Option<ParentMessage>,
+    message: std::marker::PhantomData<Message>,
+}
+
+impl<Message, Command, ParentMessage, ParentCommand>
+ComponentProcessor<Message, Command, ParentMessage, ParentCommand>
+{
+    fn new(app: Dispatcher<ParentMessage, ParentCommand>, unmap: fn(Command) -> Option<ParentMessage>) -> Self {
+        ComponentProcessor {
+            parent: app,
+            unmap: unmap,
+            message: std::marker::PhantomData,
+        }
+    }
+}
+
+impl<Message, Command, ParentMessage, ParentCommand>
+side_effect::Processor<Message, Command>
+for ComponentProcessor<Message, Command, ParentMessage, ParentCommand>
+where
+    Command: SideEffect<Message> + 'static,
+    ParentMessage: fmt::Debug + Clone + PartialEq + 'static,
+    ParentCommand: SideEffect<ParentMessage> + 'static,
+{
+    fn process(&self, cmd: Command, _app: &Dispatcher<Message, Command>) {
+        // XXX execute command?
+        // cmd.clone().process(app)
+        if let Some(cmd) = (self.unmap)(cmd) {
+            Dispatch::dispatch(&self.parent, cmd);
+        }
     }
 }
 
 /// A wasm application consisting of a model, a virtual dom representation, and the parent element
 /// where this app lives in the dom.
-struct ComponentImpl<Message, Command, ParentMessage, ParentCommand> {
+struct ComponentImpl<Message, Command, ParentMessage> {
     app: Rc<RefCell<Box<dyn Application<Message, Command>>>>,
-    parent: Dispatcher<ParentMessage, ParentCommand>,
     map: fn(ParentMessage) -> Option<Message>,
-    unmap: fn(Command) -> Option<ParentMessage>,
 }
 
-impl<Message, Command, ParentMessage, ParentCommand> Component<ParentMessage>
-for ComponentImpl<Message, Command, ParentMessage, ParentCommand>
+impl<Message, Command, ParentMessage> Component<ParentMessage>
+for ComponentImpl<Message, Command, ParentMessage>
 where
     Message: fmt::Debug + Clone + PartialEq + 'static,
     Command: SideEffect<Message> + 'static,
     ParentMessage: fmt::Debug + Clone + PartialEq + 'static,
-    ParentCommand: SideEffect<ParentMessage> + 'static,
 {
-    fn update(&self, msg: ParentMessage) {
+    fn dispatch(&self, msg: ParentMessage) {
         if let Some(msg) = (self.map)(msg) {
-            let commands = PartialDispatch::update(&self.app, msg);
-            for cmd in commands {
-                // XXX execute command?
-                if let Some(cmd) = (self.unmap)(cmd) {
-                    Dispatch::dispatch(&self.parent, cmd);
-                }
-            }
+            Dispatch::dispatch(&self.app, msg);
         }
     }
 

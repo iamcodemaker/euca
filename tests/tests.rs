@@ -42,7 +42,7 @@ impl FakeComponent {
 }
 
 impl<Message> Component<Message> for FakeComponent {
-    fn update(&self, _: Message) { }
+    fn dispatch(&self, _: Message) { }
     fn detach(&self) { }
 }
 

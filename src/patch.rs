@@ -15,8 +15,7 @@ use wasm_bindgen::JsCast;
 use crate::vdom::EventHandler;
 use crate::vdom::WebItem;
 use crate::vdom::Storage;
-use crate::app::{Dispatch, Dispatcher};
-use crate::app::dispatch::SideEffect;
+use crate::app::{Dispatch, Dispatcher, SideEffect};
 use crate::component::Component;
 use log::warn;
 
@@ -482,12 +481,12 @@ impl<'a, Message, Command> PatchSet<'a, Message, Command> {
                         .clone();
 
                     let component = create(node, app.clone());
-                    component.update(msg);
+                    component.dispatch(msg);
                     storage.push(WebItem::Component(component));
                 }
                 Patch::UpdateComponent { mut take, msg } => {
                     let component = take();
-                    component.update(msg);
+                    component.dispatch(msg);
                     storage.push(WebItem::Component(component));
                 }
                 Patch::CopyComponent(mut take) => {

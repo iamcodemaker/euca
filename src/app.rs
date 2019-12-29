@@ -12,11 +12,12 @@
 pub mod detach;
 pub mod model;
 pub mod dispatch;
+pub mod side_effect;
 
 pub use crate::app::detach::Detach;
 pub use crate::app::model::{Update, Render};
 pub use crate::app::dispatch::{PartialDispatch, Dispatch, Dispatcher};
-pub use crate::app::dispatch::SideEffect;
+pub use crate::app::side_effect::{SideEffect, Processor};
 
 use web_sys;
 use wasm_bindgen::prelude::*;
@@ -29,37 +30,83 @@ use crate::vdom::DomIter;
 use crate::vdom::Storage;
 use crate::route::Route;
 use crate::generic_helpers;
+//use crate::app::side_effect;
 
 /// Struct used to configure and attach an application to the DOM.
-pub struct AppBuilder<Message, Router: Route<Message>> {
+pub struct AppBuilder<Message, Command, Processor, Router>
+where
+    Command: SideEffect<Message>,
+    Processor: side_effect::Processor<Message, Command>,
+    Router: Route<Message>,
+{
     router: Option<Rc<Router>>,
+    processor: Processor,
     message: std::marker::PhantomData<Message>,
+    command: std::marker::PhantomData<Command>,
 }
 
-impl<Message> Default for AppBuilder<Message, generic_helpers::Router<Message>> {
+impl<Message, Command> Default
+for AppBuilder<
+    Message,
+    Command,
+    side_effect::DefaultProcessor<Message, Command>,
+    generic_helpers::Router<Message>,
+>
+where
+    Command: SideEffect<Message>,
+{
     fn default() -> Self {
         AppBuilder {
             router: None,
+            processor: side_effect::DefaultProcessor::default(),
             message: std::marker::PhantomData,
+            command: std::marker::PhantomData,
         }
     }
 }
 
-impl<Message, Router: Route<Message> + 'static> AppBuilder<Message, Router> {
+impl<Message, Command, Processor, Router>
+AppBuilder<Message, Command, Processor, Router>
+where
+    Command: SideEffect<Message> + 'static,
+    Processor: side_effect::Processor<Message, Command> + 'static,
+    Router: Route<Message> + 'static,
+{
     /// Handle popstate and hashchange events for this app.
     ///
     /// The router will need to implement the [`Route`] trait.
     ///
     /// [`Route`]: ../route/trait.Route.html
-    pub fn router<R: Route<Message>>(self, router: R) -> AppBuilder<Message, R> {
+    pub fn router<R: Route<Message>>(self, router: R) -> AppBuilder<Message, Command, Processor, R> {
         let AppBuilder {
             message,
+            command,
+            processor,
             ..
         } = self;
 
         AppBuilder {
             message: message,
+            command: command,
+            processor,
             router: Some(Rc::new(router)),
+        }
+    }
+
+    /// Process side-effecting commands.
+    pub(crate) fn processor<P: side_effect::Processor<Message, Command>>(self, processor: P) -> AppBuilder<Message, Command, P, Router> {
+        let AppBuilder {
+            message,
+            command,
+            router,
+            ..
+        } = self;
+
+        AppBuilder {
+            message: message,
+            command: command,
+            processor: processor,
+            router: router,
         }
     }
 
@@ -67,7 +114,7 @@ impl<Message, Router: Route<Message> + 'static> AppBuilder<Message, Router> {
     ///
     /// The app will be attached at the given parent node and initialized with the given model.
     /// Event handlers will be registered as necessary.
-    pub fn attach<Model, Command, DomTree>(self, parent: web_sys::Element, mut model: Model)
+    pub fn attach<Model, DomTree>(self, parent: web_sys::Element, mut model: Model)
     -> Rc<RefCell<Box<dyn Application<Message, Command>>>>
     where
         Model: Update<Message, Command> + Render<DomTree> + 'static,
@@ -75,9 +122,15 @@ impl<Message, Router: Route<Message> + 'static> AppBuilder<Message, Router> {
         Message: fmt::Debug + Clone + PartialEq + 'static,
         Command: SideEffect<Message> + 'static,
     {
+        let AppBuilder {
+            router,
+            processor,
+            ..
+        } = self;
+
         let mut commands = vec![];
 
-        if let Some(ref router) = self.router {
+        if let Some(ref router) = router {
             // initialize the model with the initial URL
             let url = web_sys::window()
                 .expect("window")
@@ -92,9 +145,9 @@ impl<Message, Router: Route<Message> + 'static> AppBuilder<Message, Router> {
         }
 
         // attach the app to the dom
-        let app_rc = App::attach(parent, model);
+        let app_rc = App::attach(parent, model, processor);
 
-        if let Some(ref router) = self.router {
+        if let Some(ref router) = router {
             let window = web_sys::window()
                 .expect("couldn't get window handle");
 
@@ -127,7 +180,7 @@ impl<Message, Router: Route<Message> + 'static> AppBuilder<Message, Router> {
             // execute side effects
             let dispatcher = Dispatcher::from(&app_rc);
             for cmd in commands {
-                cmd.process(&dispatcher);
+                app_rc.borrow().process(cmd, &dispatcher);
             }
         }
 
@@ -141,6 +194,8 @@ pub trait Application<Message, Command> {
     fn update(&mut self, msg: Message) -> Vec<Command>;
     /// Tell the application to render itself.
     fn render(&mut self, app: &Dispatcher<Message, Command>);
+    /// Process side effecting commands.
+    fn process(&self, cmd: Command, app: &Dispatcher<Message, Command>);
     /// Get a reference to any pending rendering.
     fn get_scheduled_render(&self) -> &Option<(i32, Closure<dyn FnMut(f64)>)>;
     /// Store a reference to any pending rendering.
@@ -153,11 +208,12 @@ pub trait Application<Message, Command> {
     fn detach(&mut self, app: &Dispatcher<Message, Command>);
 }
 
-impl<Model, DomTree, Message, Command> Application<Message, Command>
-for App<Model, DomTree, Message, Command>
+impl<Model, DomTree, Processor, Message, Command> Application<Message, Command>
+for App<Model, DomTree, Processor, Message, Command>
 where
     Model: Update<Message, Command> + Render<DomTree> + 'static,
     Command: SideEffect<Message> + 'static,
+    Processor: side_effect::Processor<Message, Command> + 'static,
     Message: fmt::Debug + Clone + PartialEq + 'static,
     DomTree: DomIter<Message, Command> + 'static,
 {
@@ -199,6 +255,10 @@ where
 
         // TODO: evaluate speedup or lack there of from using patch_set.is_noop() to check if we
         // actually need to apply this patch before applying the patch
+    }
+
+    fn process(&self, cmd: Command, app: &Dispatcher<Message, Command>) {
+        Processor::process(&self.processor, cmd, app);
     }
 
     fn push_listener(&mut self, listener: (String, Closure<dyn FnMut(web_sys::Event)>)) {
@@ -252,13 +312,18 @@ where
 
 /// A wasm application consisting of a model, a virtual dom representation, and the parent element
 /// where this app lives in the dom.
-struct App<Model, DomTree, Message, Command> {
+struct App<Model, DomTree, Processor, Message, Command>
+where
+    Command: SideEffect<Message>,
+    Processor: side_effect::Processor<Message, Command>,
+{
     dom: DomTree,
     parent: web_sys::Element,
     model: Model,
     storage: Storage<Message>,
     listeners: Vec<(String, Closure<dyn FnMut(web_sys::Event)>)>,
     animation_frame_handle: Option<(i32, Closure<dyn FnMut(f64)>)>,
+    processor: Processor,
     command: std::marker::PhantomData<Command>,
 }
 
@@ -299,12 +364,16 @@ where
     }
 }
 
-impl<Model, DomTree, Message, Command> App<Model, DomTree, Message, Command> {
+impl<Model, DomTree, Processor, Message, Command> App<Model, DomTree, Processor, Message, Command>
+where
+    Command: SideEffect<Message>,
+    Processor: side_effect::Processor<Message, Command> + 'static,
+{
     /// Attach an app to the dom.
     ///
     /// The app will be attached at the given parent node and initialized with the given model.
     /// Event handlers will be registered as necessary.
-    fn attach(parent: web_sys::Element, model: Model, )
+    fn attach(parent: web_sys::Element, model: Model, processor: Processor)
     -> Rc<RefCell<Box<dyn Application<Message, Command>>>>
     where
         Model: Update<Message, Command> + Render<DomTree> + 'static,
@@ -321,6 +390,7 @@ impl<Model, DomTree, Message, Command> App<Model, DomTree, Message, Command> {
             storage: vec![],
             listeners: vec![],
             animation_frame_handle: None,
+            processor: processor,
             command: std::marker::PhantomData,
         };
 
