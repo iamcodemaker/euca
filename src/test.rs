@@ -1,6 +1,7 @@
 //! Test utilties.
 
 use crate::app::Application;
+use crate::app::ScheduledRender;
 use crate::app::Dispatcher;
 use crate::app::SideEffect;
 use crate::app::Commands;
@@ -23,7 +24,7 @@ impl SideEffect<Msg> for Cmd {
 /// Test app.
 pub struct App {
     messages: Rc<RefCell<Vec<Msg>>>,
-    render: Option<(i32, Closure<dyn FnMut(f64)>)>,
+    render: Option<ScheduledRender>,
 }
 
 impl App {
@@ -55,10 +56,10 @@ impl Application<Msg, Cmd> for App {
     }
     fn render(&mut self, _app: &Dispatcher<Msg, Cmd>) { }
     fn process(&self, _cmd: Cmd, _app: &Dispatcher<Msg, Cmd>) { }
-    fn get_scheduled_render(&self) -> &Option<(i32, Closure<dyn FnMut(f64)>)> {
+    fn get_scheduled_render(&self) -> &Option<ScheduledRender> {
         &self.render
     }
-    fn set_scheduled_render(&mut self, handle: (i32, Closure<dyn FnMut(f64)>)) {
+    fn set_scheduled_render(&mut self, handle: ScheduledRender) {
         self.render = Some(handle);
     }
     fn push_listener(&mut self, _listener: (String, Closure<dyn FnMut(web_sys::Event)>)) { }

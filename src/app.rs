@@ -191,6 +191,9 @@ where
     }
 }
 
+/// A pending render.
+pub type ScheduledRender = (i32, Closure<dyn FnMut(f64)>);
+
 /// All of the functions one might perform on a wasm application.
 pub trait Application<Message, Command> {
     /// Update the application with a message.
@@ -200,9 +203,9 @@ pub trait Application<Message, Command> {
     /// Process side effecting commands.
     fn process(&self, cmd: Command, app: &Dispatcher<Message, Command>);
     /// Get a reference to any pending rendering.
-    fn get_scheduled_render(&self) -> &Option<(i32, Closure<dyn FnMut(f64)>)>;
+    fn get_scheduled_render(&self) -> &Option<ScheduledRender>;
     /// Store a reference to any pending rendering.
-    fn set_scheduled_render(&mut self, handle: (i32, Closure<dyn FnMut(f64)>));
+    fn set_scheduled_render(&mut self, handle: ScheduledRender);
     /// Store a listener that will be canceled when the app is detached.
     fn push_listener(&mut self, listener: (String, Closure<dyn FnMut(web_sys::Event)>));
     /// Attach the initial app to the dom.
@@ -227,11 +230,11 @@ where
         commands
     }
 
-    fn get_scheduled_render(&self) -> &Option<(i32, Closure<dyn FnMut(f64)>)> {
+    fn get_scheduled_render(&self) -> &Option<ScheduledRender> {
         &self.animation_frame_handle
     }
 
-    fn set_scheduled_render(&mut self, handle: (i32, Closure<dyn FnMut(f64)>)) {
+    fn set_scheduled_render(&mut self, handle: ScheduledRender) {
         self.animation_frame_handle = Some(handle)
     }
 
@@ -325,7 +328,7 @@ where
     model: Model,
     storage: Storage<Message>,
     listeners: Vec<(String, Closure<dyn FnMut(web_sys::Event)>)>,
-    animation_frame_handle: Option<(i32, Closure<dyn FnMut(f64)>)>,
+    animation_frame_handle: Option<ScheduledRender>,
     processor: Processor,
     command: std::marker::PhantomData<Command>,
 }
