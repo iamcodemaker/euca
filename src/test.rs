@@ -24,7 +24,7 @@ impl SideEffect<Msg> for Cmd {
 /// Test app.
 pub struct App {
     messages: Rc<RefCell<Vec<Msg>>>,
-    render: Option<ScheduledRender>,
+    render: Option<ScheduledRender<Cmd>>,
 }
 
 impl App {
@@ -54,12 +54,12 @@ impl Application<Msg, Cmd> for App {
         self.messages.borrow_mut().push(msg);
         Commands::default()
     }
-    fn render(&mut self, _app: &Dispatcher<Msg, Cmd>) { }
+    fn render(&mut self, _app: &Dispatcher<Msg, Cmd>) -> Vec<Cmd> { vec![] }
     fn process(&self, _cmd: Cmd, _app: &Dispatcher<Msg, Cmd>) { }
-    fn get_scheduled_render(&self) -> &Option<ScheduledRender> {
-        &self.render
+    fn get_scheduled_render(&mut self) -> &mut Option<ScheduledRender<Cmd>> {
+        &mut self.render
     }
-    fn set_scheduled_render(&mut self, handle: ScheduledRender) {
+    fn set_scheduled_render(&mut self, handle: ScheduledRender<Cmd>) {
         self.render = Some(handle);
     }
     fn push_listener(&mut self, _listener: (String, Closure<dyn FnMut(web_sys::Event)>)) { }

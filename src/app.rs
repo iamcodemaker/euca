@@ -192,20 +192,20 @@ where
 }
 
 /// A pending render.
-pub type ScheduledRender = (i32, Closure<dyn FnMut(f64)>);
+pub type ScheduledRender<Command> = (Vec<Command>, i32, Closure<dyn FnMut(f64)>);
 
 /// All of the functions one might perform on a wasm application.
 pub trait Application<Message, Command> {
     /// Update the application with a message.
     fn update(&mut self, msg: Message) -> Commands<Command>;
     /// Tell the application to render itself.
-    fn render(&mut self, app: &Dispatcher<Message, Command>);
+    fn render(&mut self, app: &Dispatcher<Message, Command>) -> Vec<Command>;
     /// Process side effecting commands.
     fn process(&self, cmd: Command, app: &Dispatcher<Message, Command>);
     /// Get a reference to any pending rendering.
-    fn get_scheduled_render(&self) -> &Option<ScheduledRender>;
+    fn get_scheduled_render(&mut self) -> &mut Option<ScheduledRender<Command>>;
     /// Store a reference to any pending rendering.
-    fn set_scheduled_render(&mut self, handle: ScheduledRender);
+    fn set_scheduled_render(&mut self, handle: ScheduledRender<Command>);
     /// Store a listener that will be canceled when the app is detached.
     fn push_listener(&mut self, listener: (String, Closure<dyn FnMut(web_sys::Event)>));
     /// Attach the initial app to the dom.
@@ -230,15 +230,15 @@ where
         commands
     }
 
-    fn get_scheduled_render(&self) -> &Option<ScheduledRender> {
-        &self.animation_frame_handle
+    fn get_scheduled_render(&mut self) -> &mut Option<ScheduledRender<Command>> {
+        &mut self.animation_frame_handle
     }
 
-    fn set_scheduled_render(&mut self, handle: ScheduledRender) {
+    fn set_scheduled_render(&mut self, handle: ScheduledRender<Command>) {
         self.animation_frame_handle = Some(handle)
     }
 
-    fn render(&mut self, app_rc: &Dispatcher<Message, Command>) {
+    fn render(&mut self, app_rc: &Dispatcher<Message, Command>) -> Vec<Command> {
         let App {
             ref parent,
             ref mut model,
@@ -257,7 +257,16 @@ where
         self.storage = patch_set.apply(parent, app_rc);
 
         self.dom = new_dom;
-        self.animation_frame_handle = None;
+
+        let commands;
+        if let Some((cmds, _, _)) = self.animation_frame_handle.take() {
+            commands = cmds;
+        }
+        else {
+            commands = vec![];
+        }
+
+        commands
 
         // TODO: evaluate speedup or lack there of from using patch_set.is_noop() to check if we
         // actually need to apply this patch before applying the patch
@@ -328,7 +337,7 @@ where
     model: Model,
     storage: Storage<Message>,
     listeners: Vec<(String, Closure<dyn FnMut(web_sys::Event)>)>,
-    animation_frame_handle: Option<ScheduledRender>,
+    animation_frame_handle: Option<ScheduledRender<Command>>,
     processor: Processor,
     command: std::marker::PhantomData<Command>,
 }
@@ -349,7 +358,10 @@ where
         } = commands;
 
         // request an animation frame for rendering if we don't already have a request out
-        if Application::get_scheduled_render(&**app).is_none() {
+        if let Some((ref mut cmds, _, _)) = Application::get_scheduled_render(&mut **app) {
+            cmds.extend(post_render);
+        }
+        else {
             let app_rc = Rc::clone(self);
 
             let window = web_sys::window()
@@ -359,8 +371,8 @@ where
                 Box::new(move |_| {
                     let mut app = app_rc.borrow_mut();
                     let dispatcher = Dispatcher::from(&app_rc);
-                    Application::render(&mut **app, &dispatcher);
-                    for cmd in post_render.iter().cloned() {
+                    let commands = Application::render(&mut **app, &dispatcher);
+                    for cmd in commands {
                         Application::process(&**app, cmd, &dispatcher);
                     }
                 }) as Box<dyn FnMut(f64)>
@@ -369,7 +381,7 @@ where
             let handle = window.request_animation_frame(closure.as_ref().unchecked_ref())
                 .expect_throw("error with requestion_animation_frame");
 
-            Application::set_scheduled_render(&mut **app, (handle, closure));
+            Application::set_scheduled_render(&mut **app, (post_render, handle, closure));
         }
 
         // execute side effects
