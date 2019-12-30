@@ -2,6 +2,30 @@
 
 use crate::app::Dispatcher;
 
+/// Side effecting commands to be executed.
+pub struct Commands<Command> {
+    /// Commands to be executed immediately after the model update.
+    pub immediate: Vec<Command>,
+    /// Commands to be executed after rendering.
+    pub post_render: Vec<Command>,
+}
+
+impl<Command> Default for Commands<Command> {
+    fn default() -> Self {
+        Commands {
+            immediate: vec![],
+            post_render: vec![],
+        }
+    }
+}
+
+impl<Command> Commands<Command> {
+    /// Add a command to be immediately executed after the model update.
+    pub fn push(&mut self, cmd: Command) {
+        self.immediate.push(cmd);
+    }
+}
+
 /// The effect of a side-effecting command.
 pub trait SideEffect<Message> {
     /// Process a side-effecting command.
