@@ -24,6 +24,12 @@ impl<Command> Commands<Command> {
     pub fn push(&mut self, cmd: Command) {
         self.immediate.push(cmd);
     }
+
+    /// Returns true if there are no commands stored in the structure.
+    pub fn is_empty(&self) -> bool {
+        self.immediate.is_empty()
+        && self.post_render.is_empty()
+    }
 }
 
 /// The effect of a side-effecting command.
