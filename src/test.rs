@@ -3,6 +3,7 @@
 use crate::app::Application;
 use crate::app::Dispatcher;
 use crate::app::SideEffect;
+use crate::app::Commands;
 
 use wasm_bindgen::prelude::*;
 use std::rc::Rc;
@@ -48,9 +49,9 @@ impl App {
 }
 
 impl Application<Msg, Cmd> for App {
-    fn update(&mut self, msg: Msg) -> Vec<Cmd> {
+    fn update(&mut self, msg: Msg) -> Commands<Cmd> {
         self.messages.borrow_mut().push(msg);
-        vec![]
+        Commands::default()
     }
     fn render(&mut self, _app: &Dispatcher<Msg, Cmd>) { }
     fn process(&self, _cmd: Cmd, _app: &Dispatcher<Msg, Cmd>) { }

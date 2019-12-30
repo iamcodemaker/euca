@@ -17,7 +17,7 @@ pub mod side_effect;
 pub use crate::app::detach::Detach;
 pub use crate::app::model::{Update, Render};
 pub use crate::app::dispatch::{Dispatch, Dispatcher};
-pub use crate::app::side_effect::{SideEffect, Processor};
+pub use crate::app::side_effect::{SideEffect, Processor, Commands};
 
 use web_sys;
 use wasm_bindgen::prelude::*;
@@ -128,7 +128,7 @@ where
             ..
         } = self;
 
-        let mut commands = vec![];
+        let mut commands = Commands::default();
 
         if let Some(ref router) = router {
             // initialize the model with the initial URL
@@ -179,7 +179,10 @@ where
 
             // execute side effects
             let dispatcher = Dispatcher::from(&app_rc);
-            for cmd in commands {
+            for cmd in commands.immediate {
+                app_rc.borrow().process(cmd, &dispatcher);
+            }
+            for cmd in commands.post_render {
                 app_rc.borrow().process(cmd, &dispatcher);
             }
         }
@@ -191,7 +194,7 @@ where
 /// All of the functions one might perform on a wasm application.
 pub trait Application<Message, Command> {
     /// Update the application with a message.
-    fn update(&mut self, msg: Message) -> Vec<Command>;
+    fn update(&mut self, msg: Message) -> Commands<Command>;
     /// Tell the application to render itself.
     fn render(&mut self, app: &Dispatcher<Message, Command>);
     /// Process side effecting commands.
@@ -217,9 +220,9 @@ where
     Message: fmt::Debug + Clone + PartialEq + 'static,
     DomTree: DomIter<Message, Command> + 'static,
 {
-    fn update(&mut self, msg: Message) -> Vec<Command> {
+    fn update(&mut self, msg: Message) -> Commands<Command> {
         // update the model
-        let mut commands = vec![];
+        let mut commands = Commands::default();
         self.model.update(msg, &mut commands);
         commands
     }
@@ -337,6 +340,11 @@ where
         let mut app = self.borrow_mut();
         let commands = Application::update(&mut **app, msg);
 
+        let Commands {
+            immediate,
+            post_render,
+        } = commands;
+
         // request an animation frame for rendering if we don't already have a request out
         if Application::get_scheduled_render(&**app).is_none() {
             let app_rc = Rc::clone(self);
@@ -347,7 +355,11 @@ where
             let closure = Closure::wrap(
                 Box::new(move |_| {
                     let mut app = app_rc.borrow_mut();
-                    Application::render(&mut **app, &Dispatcher::from(&app_rc));
+                    let dispatcher = Dispatcher::from(&app_rc);
+                    Application::render(&mut **app, &dispatcher);
+                    for cmd in post_render.iter().cloned() {
+                        Application::process(&**app, cmd, &dispatcher);
+                    }
                 }) as Box<dyn FnMut(f64)>
             );
 
@@ -359,7 +371,7 @@ where
 
         // execute side effects
         let dispatcher = self.into();
-        for cmd in commands {
+        for cmd in immediate {
             Application::process(&**app, cmd, &dispatcher);
         }
     }
