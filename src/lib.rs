@@ -18,4 +18,5 @@ pub use component::ComponentBuilder;
 
 pub use app::model;
 
+#[doc(hidden)]
 pub mod test;
