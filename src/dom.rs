@@ -87,13 +87,13 @@ pub struct Attr {
 }
 
 impl Attr {
-    fn new(name: &'static str, value: &'static str) -> Self {
+    fn new(name: &'static str, value: &str) -> Self {
         Attr { name, value: value.into() }
     }
 }
 
-impl From<(&'static str, &'static str)> for Attr {
-    fn from(data: (&'static str, &'static str)) -> Self {
+impl From<(&'static str, &str)> for Attr {
+    fn from(data: (&'static str, &str)) -> Self {
         let (name, value) = data;
         Attr::new(name, value)
     }
