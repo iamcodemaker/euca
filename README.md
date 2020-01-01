@@ -81,9 +81,17 @@ building a modular framework was possible, not to implement the fastest algorith
 
 ### Composition
 
-It isn't currently possible to compose two applications that use different message
-types. In order to do this, both applications have to be converted to use the same
-message type. There may be a better way to address this, more exploration is needed.
+Composition is supported in two ways: via functions ([like Elm](https://guide.elm-lang.org/webapps/structure.html))
+and via modular self contained components ([like React](https://reactjs.org/docs/components-and-props.html)).
+The Elm method of composing functions works well for simple local components
+that don't have much state or special behavior characteristics and all use the
+same message type. For more complex components, where complex state and
+behavior is needed, or where the message type is different from the containing
+app, Euca supports effectively mounting a sub-app within a parent app. The
+parent can send a single message to the child, similar to properties in react's
+components. The component can communicate with the parent using commands. There
+are functions provided when the component is initialized that convert between
+the child and parent message and command types.
 
 ## TODO
 
