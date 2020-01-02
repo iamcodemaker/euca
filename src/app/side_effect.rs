@@ -3,6 +3,7 @@
 use crate::app::Dispatcher;
 
 /// Side effecting commands to be executed.
+#[non_exhaustive]
 pub struct Commands<Command> {
     /// Commands to be executed immediately after the model update.
     pub immediate: Vec<Command>,
