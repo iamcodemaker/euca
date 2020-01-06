@@ -89,6 +89,9 @@ pub enum DomItem<'a, Message, Command> {
     Element(&'a str),
     /// A text node in the tree.
     Text(&'a str),
+    /// Raw HTML code to be rendered using innerHTML. Use with caution as this can be used as an
+    /// attack vector to execute arbitrary code in the client's browser.
+    UnsafeInnerHtml(&'a str),
     /// An attribute of the last node we saw.
     Attr {
         /// The attribute name.

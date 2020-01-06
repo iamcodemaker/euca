@@ -56,7 +56,8 @@ fn gen_storage<'a, Message, Command, Iter>(iter: Iter) -> Storage<Message> where
             match i {
                 DomItem::Element(_) | DomItem::Text(_) | DomItem::Event { .. }
                 | DomItem::Component { .. } => true,
-                DomItem::Attr { .. } | DomItem::Up => false,
+                DomItem::Attr { .. } | DomItem::UnsafeInnerHtml(_)
+                | DomItem::Up => false,
             }
         })
         .map(|i| {
@@ -73,8 +74,8 @@ fn gen_storage<'a, Message, Command, Iter>(iter: Iter) -> Storage<Message> where
                     )
                 ),
                 DomItem::Component { .. } => WebItem::Component(FakeComponent::new()),
-                DomItem::Attr { .. } | DomItem::Up => {
-                    unreachable!("attribute and up nodes should have been filtered out")
+                DomItem::Attr { .. } | DomItem::Up | DomItem::UnsafeInnerHtml(_) => {
+                    unreachable!("attribute, inner html, and up nodes should have been filtered out")
                 },
             }
         })
@@ -120,6 +121,10 @@ macro_rules! compare {
                 (Patch::CopyListener(_), Patch::CopyListener(_)) => {}
                 (Patch::RemoveElement(_), Patch::RemoveElement(_)) => {}
                 (Patch::RemoveText(_), Patch::RemoveText(_)) => {}
+                (Patch::SetInnerHtml(h1), Patch::SetInnerHtml(h2)) => {
+                    assert_eq!(h1, h2, "[{}] unexpected innerHtml", i);
+                }
+                (Patch::UnsetInnerHtml, Patch::UnsetInnerHtml) => {}
                 (Patch::Up, Patch::Up) => {}
                 (item1, item2) => panic!("[{}] patch items don't match\n  left: {:?}\n right: {:?}", i, item1, item2),
             }
@@ -716,6 +721,194 @@ fn replace_text_with_element() {
         [
             Patch::RemoveText(Box::new(|| t("div"))),
             Patch::CreateElement { element: "div".into() },
+            Patch::Up,
+        ]
+    );
+}
+
+#[wasm_bindgen_test]
+fn inner_html_noop() {
+    let old;
+    let new;
+    unsafe {
+        old = Dom::<_, Cmd>::elem("div")
+            .inner_html("html");
+        new = Dom::elem("div")
+            .inner_html("html");
+    }
+
+    let mut storage = gen_storage(old.dom_iter());
+    let o = old.dom_iter();
+    let n = new.dom_iter();
+    let patch_set = diff::diff(o, n, &mut storage);
+
+    compare!(
+        patch_set,
+        [
+            Patch::CopyElement(Box::new(|| e("div"))),
+            Patch::Up,
+        ]
+    );
+}
+
+#[wasm_bindgen_test]
+fn inner_html_add() {
+    let old = Dom::<_, Cmd>::elem("div");
+    let new;
+    unsafe {
+        new = Dom::elem("div")
+            .inner_html("html");
+    }
+
+    let mut storage = gen_storage(old.dom_iter());
+    let o = old.dom_iter();
+    let n = new.dom_iter();
+    let patch_set = diff::diff(o, n, &mut storage);
+
+    compare!(
+        patch_set,
+        [
+            Patch::CopyElement(Box::new(|| e("div"))),
+            Patch::SetInnerHtml("html"),
+            Patch::Up,
+        ]
+    );
+}
+
+#[wasm_bindgen_test]
+fn inner_html_change() {
+    let old;
+    let new;
+    unsafe {
+        old = Dom::<_, Cmd>::elem("div")
+            .inner_html("toml");
+        new = Dom::elem("div")
+            .inner_html("html");
+    }
+
+    let mut storage = gen_storage(old.dom_iter());
+    let o = old.dom_iter();
+    let n = new.dom_iter();
+    let patch_set = diff::diff(o, n, &mut storage);
+
+    compare!(
+        patch_set,
+        [
+            Patch::CopyElement(Box::new(|| e("div"))),
+            Patch::SetInnerHtml("html"),
+            Patch::Up,
+        ]
+    );
+}
+
+#[wasm_bindgen_test]
+fn inner_html_remove() {
+    let old;
+    unsafe {
+        old = Dom::<_, Cmd>::elem("div")
+            .inner_html("html");
+    }
+    let new = Dom::elem("div");
+
+    let mut storage = gen_storage(old.dom_iter());
+    let o = old.dom_iter();
+    let n = new.dom_iter();
+    let patch_set = diff::diff(o, n, &mut storage);
+
+    compare!(
+        patch_set,
+        [
+            Patch::CopyElement(Box::new(|| e("div"))),
+            Patch::UnsetInnerHtml,
+            Patch::Up,
+        ]
+    );
+}
+
+#[wasm_bindgen_test]
+fn inner_html_replace() {
+    let old;
+    unsafe {
+        old = Dom::<_, Cmd>::elem("div")
+            .inner_html("html");
+    }
+    let new = Dom::elem("div")
+        .push(Dom::text("html"));
+
+    let mut storage = gen_storage(old.dom_iter());
+    let o = old.dom_iter();
+    let n = new.dom_iter();
+    let patch_set = diff::diff(o, n, &mut storage);
+
+    compare!(
+        patch_set,
+        [
+            Patch::CopyElement(Box::new(|| e("div"))),
+            Patch::UnsetInnerHtml,
+            Patch::CreateText { text: "html" },
+            Patch::Up,
+            Patch::Up,
+        ]
+    );
+}
+
+#[wasm_bindgen_test]
+fn inner_html_replace_with_children() {
+    let old;
+    let new;
+    unsafe {
+        old = Dom::<_, Cmd>::elem("div")
+            .inner_html("html");
+        new = Dom::elem("div")
+            .push(Dom::elem("div")
+                .inner_html("html")
+            )
+        ;
+    }
+
+    let mut storage = gen_storage(old.dom_iter());
+    let o = old.dom_iter();
+    let n = new.dom_iter();
+    let patch_set = diff::diff(o, n, &mut storage);
+
+    compare!(
+        patch_set,
+        [
+            Patch::CopyElement(Box::new(|| e("div"))),
+            Patch::UnsetInnerHtml,
+            Patch::CreateElement { element: "div" },
+            Patch::SetInnerHtml("html"),
+            Patch::Up,
+            Patch::Up,
+        ]
+    );
+}
+
+#[wasm_bindgen_test]
+fn inner_html_replace_children() {
+    let old;
+    let new;
+    unsafe {
+        old = Dom::<_, Cmd>::elem("div")
+            .push(Dom::elem("div")
+                .inner_html("html")
+            )
+        ;
+        new = Dom::elem("div")
+            .inner_html("html");
+    }
+
+    let mut storage = gen_storage(old.dom_iter());
+    let o = old.dom_iter();
+    let n = new.dom_iter();
+    let patch_set = diff::diff(o, n, &mut storage);
+
+    compare!(
+        patch_set,
+        [
+            Patch::CopyElement(Box::new(|| e("div"))),
+            Patch::RemoveElement(Box::new(|| e("div"))),
+            Patch::SetInnerHtml("html"),
             Patch::Up,
         ]
     );

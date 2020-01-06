@@ -111,6 +111,8 @@ impl From<(&'static str, String)> for Attr {
 pub struct Dom<Message, Command> {
     /// The element for this node.
     element: Node<Message, Command>,
+    /// The innerHtml value for this node.
+    inner_html: Option<String>,
     /// Attributes on this node.
     pub attributes: Vec<Attr>,
     /// Event handlers associated with this node.
@@ -127,6 +129,7 @@ impl<Message, Command> Dom<Message, Command> {
             events: vec![],
             attributes: vec![],
             children: vec![],
+            inner_html: None,
         }
     }
 
@@ -137,6 +140,7 @@ impl<Message, Command> Dom<Message, Command> {
             events: vec![],
             attributes: vec![],
             children: vec![],
+            inner_html: None,
         }
     }
 
@@ -147,7 +151,15 @@ impl<Message, Command> Dom<Message, Command> {
             events: vec![],
             attributes: vec![],
             children: vec![],
+            inner_html: None,
         }
+    }
+
+    /// Set innerHtml on this node. Use with caution as this can be used as an attack vector to
+    /// execute arbitrary code in the client's browser.
+    pub unsafe fn inner_html(mut self, value: impl Into<String>) -> Self {
+        self.inner_html = Some(value.into());
+        self
     }
 
     /// Add an attribute to this DOM element.
@@ -221,6 +233,9 @@ impl<Message: Clone, Command> DomIter<Message, Command> for Dom<Message, Command
                     name: attr.name,
                     value: &attr.value
                 })
+            )
+            .chain(self.inner_html.iter()
+                .map(|html| DomItem::UnsafeInnerHtml(html))
             )
             .chain(self.events.iter()
                 .map(|Event { trigger, handler }|

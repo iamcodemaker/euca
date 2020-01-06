@@ -56,6 +56,10 @@ pub enum Patch<'a, Message, Command> {
     },
     /// Copy the reference we have to the text element to the new dom.
     CopyText(Box<dyn FnMut() -> web_sys::Text + 'a>),
+    /// Update this element by setting innerHTML.
+    SetInnerHtml(&'a str),
+    /// Remove all of the children of the parent of this element.
+    UnsetInnerHtml,
     /// Create a Component.
     CreateComponent {
         /// The initial message to send to the component.
@@ -115,6 +119,8 @@ impl<'a, Message, Command> fmt::Debug for Patch<'a, Message, Command> where
             Patch::ReplaceText { take: _, text: t }  => write!(f, "ReplaceText {{ take: _, text: {:?} }}", t),
             Patch::CreateText { text: t } => write!(f, "CreateText {{ text: {:?} }}", t),
             Patch::CopyText(_) => write!(f, "CopyText(_)"),
+            Patch::SetInnerHtml(html) => write!(f, "SetInnerHtml({:?})", html),
+            Patch::UnsetInnerHtml => write!(f, "UnsetInnerHtml"),
             Patch::CreateComponent { msg, create: _ } => write!(f, "CreateComponent {{ msg: {:?}, create: _ }}", msg),
             Patch::UpdateComponent { take: _, msg } => write!(f, "CreateComponent {{ take: _, msg: {:?} }}", msg),
             Patch::CopyComponent(_) => write!(f, "CopyComponent(_)"),
@@ -274,6 +280,7 @@ impl<'a, Message, Command> PatchSet<'a, Message, Command> {
             RemoveElement(_) | CreateElement { .. }
             | CreateComponent { .. } | UpdateComponent { .. }
             | RemoveComponent(_)
+            | SetInnerHtml(_) | UnsetInnerHtml
             | RemoveListener { .. } | AddListener { .. }
             | RemoveAttribute(_) | SetAttribute { .. }
             | RemoveText(_) | CreateText { .. } | ReplaceText { .. }
@@ -345,6 +352,24 @@ impl<'a, Message, Command> PatchSet<'a, Message, Command> {
                     let node = take();
                     storage.push(WebItem::Text(node.clone()));
                     node_stack.push(node.into());
+                }
+                Patch::SetInnerHtml(html) => {
+                    node_stack.last()
+                        .expect("no previous node")
+                        .dyn_ref::<web_sys::Element>()
+                        .expect("innerHtml requested on non Element node")
+                        .set_inner_html(html);
+                }
+                Patch::UnsetInnerHtml => {
+                    let node = node_stack.last()
+                        .expect("no previous node");
+
+                    // remove all of the children of this node. These are the nodes created by the
+                    // innerHtml value.
+                    while let Some(child) = node.first_child() {
+                        node.remove_child(&child)
+                            .expect("failed to remove innerHtml child node");
+                    }
                 }
                 Patch::SetAttribute { name, value } => {
                     let node = node_stack.last().expect("no previous node");

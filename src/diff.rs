@@ -116,6 +116,9 @@ pub fn diff<'a, Message, Command, I1, I2>(mut old: I1, mut new: I2, storage: &'a
                     DomItem::Text(text) => {
                         patch_set.push(Patch::CreateText { text });
                     }
+                    DomItem::UnsafeInnerHtml(html) => {
+                        patch_set.push(Patch::SetInnerHtml(html));
+                    }
                     DomItem::Attr { name, value } => {
                         patch_set.push(Patch::SetAttribute { name, value });
                     }
@@ -153,6 +156,9 @@ pub fn diff<'a, Message, Command, I1, I2>(mut old: I1, mut new: I2, storage: &'a
                         }
 
                         o_state.push(NodeState::Child);
+                    }
+                    DomItem::UnsafeInnerHtml(_) => {
+                        patch_set.push(Patch::UnsetInnerHtml);
                     }
                     DomItem::Up => {
                         if o_state.is_child() {
@@ -203,6 +209,17 @@ pub fn diff<'a, Message, Command, I1, I2>(mut old: I1, mut new: I2, storage: &'a
                             patch_set.push(Patch::ReplaceText { take: take_text(web_item) , text: n_text });
                         }
                         o_state.push(NodeState::Copy);
+
+                        o_item = old.next();
+                        n_item = new.next();
+                    }
+                    (
+                        DomItem::UnsafeInnerHtml(o_html),
+                        DomItem::UnsafeInnerHtml(n_html)
+                    ) => { // compare inner html
+                        if o_html != n_html {
+                            patch_set.push(Patch::SetInnerHtml(n_html));
+                        }
 
                         o_item = old.next();
                         n_item = new.next();
@@ -336,6 +353,8 @@ pub fn diff<'a, Message, Command, I1, I2>(mut old: I1, mut new: I2, storage: &'a
                                         Some(DomItem::Event { .. }) => {
                                             let _ = sto.next().expect("dom storage to match dom iter");
                                         }
+                                        // innerHtml: ignore
+                                        Some(DomItem::UnsafeInnerHtml(_)) => { }
                                         // attribute: ignore
                                         Some(DomItem::Attr { .. }) => { }
                                         // end of node: stop processing
@@ -384,6 +403,8 @@ pub fn diff<'a, Message, Command, I1, I2>(mut old: I1, mut new: I2, storage: &'a
                                         Some(DomItem::Event { .. }) => {
                                             let _ = sto.next().expect("dom storage to match dom iter");
                                         }
+                                        // innerHtml: ignore
+                                        Some(DomItem::UnsafeInnerHtml(_)) => { }
                                         // attribute: ignore
                                         Some(DomItem::Attr { .. }) => { }
                                         // end of node: stop processing
@@ -403,6 +424,11 @@ pub fn diff<'a, Message, Command, I1, I2>(mut old: I1, mut new: I2, storage: &'a
                                         }
                                     }
                                 }
+                            }
+                            // remove inner html
+                            DomItem::UnsafeInnerHtml(_) => {
+                                patch_set.push(Patch::UnsetInnerHtml);
+                                o_item = old.next();
                             }
                             // remove attribute from old node
                             DomItem::Attr { name, value: _ } => {
@@ -449,6 +475,9 @@ pub fn diff<'a, Message, Command, I1, I2>(mut old: I1, mut new: I2, storage: &'a
                                             patch_set.push(Patch::CreateText { text });
                                             depth += 1;
                                         }
+                                        Some(DomItem::UnsafeInnerHtml(html)) => {
+                                            patch_set.push(Patch::SetInnerHtml(html));
+                                        }
                                         Some(DomItem::Up) if depth > 0 => {
                                             patch_set.push(Patch::Up);
                                             depth -= 1;
@@ -490,6 +519,9 @@ pub fn diff<'a, Message, Command, I1, I2>(mut old: I1, mut new: I2, storage: &'a
                                             patch_set.push(Patch::CreateText { text });
                                             depth += 1;
                                         }
+                                        Some(DomItem::UnsafeInnerHtml(html)) => {
+                                            patch_set.push(Patch::SetInnerHtml(html));
+                                        }
                                         Some(DomItem::Up) if depth > 0 => {
                                             patch_set.push(Patch::Up);
                                             depth -= 1;
@@ -514,6 +546,11 @@ pub fn diff<'a, Message, Command, I1, I2>(mut old: I1, mut new: I2, storage: &'a
                                         }
                                     }
                                 }
+                            }
+                            // set inner html
+                            DomItem::UnsafeInnerHtml(html) => {
+                                patch_set.push(Patch::SetInnerHtml(html));
+                                n_item = new.next();
                             }
                             // add a new component
                             DomItem::Component { msg, create } => {
