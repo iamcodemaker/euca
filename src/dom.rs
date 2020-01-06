@@ -57,7 +57,7 @@ pub enum Node<Message, Command> {
         msg: Message,
         /// A function to create the component.
         create: fn(web_sys::Element, Dispatcher<Message, Command>) -> Box<dyn Component<Message>>,
-    }
+    },
 }
 
 impl<Message, Command> Node<Message, Command> {
