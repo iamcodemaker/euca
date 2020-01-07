@@ -4,6 +4,7 @@ use crate::app::Application;
 use crate::app::ScheduledRender;
 use crate::app::Dispatcher;
 use crate::app::Commands;
+use crate::app::Update;
 
 use wasm_bindgen::prelude::*;
 use std::rc::Rc;
@@ -59,4 +60,23 @@ impl Application<Msg, Cmd> for App {
     fn push_listener(&mut self, _listener: (String, Closure<dyn FnMut(web_sys::Event)>)) { }
     fn attach(&mut self, _app: &Dispatcher<Msg, Cmd>) { }
     fn detach(&mut self, _app: &Dispatcher<Msg, Cmd>) { }
+}
+
+/// Some helpers to make testing a model easier.
+pub trait Model<Message, Command> {
+    /// Update a model with the given message.
+    ///
+    /// This function is a helper function designed to make testing models simpler. Normally during
+    /// an update to a model, the `Commands` structure must be passed in as an argument. This
+    /// function automatically does that and returns the resulting `Commands` structure. It's only
+    /// useful for unit testing.
+    fn test_update(&mut self, msg: Message) -> Commands<Command>;
+}
+
+impl<Message, Command, M: Update<Message, Command>> Model<Message, Command> for M {
+    fn test_update(&mut self, msg: Message) -> Commands<Command> {
+        let mut cmds = Commands::default();
+        Update::update(self, msg, &mut cmds);
+        cmds
+    }
 }
