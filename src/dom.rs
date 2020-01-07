@@ -108,7 +108,7 @@ impl From<(&'static str, String)> for Attr {
 
 /// A node in the DOM.
 #[derive(Debug)]
-pub struct Dom<Message, Command = ()> {
+pub struct Dom<Message = (), Command = ()> {
     /// The element for this node.
     element: Node<Message, Command>,
     /// The innerHtml value for this node.
@@ -265,7 +265,7 @@ impl<Message: Clone, Command> DomIter<Message, Command> for Dom<Message, Command
 /// This structure allows a top level sequence of DOM entries to be represented without requiring a
 /// containing DOM element.
 #[derive(Debug)]
-pub struct DomVec<Message, Command = ()>(Vec<Dom<Message, Command>>);
+pub struct DomVec<Message = (), Command = ()>(Vec<Dom<Message, Command>>);
 
 impl<Message, Command> DomIter<Message, Command> for DomVec<Message, Command> where
     Message: Clone + PartialEq,

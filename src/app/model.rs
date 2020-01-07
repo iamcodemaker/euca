@@ -15,6 +15,8 @@ pub trait Update<Message, Command = ()> {
     fn simple_update(&mut self, _msg: Message) { }
 }
 
+impl<M> Update<(), ()> for M { }
+
 /// Render (or view) the model as a virtual dom.
 pub trait Render<DomTree> {
     /// Render the model as a virtual dom.
