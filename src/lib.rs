@@ -9,7 +9,6 @@ pub mod dom;
 pub mod vdom;
 pub mod app;
 pub mod route;
-pub mod generic_helpers;
 pub mod component;
 
 pub use diff::diff;

@@ -29,7 +29,6 @@ use crate::diff;
 use crate::vdom::DomIter;
 use crate::vdom::Storage;
 use crate::route::Route;
-use crate::generic_helpers;
 
 /// Struct used to configure and attach an application to the DOM.
 pub struct AppBuilder<Message, Command, Processor, Router>
@@ -49,7 +48,7 @@ for AppBuilder<
     Message,
     Command,
     side_effect::DefaultProcessor<Message, Command>,
-    generic_helpers::Router<Message>,
+    (),
 >
 where
     Command: SideEffect<Message>,
