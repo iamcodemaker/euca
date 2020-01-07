@@ -30,7 +30,6 @@ use crate::vdom::DomIter;
 use crate::vdom::Storage;
 use crate::route::Route;
 use crate::generic_helpers;
-//use crate::app::side_effect;
 
 /// Struct used to configure and attach an application to the DOM.
 pub struct AppBuilder<Message, Command, Processor, Router>
