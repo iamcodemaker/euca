@@ -11,8 +11,7 @@ use std::rc::Rc;
 use std::cell::RefCell;
 
 /// Test message.
-#[derive(Clone, Debug, PartialEq)]
-pub struct Msg {}
+pub type Msg = ();
 /// Test command.
 pub type Cmd = ();
 

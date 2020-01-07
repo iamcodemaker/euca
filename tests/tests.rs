@@ -183,12 +183,12 @@ fn new_child_nodes() {
         .push(Dom::elem("b")
             .attr("class", "item")
             .attr("id", "id1")
-            .event("onclick", Msg {})
+            .event("onclick", ())
         )
         .push(Dom::elem("i")
             .attr("class", "item")
             .attr("id", "id2")
-            .event("onclick", Msg {})
+            .event("onclick", ())
         )
     ;
 
@@ -204,12 +204,12 @@ fn new_child_nodes() {
             Patch::CreateElement { element: "b".into() },
             Patch::SetAttribute { name: "class", value: "item" },
             Patch::SetAttribute { name: "id", value: "id1" },
-            Patch::AddListener { trigger: "onclick", handler: euca::vdom::EventHandler::Msg(&Msg {}) },
+            Patch::AddListener { trigger: "onclick", handler: euca::vdom::EventHandler::Msg(&()) },
             Patch::Up,
             Patch::CreateElement { element: "i".into() },
             Patch::SetAttribute { name: "class", value: "item" },
             Patch::SetAttribute { name: "id", value: "id2" },
-            Patch::AddListener { trigger: "onclick", handler: euca::vdom::EventHandler::Msg(&Msg {}) },
+            Patch::AddListener { trigger: "onclick", handler: euca::vdom::EventHandler::Msg(&()) },
             Patch::Up,
             Patch::Up,
         ]
@@ -222,12 +222,12 @@ fn from_empty() {
         .push(Dom::elem("b")
             .attr("class", "item")
             .attr("id", "id1")
-            .event("onclick", Msg {})
+            .event("onclick", ())
         )
         .push(Dom::elem("i")
             .attr("class", "item")
             .attr("id", "id2")
-            .event("onclick", Msg {})
+            .event("onclick", ())
         )
     ;
 
@@ -242,12 +242,12 @@ fn from_empty() {
             Patch::CreateElement { element: "b" },
             Patch::SetAttribute { name: "class", value: "item" },
             Patch::SetAttribute { name: "id", value: "id1" },
-            Patch::AddListener { trigger: "onclick", handler: euca::vdom::EventHandler::Msg(&Msg {}) },
+            Patch::AddListener { trigger: "onclick", handler: euca::vdom::EventHandler::Msg(&()) },
             Patch::Up,
             Patch::CreateElement { element: "i" },
             Patch::SetAttribute { name: "class", value: "item" },
             Patch::SetAttribute { name: "id", value: "id2" },
-            Patch::AddListener { trigger: "onclick", handler: euca::vdom::EventHandler::Msg(&Msg {}) },
+            Patch::AddListener { trigger: "onclick", handler: euca::vdom::EventHandler::Msg(&()) },
             Patch::Up,
             Patch::Up,
         ]
@@ -260,12 +260,12 @@ fn to_empty() {
         .push(Dom::elem("b")
             .attr("class", "item")
             .attr("id", "id1")
-            .event("onclick", Msg {})
+            .event("onclick", ())
         )
         .push(Dom::elem("i")
             .attr("class", "item")
             .attr("id", "id2")
-            .event("onclick", Msg {})
+            .event("onclick", ())
         )
     ;
 
@@ -287,11 +287,11 @@ fn to_empty_vec() {
         Dom::elem("b")
             .attr("class", "item")
             .attr("id", "id1")
-            .event("onclick", Msg {}),
+            .event("onclick", ()),
         Dom::elem("i")
             .attr("class", "item")
             .attr("id", "id2")
-            .event("onclick", Msg {}),
+            .event("onclick", ()),
     ].into();
 
     let mut storage = gen_storage(old.dom_iter());
@@ -392,12 +392,12 @@ fn old_child_nodes_with_element() {
         .push(Dom::elem("b")
             .attr("class", "item")
             .attr("id", "id")
-            .event("onclick", Msg {})
+            .event("onclick", ())
         )
         .push(Dom::elem("i")
             .attr("class", "item")
             .attr("id", "id")
-            .event("onclick", Msg {})
+            .event("onclick", ())
         )
     ;
 
@@ -425,12 +425,12 @@ fn old_child_nodes_with_element_and_child() {
         .push(Dom::elem("b")
             .attr("class", "item")
             .attr("id", "id")
-            .event("onclick", Msg {})
+            .event("onclick", ())
         )
         .push(Dom::elem("i")
             .attr("class", "item")
             .attr("id", "id")
-            .event("onclick", Msg {})
+            .event("onclick", ())
         )
     ;
 
@@ -461,7 +461,7 @@ fn assorted_child_nodes() {
     let old = Dom::<_, Cmd>::elem("div")
         .push(Dom::elem("h1")
             .attr("id", "id")
-            .event("onclick", Msg {})
+            .event("onclick", ())
             .push(Dom::text("h1"))
         )
         .push(Dom::elem("p")
@@ -482,7 +482,7 @@ fn assorted_child_nodes() {
     let new = Dom::elem("div")
         .push(Dom::elem("h1")
             .attr("id", "id")
-            .event("onclick", Msg {})
+            .event("onclick", ())
             .push(Dom::text("header"))
         )
         .push(Dom::elem("p")
@@ -491,7 +491,7 @@ fn assorted_child_nodes() {
             .push(Dom::text("paragraph1"))
         )
         .push(Dom::elem("button")
-            .event("click", Msg {})
+            .event("click", ())
             .push(Dom::text("submit"))
         )
     ;
@@ -521,7 +521,7 @@ fn assorted_child_nodes() {
             Patch::Up,
             Patch::RemoveElement(Box::new(|| e("p"))),
             Patch::CreateElement { element: "button".into() },
-            Patch::AddListener { trigger: "click", handler: euca::vdom::EventHandler::Msg(&Msg {}) },
+            Patch::AddListener { trigger: "click", handler: euca::vdom::EventHandler::Msg(&()) },
             Patch::CreateText { text: "submit" },
             Patch::Up,
             Patch::Up,
@@ -537,12 +537,12 @@ fn diff_old_child_nodes_with_new_element() {
         .push(Dom::elem("b")
             .attr("class", "item")
             .attr("id", "id")
-            .event("onclick", Msg {})
+            .event("onclick", ())
         )
         .push(Dom::elem("i")
             .attr("class", "item")
             .attr("id", "id")
-            .event("onclick", Msg {})
+            .event("onclick", ())
         )
     ;
 
@@ -619,7 +619,7 @@ fn basic_patch_with_element() {
 #[wasm_bindgen_test]
 fn basic_event_test() {
     let gen1 = iter::empty();
-    let gen2 = Dom::elem("button").event("click", Msg {});
+    let gen2 = Dom::elem("button").event("click", ());
 
     let parent = e("div");
     let messages = Rc::new(RefCell::new(vec![]));
@@ -646,7 +646,7 @@ fn basic_event_test() {
 #[wasm_bindgen_test]
 fn listener_copy() {
     let gen1 = iter::empty();
-    let gen2 = Dom::elem("button").event("click", Msg {});
+    let gen2 = Dom::elem("button").event("click", ());
 
     let parent = e("div");
     let messages = Rc::new(RefCell::new(vec![]));
@@ -667,7 +667,7 @@ fn listener_copy() {
         _ => panic!("expected node to be created"),
     }
 
-    let gen3 = Dom::elem("button").event("click", Msg {});
+    let gen3 = Dom::elem("button").event("click", ());
 
     let o = gen2.dom_iter();
     let n = gen3.dom_iter();
