@@ -3,7 +3,6 @@
 use crate::app::Application;
 use crate::app::ScheduledRender;
 use crate::app::Dispatcher;
-use crate::app::SideEffect;
 use crate::app::Commands;
 
 use wasm_bindgen::prelude::*;
@@ -14,12 +13,7 @@ use std::cell::RefCell;
 #[derive(Clone, Debug, PartialEq)]
 pub struct Msg {}
 /// Test command.
-#[derive(Debug)]
-pub struct Cmd {}
-
-impl SideEffect<Msg> for Cmd {
-    fn process(self, _dispatcher: &Dispatcher<Msg, Self>) { }
-}
+pub type Cmd = ();
 
 /// Test app.
 pub struct App {

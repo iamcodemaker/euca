@@ -39,6 +39,10 @@ pub trait SideEffect<Message> {
     fn process(self, dispatcher: &Dispatcher<Message, Self>) where Self: Sized;
 }
 
+impl<Message> SideEffect<Message> for () {
+    fn process(self, _: &Dispatcher<Message, Self>) { }
+}
+
 /// A processor for commands.
 pub trait Processor<Message, Command>
 where

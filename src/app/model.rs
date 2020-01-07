@@ -3,7 +3,7 @@
 use crate::app::side_effect::Commands;
 
 /// Process a message that updates the model.
-pub trait Update<Message, Command> {
+pub trait Update<Message, Command = ()> {
     /// Update the model using the given message.
     fn update(&mut self, msg: Message, commands: &mut Commands<Command>);
 }
