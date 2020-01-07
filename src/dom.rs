@@ -14,19 +14,19 @@ pub enum Handler<Message> {
     /// A function that will convert a [`web_sys::Event`] event to a Message.
     ///
     /// [`web_sys::Event`]: https://rustwasm.github.io/wasm-bindgen/api/web_sys/struct.Event.html
-    Event(fn(web_sys::Event) -> Message),
+    Event(fn(web_sys::Event) -> Option<Message>),
     /// A function that will convert a [`web_sys::Event`] event to a Message.
     ///
     /// This variation allows passing data to the event handler via a Message.
     ///
     /// [`web_sys::Event`]: https://rustwasm.github.io/wasm-bindgen/api/web_sys/struct.Event.html
-    MsgEvent(Message, fn(Message, web_sys::Event) -> Message),
+    MsgEvent(Message, fn(Message, web_sys::Event) -> Option<Message>),
     /// A function that will convert a String from an input element into a Message.
-    InputValue(fn(String) -> Message),
+    InputValue(fn(String) -> Option<Message>),
     /// A function that will convert a [`web_sys::InputEvent`] event to a Message.
     ///
     /// [`web_sys::InputEvent`]: https://rustwasm.github.io/wasm-bindgen/api/web_sys/struct.InputEvent.html
-    InputEvent(fn(web_sys::InputEvent) -> Message),
+    InputEvent(fn(web_sys::InputEvent) -> Option<Message>),
 }
 
 /// A DOM event.
@@ -185,12 +185,12 @@ impl<Message, Command> Dom<Message, Command> {
     }
 
     /// Add a change event listener to this DOM element.
-    pub fn onchange(self, handler: fn(String) -> Message) -> Self {
+    pub fn onchange(self, handler: fn(String) -> Option<Message>) -> Self {
         self.on("change", Handler::InputValue(handler))
     }
 
     /// Add an input event listener to this DOM element.
-    pub fn oninput(self, handler: fn(web_sys::InputEvent) -> Message) -> Self {
+    pub fn oninput(self, handler: fn(web_sys::InputEvent) -> Option<Message>) -> Self {
         self.on("input", Handler::InputEvent(handler))
     }
 

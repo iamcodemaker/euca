@@ -25,22 +25,22 @@ pub enum EventHandler<'a, Message> {
     /// A callback that will convert a [`web_sys::Event`] into a message.
     ///
     /// [`web_sys::Event`]: https://rustwasm.github.io/wasm-bindgen/api/web_sys/struct.Event.html
-    Fn(fn(web_sys::Event) -> Message),
+    Fn(fn(web_sys::Event) -> Option<Message>),
 
     /// A callback that will convert a [`web_sys::Event`] into a message.
     ///
     /// This variation accepts a message to pass data into the callback.
     ///
     /// [`web_sys::Event`]: https://rustwasm.github.io/wasm-bindgen/api/web_sys/struct.Event.html
-    FnMsg(&'a Message, fn(Message, web_sys::Event) -> Message),
+    FnMsg(&'a Message, fn(Message, web_sys::Event) -> Option<Message>),
 
     /// This callback will recieve the value of a form input and convert it to a message.
-    InputValue(fn(String) -> Message),
+    InputValue(fn(String) -> Option<Message>),
 
     /// A function that will convert a [`web_sys::InputEvent`] event to a Message.
     ///
     /// [`web_sys::InputEvent`]: https://rustwasm.github.io/wasm-bindgen/api/web_sys/struct.InputEvent.html
-    InputEvent(fn(web_sys::InputEvent) -> Message),
+    InputEvent(fn(web_sys::InputEvent) -> Option<Message>),
 }
 
 /// A DOM node or JS closure created when applying a patch.

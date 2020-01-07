@@ -438,7 +438,9 @@ impl<'a, Message, Command> PatchSet<'a, Message, Command> {
                         EventHandler::Fn(fun) => {
                             Closure::wrap(
                                 Box::new(move |event| {
-                                    Dispatch::dispatch(&app, fun(event))
+                                    if let Some(msg) = fun(event) {
+                                        Dispatch::dispatch(&app, msg);
+                                    }
                                 }) as Box<dyn FnMut(web_sys::Event)>
                             )
                         }
@@ -446,7 +448,9 @@ impl<'a, Message, Command> PatchSet<'a, Message, Command> {
                             let msg = msg.clone();
                             Closure::wrap(
                                 Box::new(move |event| {
-                                    Dispatch::dispatch(&app, fun(msg.clone(), event))
+                                    if let Some(msg) = fun(msg.clone(), event) {
+                                        Dispatch::dispatch(&app, msg);
+                                    }
                                 }) as Box<dyn FnMut(web_sys::Event)>
                             )
                         }
@@ -470,7 +474,9 @@ impl<'a, Message, Command> PatchSet<'a, Message, Command> {
                                             }
                                         }
                                     };
-                                    Dispatch::dispatch(&app, fun(value))
+                                    if let Some(msg) = fun(value) {
+                                        Dispatch::dispatch(&app, msg);
+                                    }
                                 }) as Box<dyn FnMut(web_sys::Event)>
                             )
                         }
@@ -478,7 +484,9 @@ impl<'a, Message, Command> PatchSet<'a, Message, Command> {
                             Closure::wrap(
                                 Box::new(move |event: web_sys::Event| {
                                     let event = event.dyn_into::<web_sys::InputEvent>().expect_throw("expected web_sys::InputEvent");
-                                    Dispatch::dispatch(&app, fun(event))
+                                    if let Some(msg) = fun(event) {
+                                        Dispatch::dispatch(&app, msg);
+                                    }
                                 }) as Box<dyn FnMut(web_sys::Event)>
                             )
                         }
