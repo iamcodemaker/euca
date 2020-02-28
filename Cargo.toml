@@ -38,3 +38,29 @@ features = [
 
 [dev-dependencies]
 wasm-bindgen-test = "0.2.29"
+
+[dev-dependencies.web-sys]
+version = "0.3.6"
+features = [
+    "Window",
+    "Document",
+    "Node",
+    "Element",
+    "Event",
+    "EventTarget",
+    "InputEvent",
+    "Text",
+    "HtmlElement",
+    "CharacterData",
+    "HtmlInputElement",
+    "HtmlOptionElement",
+    "HtmlButtonElement",
+    "HtmlSelectElement",
+    "HtmlTextAreaElement",
+    "HtmlMenuItemElement",
+    "HtmlFieldSetElement",
+    "HtmlLinkElement",
+    "HtmlOptGroupElement",
+    "HtmlStyleElement",
+    "HtmlCollection",
+]

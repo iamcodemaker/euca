@@ -298,6 +298,7 @@ impl<'a, Message, Command> PatchSet<'a, Message, Command> {
         EventHandler<'a, Message>: Clone,
     {
         let mut node_stack: Vec<web_sys::Node> = vec![parent.clone().unchecked_into()];
+        let mut pending_inserts: Vec<PendingInserts> = vec![PendingInserts::new()];
         let mut special_attributes: Vec<(web_sys::Node, &str, &str)> = vec![];
 
         let PatchSet { patches, mut storage } = self;
@@ -316,14 +317,23 @@ impl<'a, Message, Command> PatchSet<'a, Message, Command> {
                 Patch::CreateElement { element } => {
                     let node = document.create_element(&element).expect("failed to create element");
                     storage.push(WebItem::Element(node.clone()));
-                    node_stack.last()
-                        .expect("no previous node")
-                        .append_child(&node)
-                        .expect("failed to append child node");
+                    pending_inserts.last_mut()
+                        .expect("no pending inserts entry")
+                        .push(
+                            node_stack.last().expect("no previous node").clone(),
+                            node.clone()
+                        );
+                    pending_inserts.push(PendingInserts::new());
                     node_stack.push(node.into());
                 }
                 Patch::CopyElement(mut take) => {
                     let node = take();
+
+                    pending_inserts.last_mut()
+                        .expect("no pending inserts entry")
+                        .insert_before(Some(&node));
+
+                    pending_inserts.push(PendingInserts::new());
                     storage.push(WebItem::Element(node.clone()));
                     node_stack.push(node.into());
                 }
@@ -336,20 +346,35 @@ impl<'a, Message, Command> PatchSet<'a, Message, Command> {
                 Patch::ReplaceText { mut take, text } => {
                     let node = take();
                     node.set_data(&text);
+
+                    pending_inserts.last_mut()
+                        .expect("no pending inserts entry")
+                        .insert_before(Some(&node));
+
+                    pending_inserts.push(PendingInserts::new());
                     storage.push(WebItem::Text(node.clone()));
                     node_stack.push(node.into());
                 }
                 Patch::CreateText { text } => {
                     let node = document.create_text_node(&text);
+                    pending_inserts.last_mut()
+                        .expect("no pending inserts entry")
+                        .push(
+                            node_stack.last().expect("no previous node").clone(),
+                            node.clone()
+                        );
+                    pending_inserts.push(PendingInserts::new());
                     storage.push(WebItem::Text(node.clone()));
-                    node_stack.last()
-                        .expect("no previous node")
-                        .append_child(&node)
-                        .expect("failed to append child node");
                     node_stack.push(node.into());
                 }
                 Patch::CopyText(mut take) => {
                     let node = take();
+
+                    pending_inserts.last_mut()
+                        .expect("no pending inserts entry")
+                        .insert_before(Some(&node));
+
+                    pending_inserts.push(PendingInserts::new());
                     storage.push(WebItem::Text(node.clone()));
                     node_stack.push(node.into());
                 }
@@ -515,14 +540,18 @@ impl<'a, Message, Command> PatchSet<'a, Message, Command> {
 
                     let component = create(node, app.clone());
                     component.dispatch(msg);
+                    pending_inserts.push(PendingInserts::new());
                     storage.push(WebItem::Component(component));
                 }
                 Patch::UpdateComponent { mut take, msg } => {
                     let component = take();
                     component.dispatch(msg);
+
+                    pending_inserts.push(PendingInserts::new());
                     storage.push(WebItem::Component(component));
                 }
                 Patch::CopyComponent(mut take) => {
+                    pending_inserts.push(PendingInserts::new());
                     storage.push(WebItem::Component(take()));
                 }
                 Patch::RemoveComponent(mut take) => {
@@ -530,10 +559,20 @@ impl<'a, Message, Command> PatchSet<'a, Message, Command> {
                     component.detach();
                 }
                 Patch::Up => {
+                    pending_inserts.pop()
+                        .expect("no pending inserts entry")
+                        .insert_before(None);
+
                     node_stack.pop();
                 }
             }
         }
+
+        // append final top level pending items
+        pending_inserts.pop()
+            .expect("no pending inserts entry")
+            .insert_before(None);
+
 
         // set special attributes. These must be done last or strange things can happen when
         // rendering in the browser. I have observed range inputs not properly updating (appears to
@@ -601,6 +640,31 @@ impl<'a, Message, Command> PatchSet<'a, Message, Command> {
 
         // return storage so it can be stored by the caller
         storage
+    }
+}
+
+struct PendingInserts {
+    /// Pending insert tuples: (parent, node).
+    pending: Vec<(web_sys::Node, web_sys::Node)>,
+}
+
+impl PendingInserts {
+    fn new() -> Self {
+        Self {
+            pending: vec![],
+        }
+    }
+
+    fn push(&mut self, parent: impl Into<web_sys::Node>, node: impl Into<web_sys::Node>) {
+        self.pending.push((parent.into(), node.into()));
+    }
+
+    fn insert_before(&mut self, child: Option<&web_sys::Node>) {
+        for (parent, node) in self.pending.drain(..) {
+            parent
+                .insert_before(&node, child)
+                .expect("failed to insert child node");
+        }
     }
 }
 
@@ -940,5 +1004,100 @@ mod tests {
         let option = element.dyn_ref::<web_sys::HtmlOptionElement>().expect("expected input element");
 
         assert!(!option.selected());
+    }
+
+    #[wasm_bindgen_test]
+    fn insert_element() {
+        use crate::dom::{Dom, DomVec};
+        use crate::vdom::DomIter;
+        use crate::diff;
+        use std::iter;
+
+        let gen1: DomVec<_> = vec![
+            Dom::elem("a"),
+            Dom::elem("b"),
+            Dom::elem("i"),
+        ].into();
+
+        let gen2: DomVec<_> = vec![
+            Dom::elem("a"),
+            Dom::elem("p"),
+            Dom::elem("i"),
+        ].into();
+
+        let parent = elem("div");
+        let app = App::dispatcher();
+        let mut storage = vec![];
+
+        let n = gen1.dom_iter();
+        let patch_set = diff::diff(iter::empty(), n, &mut storage);
+        storage = patch_set.apply(&parent, &app);
+
+        let o = gen1.dom_iter();
+        let n = gen2.dom_iter();
+        let patch_set = diff::diff(o, n, &mut storage);
+        storage = patch_set.apply(&parent, &app);
+
+        match storage[1] {
+            WebItem::Element(ref node) => assert_eq!(node.node_name(), "P", "wrong node in storage"),
+            _ => panic!("expected node to be created"),
+        }
+
+        assert_eq!(
+            parent.children()
+                .item(1)
+                .expect("expected child node")
+                .node_name(),
+            "P",
+            "wrong node in DOM"
+        );
+    }
+
+    #[wasm_bindgen_test]
+    fn insert_element_nested() {
+        use crate::dom::Dom;
+        use crate::vdom::DomIter;
+        use crate::diff;
+        use std::iter;
+
+        let gen1 = Dom::elem("div")
+            .push(Dom::elem("a"))
+            .push(Dom::elem("b"))
+            .push(Dom::elem("i"));
+
+        let gen2 = Dom::elem("div")
+            .push(Dom::elem("a"))
+            .push(Dom::elem("p"))
+            .push(Dom::elem("i"));
+
+        let parent = elem("div");
+        let app = App::dispatcher();
+        let mut storage = vec![];
+
+        let n = gen1.dom_iter();
+        let patch_set = diff::diff(iter::empty(), n, &mut storage);
+        storage = patch_set.apply(&parent, &app);
+
+        let o = gen1.dom_iter();
+        let n = gen2.dom_iter();
+        let patch_set = diff::diff(o, n, &mut storage);
+        storage = patch_set.apply(&parent, &app);
+
+        match storage[2] {
+            WebItem::Element(ref node) => assert_eq!(node.node_name(), "P", "wrong node in storage"),
+            _ => panic!("expected node to be created"),
+        }
+
+        assert_eq!(
+            parent.children()
+                .item(0)
+                .expect("expected outer child node")
+                .children()
+                .item(1)
+                .expect("expected inner child node")
+                .node_name(),
+            "P",
+            "wrong node in DOM"
+        );
     }
 }
