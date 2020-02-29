@@ -913,3 +913,55 @@ fn inner_html_replace_children() {
         ]
     );
 }
+
+#[wasm_bindgen_test]
+fn inner_html_remove_parent_node() {
+    let gen1: DomVec;
+    let gen2: DomVec;
+    unsafe {
+        gen1 = vec![
+            Dom::elem("div")
+                .push(Dom::elem("p").push("test2")),
+            Dom::elem("div")
+                .inner_html("<div><p>test5</p></div>"),
+        ].into();
+        gen2 = vec![
+            Dom::elem("div")
+                .push(Dom::elem("p").push("test3")),
+        ].into();
+    }
+
+    let parent = e("div");
+    let app = App::dispatcher();
+    let mut storage = vec![];
+
+    let n = gen1.dom_iter();
+    let patch_set = diff::diff(iter::empty(), n, &mut storage);
+    storage = patch_set.apply(&parent, &app);
+
+    let o = gen1.dom_iter();
+    let n = gen2.dom_iter();
+    let patch_set = diff::diff(o, n, &mut storage);
+    console_log::init().unwrap_throw();
+    log::info!("{:?}", patch_set);
+    let _ = patch_set.apply(&parent, &app);
+
+    assert_eq!(
+        parent.children()
+            .item(0)
+            .expect_throw("expected outer child node")
+            .children()
+            .item(0)
+            .expect_throw("expected inner child node")
+            .node_name(),
+        "P",
+        "wrong node in DOM"
+    );
+
+    assert!(
+        parent.children()
+            .item(1)
+            .is_none(),
+        "unexpected second child node, should only be one child node"
+    );
+}

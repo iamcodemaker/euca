@@ -158,7 +158,10 @@ pub fn diff<'a, Message, Command, I1, I2>(mut old: I1, mut new: I2, storage: &'a
                         o_state.push(NodeState::Child);
                     }
                     DomItem::UnsafeInnerHtml(_) => {
-                        patch_set.push(Patch::UnsetInnerHtml);
+                        // ignore child nodes
+                        if !o_state.is_child() {
+                            patch_set.push(Patch::UnsetInnerHtml);
+                        }
                     }
                     DomItem::Up => {
                         if o_state.is_child() {
