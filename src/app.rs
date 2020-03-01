@@ -407,6 +407,13 @@ where
         Message: fmt::Debug + Clone + PartialEq + 'static,
         Command: SideEffect<Message> + 'static,
     {
+
+        // remove all children of our parent element
+        while let Some(child) = parent.first_child() {
+            parent.remove_child(&child)
+                .expect("failed to remove child of parent element");
+        }
+
         // render our initial model
         let dom = model.render();
         let app = App {
