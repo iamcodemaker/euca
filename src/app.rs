@@ -83,7 +83,7 @@ where
             command,
             processor,
             clear_parent,
-            ..
+            router: _router,
         } = self;
 
         AppBuilder {
@@ -102,7 +102,7 @@ where
             command,
             router,
             clear_parent,
-            ..
+            processor: _processor,
         } = self;
 
         AppBuilder {
