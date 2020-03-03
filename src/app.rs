@@ -39,6 +39,7 @@ where
 {
     router: Option<Rc<Router>>,
     processor: Processor,
+    clear_parent: bool,
     message: std::marker::PhantomData<Message>,
     command: std::marker::PhantomData<Command>,
 }
@@ -57,6 +58,7 @@ where
         AppBuilder {
             router: None,
             processor: side_effect::DefaultProcessor::default(),
+            clear_parent: false,
             message: std::marker::PhantomData,
             command: std::marker::PhantomData,
         }
@@ -80,6 +82,7 @@ where
             message,
             command,
             processor,
+            clear_parent,
             ..
         } = self;
 
@@ -87,6 +90,7 @@ where
             message: message,
             command: command,
             processor,
+            clear_parent: clear_parent,
             router: Some(Rc::new(router)),
         }
     }
@@ -97,6 +101,7 @@ where
             message,
             command,
             router,
+            clear_parent,
             ..
         } = self;
 
@@ -105,7 +110,17 @@ where
             command: command,
             processor: processor,
             router: router,
+            clear_parent: clear_parent,
         }
+    }
+
+    /// Remove all children from the parent when attaching the app.
+    ///
+    /// This is useful for displaying fallback text or a loading screen that will then be removed
+    /// when the app is attached.
+    pub fn clear(mut self) -> Self {
+        self.clear_parent = true;
+        self
     }
 
     /// Attach an app to the dom.
@@ -123,6 +138,7 @@ where
         let AppBuilder {
             router,
             processor,
+            clear_parent,
             ..
         } = self;
 
@@ -139,6 +155,14 @@ where
 
             if let Some(msg) = router.route(&url) {
                 model.update(msg, &mut commands);
+            }
+        }
+
+        if clear_parent {
+            // remove all children of our parent element
+            while let Some(child) = parent.first_child() {
+                parent.remove_child(&child)
+                    .expect("failed to remove child of parent element");
             }
         }
 
@@ -407,12 +431,6 @@ where
         Message: fmt::Debug + Clone + PartialEq + 'static,
         Command: SideEffect<Message> + 'static,
     {
-
-        // remove all children of our parent element
-        while let Some(child) = parent.first_child() {
-            parent.remove_child(&child)
-                .expect("failed to remove child of parent element");
-        }
 
         // render our initial model
         let dom = model.render();
