@@ -45,10 +45,10 @@ pub enum EventHandler<'a, Message> {
 
 /// A DOM node or JS closure created when applying a patch.
 pub enum WebItem<Message> {
-    /// A DOM element, with a depth indicator.
-    Element(web_sys::Element, usize),
-    /// A DOM text node, with a depth indicator.
-    Text(web_sys::Text, usize),
+    /// A DOM element.
+    Element(web_sys::Element),
+    /// A DOM text node.
+    Text(web_sys::Text),
     /// A JS closure.
     Closure(Closure<dyn FnMut(web_sys::Event)>),
     /// A component.
@@ -60,8 +60,8 @@ pub enum WebItem<Message> {
 impl<Message> fmt::Debug for WebItem<Message> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            WebItem::Element(node, i) => write!(f, "Element({:?}, {})", node, i),
-            WebItem::Text(text, i) => write!(f, "Text({:?}, {})", text, i),
+            WebItem::Element(node) => write!(f, "Element({:?})", node),
+            WebItem::Text(text) => write!(f, "Text({:?})", text),
             WebItem::Closure(_) => write!(f, "Closure(_)"),
             WebItem::Component(_) => write!(f, "Component(_)"),
             WebItem::Taken => write!(f, "Taken"),

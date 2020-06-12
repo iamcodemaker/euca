@@ -64,12 +64,11 @@ fn gen_storage<'a, Message, Command, Iter>(iter: Iter) -> Storage<Message> where
         })
         .map(|i| {
             match i {
-                DomItem::Element(element) => WebItem::Element(e(element), 0),
+                DomItem::Element(element) => WebItem::Element(e(element)),
                 DomItem::Text(text) => WebItem::Text(
                     web_sys::window().expect("expected window")
                         .document().expect("expected document")
-                        .create_text_node(text),
-                    0
+                        .create_text_node(text)
                 ),
                 DomItem::Event { .. } => WebItem::Closure(
                     Closure::wrap(
@@ -581,7 +580,7 @@ fn null_patch_with_element() {
     storage = patch_set.apply(&parent, &app);
 
     match storage[0] {
-        WebItem::Element(_, _) => {}
+        WebItem::Element(_) => {}
         _ => panic!("expected node to be created"),
     }
 }
@@ -603,7 +602,7 @@ fn basic_patch_with_element() {
     storage = patch_set.apply(&parent, &app);
 
     match storage[0] {
-        WebItem::Element(_, _) => {}
+        WebItem::Element(_) => {}
         _ => panic!("expected node to be created"),
     }
 
@@ -614,7 +613,7 @@ fn basic_patch_with_element() {
     storage = patch_set.apply(&parent, &app);
 
     match storage[0] {
-        WebItem::Element(_, _) => {}
+        WebItem::Element(_) => {}
         _ => panic!("expected node to be created"),
     }
 }
@@ -635,7 +634,7 @@ fn basic_event_test() {
     storage = patch_set.apply(&parent, &app);
 
     match storage[0] {
-        WebItem::Element(ref node, _) => {
+        WebItem::Element(ref node) => {
             node.dyn_ref::<web_sys::HtmlElement>()
                 .expect("expected html element")
                 .click();
@@ -662,7 +661,7 @@ fn listener_copy() {
     storage = patch_set.apply(&parent, &app);
 
     match storage[0] {
-        WebItem::Element(ref node, _) => {
+        WebItem::Element(ref node) => {
             node.dyn_ref::<web_sys::HtmlElement>()
                 .expect("expected html element")
                 .click();
@@ -678,7 +677,7 @@ fn listener_copy() {
     storage = patch_set.apply(&parent, &app);
 
     match storage[0] {
-        WebItem::Element(ref node, _) => {
+        WebItem::Element(ref node) => {
             node.dyn_ref::<web_sys::HtmlElement>()
                 .expect("expected html element")
                 .click();

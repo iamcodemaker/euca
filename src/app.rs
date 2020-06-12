@@ -359,8 +359,8 @@ where
         self.storage.first()
             .and_then(|item| -> Option<web_sys::Node> {
                 match item {
-                    WebItem::Element(ref node, _) => Some(node.clone().into()),
-                    WebItem::Text(ref node, _) => Some(node.clone().into()),
+                    WebItem::Element(ref node) => Some(node.clone().into()),
+                    WebItem::Text(ref node) => Some(node.clone().into()),
                     WebItem::Component(component) => component.node(),
                     i => panic!("unknown item, expected something with a node in it: {:?}", i)
                 }
