@@ -661,12 +661,13 @@ impl NodeStack {
 
     /// Insert any pending children into the parent before the given child node.
     fn insert_before(&mut self, child: Option<&web_sys::Node>) {
-        if let Some((parent, pending)) = &mut self.stack.last_mut() {
-            for node in pending.drain(..) {
-                parent
-                    .insert_before(&node, child)
-                    .expect("failed to insert child node");
-            }
+        let (parent, pending) = &mut self.stack.last_mut()
+            .expect("no parent entry for pending child nodes");
+
+        for node in pending.drain(..) {
+            parent
+                .insert_before(&node, child)
+                .expect("failed to insert child node");
         }
     }
 }
