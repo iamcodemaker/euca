@@ -297,8 +297,7 @@ impl<'a, Message, Command> PatchSet<'a, Message, Command> {
         Command: SideEffect<Message> + 'static,
         EventHandler<'a, Message>: Clone,
     {
-        let mut node_stack: Vec<web_sys::Node> = vec![parent.clone().unchecked_into()];
-        let mut pending_inserts: Vec<PendingInserts> = vec![PendingInserts::new(parent.clone())];
+        let mut node_stack = NodeStack::new(parent.clone());
         let mut special_attributes: Vec<(web_sys::Node, &str, &str)> = vec![];
 
         let PatchSet { patches, mut storage } = self;
@@ -316,23 +315,16 @@ impl<'a, Message, Command> PatchSet<'a, Message, Command> {
                 }
                 Patch::CreateElement { element } => {
                     let node = document.create_element(&element).expect("failed to create element");
-                    storage.push(WebItem::Element(node.clone(), node_stack.len()));
-                    pending_inserts.last_mut()
-                        .expect("no pending inserts entry")
-                        .push(node.clone());
-                    pending_inserts.push(PendingInserts::new(node.clone()));
-                    node_stack.push(node.into());
+                    storage.push(WebItem::Element(node.clone(), node_stack.depth()));
+                    node_stack.push_child(node.clone());
+                    node_stack.push_parent(node);
                 }
                 Patch::CopyElement(mut take) => {
                     let node = take();
 
-                    pending_inserts.last_mut()
-                        .expect("no pending inserts entry")
-                        .insert_before(Some(&node));
-
-                    pending_inserts.push(PendingInserts::new(node.clone()));
-                    storage.push(WebItem::Element(node.clone(), node_stack.len()));
-                    node_stack.push(node.into());
+                    storage.push(WebItem::Element(node.clone(), node_stack.depth()));
+                    node_stack.insert_before(Some(&node));
+                    node_stack.push_parent(node);
                 }
                 Patch::RemoveText(mut take) => {
                     node_stack.last()
@@ -344,35 +336,23 @@ impl<'a, Message, Command> PatchSet<'a, Message, Command> {
                     let node = take();
                     node.set_data(&text);
 
-                    pending_inserts.last_mut()
-                        .expect("no pending inserts entry")
-                        .insert_before(Some(&node));
-
-                    pending_inserts.push(PendingInserts::new(node.clone()));
-                    storage.push(WebItem::Text(node.clone(), node_stack.len()));
-                    node_stack.push(node.into());
+                    storage.push(WebItem::Text(node.clone(), node_stack.depth()));
+                    node_stack.insert_before(Some(&node));
+                    node_stack.push_parent(node);
                 }
                 Patch::CreateText { text } => {
                     let node = document.create_text_node(&text);
-                    pending_inserts.last_mut()
-                        .expect("no pending inserts entry")
-                        .push(
-                            node.clone()
-                        );
-                    pending_inserts.push(PendingInserts::new(node.clone()));
-                    storage.push(WebItem::Text(node.clone(), node_stack.len()));
-                    node_stack.push(node.into());
+
+                    storage.push(WebItem::Text(node.clone(), node_stack.depth()));
+                    node_stack.push_child(node.clone());
+                    node_stack.push_parent(node);
                 }
                 Patch::CopyText(mut take) => {
                     let node = take();
 
-                    pending_inserts.last_mut()
-                        .expect("no pending inserts entry")
-                        .insert_before(Some(&node));
-
-                    pending_inserts.push(PendingInserts::new(node.clone()));
-                    storage.push(WebItem::Text(node.clone(), node_stack.len()));
-                    node_stack.push(node.into());
+                    storage.push(WebItem::Text(node.clone(), node_stack.depth()));
+                    node_stack.insert_before(Some(&node));
+                    node_stack.push_parent(node);
                 }
                 Patch::SetInnerHtml(html) => {
                     node_stack.last()
@@ -536,18 +516,15 @@ impl<'a, Message, Command> PatchSet<'a, Message, Command> {
 
                     let component = create(node, app.clone());
                     component.dispatch(msg);
-                    pending_inserts.push(PendingInserts::none());
                     storage.push(WebItem::Component(component));
                 }
                 Patch::UpdateComponent { mut take, msg } => {
                     let component = take();
                     component.dispatch(msg);
 
-                    pending_inserts.push(PendingInserts::none());
                     storage.push(WebItem::Component(component));
                 }
                 Patch::CopyComponent(mut take) => {
-                    pending_inserts.push(PendingInserts::none());
                     storage.push(WebItem::Component(take()));
                 }
                 Patch::RemoveComponent(mut take) => {
@@ -555,19 +532,13 @@ impl<'a, Message, Command> PatchSet<'a, Message, Command> {
                     component.detach();
                 }
                 Patch::Up => {
-                    pending_inserts.pop()
-                        .expect("no pending inserts entry")
-                        .insert_before(None);
-
                     node_stack.pop();
                 }
             }
         }
 
         // append final top level pending items
-        pending_inserts.pop()
-            .expect("no pending inserts entry")
-            .insert_before(None);
+        node_stack.pop();
 
 
         // set special attributes. These must be done last or strange things can happen when
@@ -639,18 +610,15 @@ impl<'a, Message, Command> PatchSet<'a, Message, Command> {
     }
 }
 
-struct PendingInserts {
-    /// Pending inserts
-    pending: Vec<web_sys::Node>,
-    /// The parent node
-    parent: Option<web_sys::Node>,
+struct NodeStack {
+    /// Parent nodes in the tree [(parent, [pending children])].
+    stack: Vec<(web_sys::Node, Vec<web_sys::Node>)>,
 }
 
-impl PendingInserts {
+impl NodeStack {
     fn new(parent: impl Into<web_sys::Node>) -> Self {
         Self {
-            pending: vec![],
-            parent: Some(parent.into()),
+            stack: vec![(parent.into(), vec![])],
         }
     }
 
@@ -661,13 +629,40 @@ impl PendingInserts {
         }
     }
 
-    fn push(&mut self, node: impl Into<web_sys::Node>) {
-        self.pending.push(node.into());
+    /// Get the current depth of the tree.
+    fn depth(&self) -> usize {
+        self.stack.len()
     }
 
+    /// Get the current parent node off the stack, if any.
+    fn last(&self) -> Option<&web_sys::Node> {
+        self.stack.last().map(|(node, _)| node)
+    }
+
+    /// Add a new parent node to the stack.
+    fn push_parent(&mut self, parent: impl Into<web_sys::Node>) {
+        self.stack.push((parent.into(), vec![]));
+    }
+
+    /// Append a pending child node to the current parent.
+    fn push_child(&mut self, child: impl Into<web_sys::Node>) {
+        self.stack.last_mut()
+            .map(|(_parent, pending)| pending)
+            .expect("no pending inserts entry")
+            .push(child.into());
+    }
+
+    /// We are finished processing this parent node, remove it from the stack and append any
+    /// remaining child nodes.
+    fn pop(&mut self) {
+        self.insert_before(None);
+        self.stack.pop();
+    }
+
+    /// Insert any pending children into the parent before the given child node.
     fn insert_before(&mut self, child: Option<&web_sys::Node>) {
-        if let Some(parent) = &self.parent {
-            for node in self.pending.drain(..) {
+        if let Some((parent, pending)) = &mut self.stack.last_mut() {
+            for node in pending.drain(..) {
                 parent
                     .insert_before(&node, child)
                     .expect("failed to insert child node");
