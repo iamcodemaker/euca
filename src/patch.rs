@@ -316,7 +316,7 @@ impl<'a, Message, Command> PatchSet<'a, Message, Command> {
                 }
                 Patch::CreateElement { element } => {
                     let node = document.create_element(&element).expect("failed to create element");
-                    storage.push(WebItem::Element(node.clone()));
+                    storage.push(WebItem::Element(node.clone(), node_stack.len()));
                     pending_inserts.last_mut()
                         .expect("no pending inserts entry")
                         .push(
@@ -334,7 +334,7 @@ impl<'a, Message, Command> PatchSet<'a, Message, Command> {
                         .insert_before(Some(&node));
 
                     pending_inserts.push(PendingInserts::new());
-                    storage.push(WebItem::Element(node.clone()));
+                    storage.push(WebItem::Element(node.clone(), node_stack.len()));
                     node_stack.push(node.into());
                 }
                 Patch::RemoveText(mut take) => {
@@ -352,7 +352,7 @@ impl<'a, Message, Command> PatchSet<'a, Message, Command> {
                         .insert_before(Some(&node));
 
                     pending_inserts.push(PendingInserts::new());
-                    storage.push(WebItem::Text(node.clone()));
+                    storage.push(WebItem::Text(node.clone(), node_stack.len()));
                     node_stack.push(node.into());
                 }
                 Patch::CreateText { text } => {
@@ -364,7 +364,7 @@ impl<'a, Message, Command> PatchSet<'a, Message, Command> {
                             node.clone()
                         );
                     pending_inserts.push(PendingInserts::new());
-                    storage.push(WebItem::Text(node.clone()));
+                    storage.push(WebItem::Text(node.clone(), node_stack.len()));
                     node_stack.push(node.into());
                 }
                 Patch::CopyText(mut take) => {
@@ -375,7 +375,7 @@ impl<'a, Message, Command> PatchSet<'a, Message, Command> {
                         .insert_before(Some(&node));
 
                     pending_inserts.push(PendingInserts::new());
-                    storage.push(WebItem::Text(node.clone()));
+                    storage.push(WebItem::Text(node.clone(), node_stack.len()));
                     node_stack.push(node.into());
                 }
                 Patch::SetInnerHtml(html) => {
@@ -764,7 +764,7 @@ mod tests {
         let storage = patch_set.apply(&parent, &app);
 
         let attribute = match storage[0] {
-            WebItem::Element(ref e) => e.get_attribute("name"),
+            WebItem::Element(ref e, 1) => e.get_attribute("name"),
             _ => panic!("element not stored as expected"),
         };
         assert!(attribute.is_some());
@@ -788,7 +788,7 @@ mod tests {
         let storage = patch_set.apply(&parent, &app);
 
         let element = match storage[0] {
-            WebItem::Element(ref e) => e,
+            WebItem::Element(ref e, 1) => e,
             _ => panic!("element not stored as expected"),
         };
         let input = element.dyn_ref::<web_sys::HtmlInputElement>().expect("expected input element");
@@ -813,7 +813,7 @@ mod tests {
         let storage = patch_set.apply(&parent, &app);
 
         let element = match storage[0] {
-            WebItem::Element(ref e) => e,
+            WebItem::Element(ref e, 1) => e,
             _ => panic!("element not stored as expected"),
         };
         let input = element.dyn_ref::<web_sys::HtmlInputElement>().expect("expected input element");
@@ -842,7 +842,7 @@ mod tests {
         let storage = patch_set.apply(&parent, &app);
 
         let attribute = match storage[0] {
-            WebItem::Element(ref e) => e.get_attribute("name"),
+            WebItem::Element(ref e, 1) => e.get_attribute("name"),
             _ => panic!("element not stored as expected"),
         };
         assert!(attribute.is_none());
@@ -869,7 +869,7 @@ mod tests {
         let storage = patch_set.apply(&parent, &app);
 
         let element = match storage[0] {
-            WebItem::Element(ref e) => e,
+            WebItem::Element(ref e, 1) => e,
             _ => panic!("element not stored as expected"),
         };
         let input = element.dyn_ref::<web_sys::HtmlInputElement>().expect("expected input element");
@@ -898,7 +898,7 @@ mod tests {
         let storage = patch_set.apply(&parent, &app);
 
         let element = match storage[0] {
-            WebItem::Element(ref e) => e,
+            WebItem::Element(ref e, 1) => e,
             _ => panic!("element not stored as expected"),
         };
         let input = element.dyn_ref::<web_sys::HtmlInputElement>().expect("expected input element");
@@ -923,7 +923,7 @@ mod tests {
         let storage = patch_set.apply(&parent, &app);
 
         let element = match storage[0] {
-            WebItem::Element(ref e) => e,
+            WebItem::Element(ref e, 1) => e,
             _ => panic!("element not stored as expected"),
         };
         let input = element.dyn_ref::<web_sys::HtmlInputElement>().expect("expected input element");
@@ -948,7 +948,7 @@ mod tests {
         let storage = patch_set.apply(&parent, &app);
 
         let element = match storage[0] {
-            WebItem::Element(ref e) => e,
+            WebItem::Element(ref e, 1) => e,
             _ => panic!("element not stored as expected"),
         };
         let input = element.dyn_ref::<web_sys::HtmlInputElement>().expect("expected input element");
@@ -973,7 +973,7 @@ mod tests {
         let storage = patch_set.apply(&parent, &app);
 
         let element = match storage[0] {
-            WebItem::Element(ref e) => e,
+            WebItem::Element(ref e, 1) => e,
             _ => panic!("element not stored as expected"),
         };
         let input = element.dyn_ref::<web_sys::HtmlInputElement>().expect("expected input element");
@@ -998,7 +998,7 @@ mod tests {
         let storage = patch_set.apply(&parent, &app);
 
         let element = match storage[0] {
-            WebItem::Element(ref e) => e,
+            WebItem::Element(ref e, 1) => e,
             _ => panic!("element not stored as expected"),
         };
         let option = element.dyn_ref::<web_sys::HtmlOptionElement>().expect("expected input element");
@@ -1039,7 +1039,7 @@ mod tests {
         storage = patch_set.apply(&parent, &app);
 
         match storage[1] {
-            WebItem::Element(ref node) => assert_eq!(node.node_name(), "P", "wrong node in storage"),
+            WebItem::Element(ref node, 1) => assert_eq!(node.node_name(), "P", "wrong node in storage"),
             _ => panic!("expected node to be created"),
         }
 
@@ -1084,8 +1084,8 @@ mod tests {
         storage = patch_set.apply(&parent, &app);
 
         match storage[2] {
-            WebItem::Element(ref node) => assert_eq!(node.node_name(), "P", "wrong node in storage"),
-            _ => panic!("expected node to be created"),
+            WebItem::Element(ref node, 2) => assert_eq!(node.node_name(), "P", "wrong node in storage"),
+            ref e => panic!("expected node to be created instead of: {:?}", e),
         }
 
         assert_eq!(

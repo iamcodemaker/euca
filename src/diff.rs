@@ -15,7 +15,7 @@ fn take_element<'a, Message>(item: &'a mut WebItem<Message>) -> Box<dyn FnMut() 
         let mut taken_item = WebItem::Taken;
         mem::swap(item, &mut taken_item);
         match taken_item {
-            WebItem::Element(i) => i,
+            WebItem::Element(i, _) => i,
             _ => panic!("storage type mismatch"),
         }
     })
@@ -26,7 +26,7 @@ fn take_text<'a, Message>(item: &'a mut WebItem<Message>) -> Box<dyn FnMut() -> 
         let mut taken_item = WebItem::Taken;
         mem::swap(item, &mut taken_item);
         match taken_item {
-            WebItem::Text(i) => i,
+            WebItem::Text(i, _) => i,
             _ => panic!("storage type mismatch"),
         }
     })
