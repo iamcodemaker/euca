@@ -28,6 +28,7 @@ use std::fmt;
 use crate::diff;
 use crate::vdom::DomIter;
 use crate::vdom::Storage;
+use crate::vdom::WebItem;
 use crate::route::Route;
 
 /// Struct used to configure and attach an application to the DOM.
@@ -123,12 +124,12 @@ where
         self
     }
 
-    /// Attach an app to the dom.
+    /// Create an app, but don't attach it yet.
     ///
-    /// The app will be attached at the given parent node and initialized with the given model.
-    /// Event handlers will be registered as necessary.
-    pub fn attach<Model, DomTree>(self, parent: web_sys::Element, mut model: Model)
-    -> Rc<RefCell<Box<dyn Application<Message, Command>>>>
+    /// Initialize everything, but don't actually attach the app to the dom. Instead return all of
+    /// the top level nodes.
+    pub(crate) fn create<Model, DomTree>(self, parent: web_sys::Element, mut model: Model)
+    -> (Rc<RefCell<Box<dyn Application<Message, Command>>>>, Vec<web_sys::Node>)
     where
         Model: Update<Message, Command> + Render<DomTree> + 'static,
         DomTree: DomIter<Message, Command> + 'static,
@@ -138,7 +139,6 @@ where
         let AppBuilder {
             router,
             processor,
-            clear_parent,
             ..
         } = self;
 
@@ -158,16 +158,8 @@ where
             }
         }
 
-        if clear_parent {
-            // remove all children of our parent element
-            while let Some(child) = parent.first_child() {
-                parent.remove_child(&child)
-                    .expect("failed to remove child of parent element");
-            }
-        }
-
-        // attach the app to the dom
-        let app_rc = App::attach(parent, model, processor);
+        // create the app
+        let (app_rc, nodes) = App::create(parent, model, processor);
 
         if let Some(ref router) = router {
             let window = web_sys::window()
@@ -209,6 +201,38 @@ where
             }
         }
 
+        (app_rc, nodes)
+    }
+
+    /// Attach an app to the dom.
+    ///
+    /// The app will be attached at the given parent node and initialized with the given model.
+    /// Event handlers will be registered as necessary.
+    pub fn attach<Model, DomTree>(self, parent: web_sys::Element, model: Model)
+    -> Rc<RefCell<Box<dyn Application<Message, Command>>>>
+    where
+        Model: Update<Message, Command> + Render<DomTree> + 'static,
+        DomTree: DomIter<Message, Command> + 'static,
+        Message: fmt::Debug + Clone + PartialEq + 'static,
+        Command: SideEffect<Message> + 'static,
+    {
+        if self.clear_parent {
+            // remove all children of our parent element
+            while let Some(child) = parent.first_child() {
+                parent.remove_child(&child)
+                    .expect("failed to remove child of parent element");
+            }
+        }
+
+        // create the app
+        let (app_rc, nodes) = self.create(parent.clone(), model);
+
+        // attach it to the dom
+        for node in nodes.iter() {
+            parent.append_child(node)
+                .expect("failed to append child to parent element");
+        }
+
         app_rc
     }
 }
@@ -230,8 +254,10 @@ pub trait Application<Message, Command> {
     fn set_scheduled_render(&mut self, handle: ScheduledRender<Command>);
     /// Store a listener that will be canceled when the app is detached.
     fn push_listener(&mut self, listener: (String, Closure<dyn FnMut(web_sys::Event)>));
-    /// Attach the initial app to the dom.
-    fn attach(&mut self, app: &Dispatcher<Message, Command>);
+    /// The first node of app.
+    fn node(&self) -> Option<web_sys::Node>;
+    /// Create the dom nodes for this app.
+    fn create(&mut self, app: &Dispatcher<Message, Command>) -> Vec<web_sys::Node>;
     /// Detach the app from the dom.
     fn detach(&mut self, app: &Dispatcher<Message, Command>);
 }
@@ -329,7 +355,19 @@ where
         self.storage = patch_set.apply(parent, app);
     }
 
-    fn attach(&mut self, app: &Dispatcher<Message, Command>) {
+    fn node(&self) -> Option<web_sys::Node> {
+        self.storage.first()
+            .and_then(|item| -> Option<web_sys::Node> {
+                match item {
+                    WebItem::Element(ref node, _) => Some(node.clone().into()),
+                    WebItem::Text(ref node, _) => Some(node.clone().into()),
+                    WebItem::Component(component) => component.node(),
+                    i => panic!("unknown item, expected something with a node in it: {:?}", i)
+                }
+            })
+    }
+
+    fn create(&mut self, app: &Dispatcher<Message, Command>) -> Vec<web_sys::Node> {
         // render the initial app
         use std::iter;
 
@@ -343,7 +381,9 @@ where
         let n = dom.dom_iter();
         let patch_set = diff::diff(iter::empty(), n, storage);
 
-        self.storage = patch_set.apply(parent, app);
+        let (storage, pending) = patch_set.prepare(parent, app);
+        self.storage = storage;
+        pending
     }
 }
 
@@ -419,12 +459,12 @@ where
     Command: SideEffect<Message>,
     Processor: side_effect::Processor<Message, Command> + 'static,
 {
-    /// Attach an app to the dom.
+    /// Create an application.
     ///
-    /// The app will be attached at the given parent node and initialized with the given model.
-    /// Event handlers will be registered as necessary.
-    fn attach(parent: web_sys::Element, model: Model, processor: Processor)
-    -> Rc<RefCell<Box<dyn Application<Message, Command>>>>
+    /// The app will be initialized with the given model.  Dom nodes will be created and event
+    /// handlers will be registered as necessary.
+    fn create(parent: web_sys::Element, model: Model, processor: Processor)
+    -> (Rc<RefCell<Box<dyn Application<Message, Command>>>>, Vec<web_sys::Node>)
     where
         Model: Update<Message, Command> + Render<DomTree> + 'static,
         DomTree: DomIter<Message, Command> + 'static,
@@ -450,10 +490,10 @@ where
         // single thread.
         let app_rc = Rc::new(RefCell::new(Box::new(app) as Box<dyn Application<Message, Command>>));
 
-        // attach the initial app
-        Application::attach(&mut **app_rc.borrow_mut(), &Dispatcher::from(&app_rc));
+        // create the initial app
+        let nodes = Application::create(&mut **app_rc.borrow_mut(), &Dispatcher::from(&app_rc));
 
-        app_rc
+        (app_rc, nodes)
     }
 }
 

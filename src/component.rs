@@ -20,6 +20,12 @@ pub trait Component<Message> {
 
     /// Detach the component from the dom.
     fn detach(&self);
+
+    /// Get the first web_sys::Node of this component (if any)
+    fn node(&self) -> Option<web_sys::Node>;
+
+    /// Get nodes waiting to attach to the parent.
+    fn pending(&mut self) -> Vec<web_sys::Node>;
 }
 
 /// A builder for constructing a self contained component app that lives inside of another app.
@@ -52,7 +58,7 @@ impl<Message, Command, ParentMessage> ComponentBuilder<Message, Command, ParentM
     }
 
     /// Create a component from the given app, and it's parent.
-    pub fn attach<ParentCommand, Model, DomTree>(self, parent: web_sys::Element, model: Model, parent_app: Dispatcher<ParentMessage, ParentCommand>)
+    pub fn create<ParentCommand, Model, DomTree>(self, parent: web_sys::Element, model: Model, parent_app: Dispatcher<ParentMessage, ParentCommand>)
     -> Box<dyn Component<ParentMessage>>
     where
         ParentMessage: fmt::Debug + Clone + PartialEq + 'static,
@@ -68,13 +74,14 @@ impl<Message, Command, ParentMessage> ComponentBuilder<Message, Command, ParentM
         } = self;
 
         let processor = ComponentProcessor::new(parent_app, unmap);
-        let app = AppBuilder::default()
+        let (app, pending) = AppBuilder::default()
             .processor(processor)
-            .attach(parent, model);
+            .create(parent, model);
 
         Box::new(ComponentImpl {
             app: app,
             map: map,
+            pending: pending,
         })
     }
 }
@@ -118,6 +125,7 @@ where
 struct ComponentImpl<Message, Command, ParentMessage> {
     app: Rc<RefCell<Box<dyn Application<Message, Command>>>>,
     map: fn(ParentMessage) -> Option<Message>,
+    pending: Vec<web_sys::Node>,
 }
 
 impl<Message, Command, ParentMessage> Component<ParentMessage>
@@ -135,5 +143,16 @@ where
 
     fn detach(&self) {
         Detach::detach(&self.app);
+    }
+
+    fn node(&self) -> Option<web_sys::Node> {
+        Application::node(&**self.app.borrow())
+            .map(|node| node.clone())
+    }
+
+    fn pending(&mut self) -> Vec<web_sys::Node> {
+        let mut pending = vec![];
+        std::mem::swap(&mut pending, &mut self.pending);
+        pending
     }
 }

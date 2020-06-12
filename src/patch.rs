@@ -288,11 +288,12 @@ impl<'a, Message, Command> PatchSet<'a, Message, Command> {
         })
     }
 
-    /// Apply the given PatchSet creating any elements under the given parent node. Events are
-    /// dispatched via the given [`Dispatch`]er.
+    /// Prep the given PatchSet by creating any elements in the set and placing them in Storage.
+    /// While elements will be removed from the given parent, nothing will be attached.  Events
+    /// will be dispatched via the given [`Dispatch`]er.
     ///
     /// [`Dispatch`]: ../app/trait.Dispatch.html
-    pub fn apply(self, parent: &web_sys::Element, app: &Dispatcher<Message, Command>) -> Storage<Message> where
+    pub fn prepare(self, parent: &web_sys::Element, app: &Dispatcher<Message, Command>) -> (Storage<Message>, Vec<web_sys::Node>) where
         Message: Clone + PartialEq + fmt::Debug + 'static,
         Command: SideEffect<Message> + 'static,
         EventHandler<'a, Message>: Clone,
@@ -514,7 +515,13 @@ impl<'a, Message, Command> PatchSet<'a, Message, Command> {
                         .expect("components can only be added to elements")
                         .clone();
 
-                    let component = create(node, app.clone());
+                    let mut component = create(node, app.clone());
+                    for n in component.pending().into_iter() {
+                        node_stack.push_child(n);
+                    }
+                    let node = component.node().expect("empty component?");
+                    node_stack.push_parent(node);
+
                     component.dispatch(msg);
                     storage.push(WebItem::Component(component));
                 }
@@ -522,10 +529,18 @@ impl<'a, Message, Command> PatchSet<'a, Message, Command> {
                     let component = take();
                     component.dispatch(msg);
 
+                    let node = component.node().expect("empty component?");
                     storage.push(WebItem::Component(component));
+                    node_stack.insert_before(Some(&node));
+                    node_stack.push_parent(node);
                 }
                 Patch::CopyComponent(mut take) => {
-                    storage.push(WebItem::Component(take()));
+                    let component = take();
+                    let node = component.node().expect("empty component?");
+
+                    storage.push(WebItem::Component(component));
+                    node_stack.insert_before(Some(&node));
+                    node_stack.push_parent(node);
                 }
                 Patch::RemoveComponent(mut take) => {
                     let component = take();
@@ -536,10 +551,6 @@ impl<'a, Message, Command> PatchSet<'a, Message, Command> {
                 }
             }
         }
-
-        // append final top level pending items
-        node_stack.pop();
-
 
         // set special attributes. These must be done last or strange things can happen when
         // rendering in the browser. I have observed range inputs not properly updating (appears to
@@ -605,6 +616,28 @@ impl<'a, Message, Command> PatchSet<'a, Message, Command> {
             }
         }
 
+        assert_eq!(node_stack.depth(), 1, "only the parent should be pending");
+        (storage, node_stack.pop_pending())
+    }
+
+    /// Apply the given PatchSet creating any elements under the given parent node. Events are
+    /// dispatched via the given [`Dispatch`]er.
+    ///
+    /// [`Dispatch`]: ../app/trait.Dispatch.html
+    pub fn apply(self, parent: &web_sys::Element, app: &Dispatcher<Message, Command>) -> Storage<Message> where
+        Message: Clone + PartialEq + fmt::Debug + 'static,
+        Command: SideEffect<Message> + 'static,
+        EventHandler<'a, Message>: Clone,
+    {
+        let (storage, pending) = self.prepare(parent, app);
+
+        // add top level nodes
+        for node in pending.iter() {
+            parent
+                .insert_before(node, None)
+                .expect("failed to insert child node");
+        }
+
         // return storage so it can be stored by the caller
         storage
     }
@@ -619,13 +652,6 @@ impl NodeStack {
     fn new(parent: impl Into<web_sys::Node>) -> Self {
         Self {
             stack: vec![(parent.into(), vec![])],
-        }
-    }
-
-    fn none() -> Self {
-        Self {
-            pending: vec![],
-            parent: None,
         }
     }
 
@@ -657,6 +683,12 @@ impl NodeStack {
     fn pop(&mut self) {
         self.insert_before(None);
         self.stack.pop();
+    }
+
+    /// Pop and return pending items.
+    fn pop_pending(&mut self) -> Vec<web_sys::Node> {
+        self.stack.pop().map(|(_parent, pending)| pending)
+            .expect("no pending inserts entry")
     }
 
     /// Insert any pending children into the parent before the given child node.

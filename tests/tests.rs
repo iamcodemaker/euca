@@ -44,6 +44,8 @@ impl FakeComponent {
 impl<Message> Component<Message> for FakeComponent {
     fn dispatch(&self, _: Message) { }
     fn detach(&self) { }
+    fn node(&self) -> Option<web_sys::Node> { None }
+    fn pending(&mut self) -> Vec<web_sys::Node> { vec![] }
 }
 
 fn gen_storage<'a, Message, Command, Iter>(iter: Iter) -> Storage<Message> where
