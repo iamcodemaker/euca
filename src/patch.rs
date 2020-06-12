@@ -298,7 +298,7 @@ impl<'a, Message, Command> PatchSet<'a, Message, Command> {
         EventHandler<'a, Message>: Clone,
     {
         let mut node_stack: Vec<web_sys::Node> = vec![parent.clone().unchecked_into()];
-        let mut pending_inserts: Vec<PendingInserts> = vec![PendingInserts::new()];
+        let mut pending_inserts: Vec<PendingInserts> = vec![PendingInserts::new(parent.clone())];
         let mut special_attributes: Vec<(web_sys::Node, &str, &str)> = vec![];
 
         let PatchSet { patches, mut storage } = self;
@@ -319,11 +319,8 @@ impl<'a, Message, Command> PatchSet<'a, Message, Command> {
                     storage.push(WebItem::Element(node.clone(), node_stack.len()));
                     pending_inserts.last_mut()
                         .expect("no pending inserts entry")
-                        .push(
-                            node_stack.last().expect("no previous node").clone(),
-                            node.clone()
-                        );
-                    pending_inserts.push(PendingInserts::new());
+                        .push(node.clone());
+                    pending_inserts.push(PendingInserts::new(node.clone()));
                     node_stack.push(node.into());
                 }
                 Patch::CopyElement(mut take) => {
@@ -333,7 +330,7 @@ impl<'a, Message, Command> PatchSet<'a, Message, Command> {
                         .expect("no pending inserts entry")
                         .insert_before(Some(&node));
 
-                    pending_inserts.push(PendingInserts::new());
+                    pending_inserts.push(PendingInserts::new(node.clone()));
                     storage.push(WebItem::Element(node.clone(), node_stack.len()));
                     node_stack.push(node.into());
                 }
@@ -351,7 +348,7 @@ impl<'a, Message, Command> PatchSet<'a, Message, Command> {
                         .expect("no pending inserts entry")
                         .insert_before(Some(&node));
 
-                    pending_inserts.push(PendingInserts::new());
+                    pending_inserts.push(PendingInserts::new(node.clone()));
                     storage.push(WebItem::Text(node.clone(), node_stack.len()));
                     node_stack.push(node.into());
                 }
@@ -360,10 +357,9 @@ impl<'a, Message, Command> PatchSet<'a, Message, Command> {
                     pending_inserts.last_mut()
                         .expect("no pending inserts entry")
                         .push(
-                            node_stack.last().expect("no previous node").clone(),
                             node.clone()
                         );
-                    pending_inserts.push(PendingInserts::new());
+                    pending_inserts.push(PendingInserts::new(node.clone()));
                     storage.push(WebItem::Text(node.clone(), node_stack.len()));
                     node_stack.push(node.into());
                 }
@@ -374,7 +370,7 @@ impl<'a, Message, Command> PatchSet<'a, Message, Command> {
                         .expect("no pending inserts entry")
                         .insert_before(Some(&node));
 
-                    pending_inserts.push(PendingInserts::new());
+                    pending_inserts.push(PendingInserts::new(node.clone()));
                     storage.push(WebItem::Text(node.clone(), node_stack.len()));
                     node_stack.push(node.into());
                 }
@@ -540,18 +536,18 @@ impl<'a, Message, Command> PatchSet<'a, Message, Command> {
 
                     let component = create(node, app.clone());
                     component.dispatch(msg);
-                    pending_inserts.push(PendingInserts::new());
+                    pending_inserts.push(PendingInserts::none());
                     storage.push(WebItem::Component(component));
                 }
                 Patch::UpdateComponent { mut take, msg } => {
                     let component = take();
                     component.dispatch(msg);
 
-                    pending_inserts.push(PendingInserts::new());
+                    pending_inserts.push(PendingInserts::none());
                     storage.push(WebItem::Component(component));
                 }
                 Patch::CopyComponent(mut take) => {
-                    pending_inserts.push(PendingInserts::new());
+                    pending_inserts.push(PendingInserts::none());
                     storage.push(WebItem::Component(take()));
                 }
                 Patch::RemoveComponent(mut take) => {
@@ -644,26 +640,38 @@ impl<'a, Message, Command> PatchSet<'a, Message, Command> {
 }
 
 struct PendingInserts {
-    /// Pending insert tuples: (parent, node).
-    pending: Vec<(web_sys::Node, web_sys::Node)>,
+    /// Pending inserts
+    pending: Vec<web_sys::Node>,
+    /// The parent node
+    parent: Option<web_sys::Node>,
 }
 
 impl PendingInserts {
-    fn new() -> Self {
+    fn new(parent: impl Into<web_sys::Node>) -> Self {
         Self {
             pending: vec![],
+            parent: Some(parent.into()),
         }
     }
 
-    fn push(&mut self, parent: impl Into<web_sys::Node>, node: impl Into<web_sys::Node>) {
-        self.pending.push((parent.into(), node.into()));
+    fn none() -> Self {
+        Self {
+            pending: vec![],
+            parent: None,
+        }
+    }
+
+    fn push(&mut self, node: impl Into<web_sys::Node>) {
+        self.pending.push(node.into());
     }
 
     fn insert_before(&mut self, child: Option<&web_sys::Node>) {
-        for (parent, node) in self.pending.drain(..) {
-            parent
-                .insert_before(&node, child)
-                .expect("failed to insert child node");
+        if let Some(parent) = &self.parent {
+            for node in self.pending.drain(..) {
+                parent
+                    .insert_before(&node, child)
+                    .expect("failed to insert child node");
+            }
         }
     }
 }
