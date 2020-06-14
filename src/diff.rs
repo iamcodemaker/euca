@@ -332,103 +332,14 @@ pub fn diff<'a, Message, Command, I1, I2>(mut old: I1, mut new: I2, storage: &'a
                                 let web_item = sto.next().expect("dom storage to match dom iter");
 
                                 patch_set.push(Patch::RemoveElement(take_element(web_item)));
-
-                                // skip the rest of the items in the old tree for this element, this
-                                // will cause attributes and such to be created on the new element
-                                let mut depth = 0;
-                                loop {
-                                    match old.next() {
-                                        // child element: remove from storage, track sub-tree depth
-                                        Some(DomItem::Element(_)) => {
-                                            let _ = sto.next().expect("dom storage to match dom iter");
-                                            depth += 1;
-                                        }
-                                        // child text: remove from storage, track sub-tree depth
-                                        Some(DomItem::Text(_)) => {
-                                            let _ = sto.next().expect("dom storage to match dom iter");
-                                            depth += 1;
-                                        }
-                                        // end of child: track sub-tree depth
-                                        Some(DomItem::Up) if depth > 0 => {
-                                            depth -= 1;
-                                        }
-                                        // event: remove from storage
-                                        Some(DomItem::Event { .. }) => {
-                                            let _ = sto.next().expect("dom storage to match dom iter");
-                                        }
-                                        // innerHtml: ignore
-                                        Some(DomItem::UnsafeInnerHtml(_)) => { }
-                                        // attribute: ignore
-                                        Some(DomItem::Attr { .. }) => { }
-                                        // end of node: stop processing
-                                        Some(DomItem::Up) => {
-                                            o_item = old.next();
-                                            break;
-                                        }
-                                        // component: remove it from storage and the dom
-                                        Some(DomItem::Component { .. }) => {
-                                            let web_item = sto.next().expect("dom storage to match dom iter");
-                                            patch_set.push(Patch::RemoveComponent(take_component(web_item)));
-                                            depth += 1;
-                                        }
-                                        o @ None => {
-                                            o_item = o;
-                                            break;
-                                        }
-                                    }
-                                }
+                                o_item = remove_sub_tree(&mut old, &mut patch_set, &mut sto);
                             }
                             // remove the old text if present
                             DomItem::Text(_) => {
                                 let web_item = sto.next().expect("dom storage to match dom iter");
 
                                 patch_set.push(Patch::RemoveText(take_text(web_item)));
-
-                                // skip the rest of the items in the old tree for this element, this
-                                // will cause attributes and such to be created on the new element
-                                let mut depth = 0;
-                                loop {
-                                    match old.next() {
-                                        // child element: remove from storage, track sub-tree depth
-                                        Some(DomItem::Element(_)) => {
-                                            let _ = sto.next().expect("dom storage to match dom iter");
-                                            depth += 1;
-                                        }
-                                        // child text: remove from storage, track sub-tree depth
-                                        Some(DomItem::Text(_)) => {
-                                            let _ = sto.next().expect("dom storage to match dom iter");
-                                            depth += 1;
-                                        }
-                                        // end of child: track sub-tree depth
-                                        Some(DomItem::Up) if depth > 0 => {
-                                            depth -= 1;
-                                        }
-                                        // event: remove from storage
-                                        Some(DomItem::Event { .. }) => {
-                                            let _ = sto.next().expect("dom storage to match dom iter");
-                                        }
-                                        // innerHtml: ignore
-                                        Some(DomItem::UnsafeInnerHtml(_)) => { }
-                                        // attribute: ignore
-                                        Some(DomItem::Attr { .. }) => { }
-                                        // end of node: stop processing
-                                        Some(DomItem::Up) => {
-                                            o_item = old.next();
-                                            break;
-                                        }
-                                        // component: shouldn't be possible as the child of a text
-                                        // node, but remove it anyway
-                                        Some(DomItem::Component { .. }) => {
-                                            let web_item = sto.next().expect("dom storage to match dom iter");
-                                            patch_set.push(Patch::RemoveComponent(take_component(web_item)));
-                                            depth += 1;
-                                        }
-                                        o @ None => {
-                                            o_item = o;
-                                            break;
-                                        }
-                                    }
-                                }
+                                o_item = remove_sub_tree(&mut old, &mut patch_set, &mut sto);
                             }
                             // remove inner html
                             DomItem::UnsafeInnerHtml(_) => {
@@ -455,52 +366,7 @@ pub fn diff<'a, Message, Command, I1, I2>(mut old: I1, mut new: I2, storage: &'a
                             DomItem::Component { .. } => {
                                 let web_item = sto.next().expect("dom storage to match dom iter");
                                 patch_set.push(Patch::RemoveComponent(take_component(web_item)));
-
-                                // skip the rest of the items in the old tree for this element, this
-                                // will cause attributes and such to be created on the new element
-                                let mut depth = 0;
-                                loop {
-                                    match old.next() {
-                                        // child element: remove from storage, track sub-tree depth
-                                        Some(DomItem::Element(_)) => {
-                                            let _ = sto.next().expect("dom storage to match dom iter");
-                                            depth += 1;
-                                        }
-                                        // child text: remove from storage, track sub-tree depth
-                                        Some(DomItem::Text(_)) => {
-                                            let _ = sto.next().expect("dom storage to match dom iter");
-                                            depth += 1;
-                                        }
-                                        // end of child: track sub-tree depth
-                                        Some(DomItem::Up) if depth > 0 => {
-                                            depth -= 1;
-                                        }
-                                        // event: remove from storage
-                                        Some(DomItem::Event { .. }) => {
-                                            let _ = sto.next().expect("dom storage to match dom iter");
-                                        }
-                                        // innerHtml: ignore
-                                        Some(DomItem::UnsafeInnerHtml(_)) => { }
-                                        // attribute: ignore
-                                        Some(DomItem::Attr { .. }) => { }
-                                        // end of node: stop processing
-                                        Some(DomItem::Up) => {
-                                            o_item = old.next();
-                                            break;
-                                        }
-                                        // component: shouldn't be possible as the child of a
-                                        // component node, but remove it anyway
-                                        Some(DomItem::Component { .. }) => {
-                                            let web_item = sto.next().expect("dom storage to match dom iter");
-                                            patch_set.push(Patch::RemoveComponent(take_component(web_item)));
-                                            depth += 1;
-                                        }
-                                        o @ None => {
-                                            o_item = o;
-                                            break;
-                                        }
-                                    }
-                                }
+                                o_item = remove_sub_tree(&mut old, &mut patch_set, &mut sto);
                             }
                         }
 
@@ -593,6 +459,60 @@ where
             }
             n @ None => {
                 return n;
+            }
+        }
+    }
+}
+
+/// Skip the items in this sub tree.
+///
+/// Expected to be called where `old.next()` just returned a node that may have children. This will
+/// handle removing nodes from storage, up to the matching `DomItem::Up` entry.
+fn remove_sub_tree<'a, Message, Command, I>(old: &mut I, patch_set: &mut PatchSet<'a, Message, Command>, sto: &mut dyn Iterator<Item = &'a mut WebItem<Message>>)
+-> Option<DomItem<'a, Message, Command>>
+where
+    Message: 'a + PartialEq + Clone + fmt::Debug,
+    I: Iterator<Item = DomItem<'a, Message, Command>>,
+{
+    // skip the rest of the items in the old tree for this element, this
+    // will cause attributes and such to be created on the new element
+    let mut depth = 0;
+    loop {
+        match old.next() {
+            // child element: remove from storage, track sub-tree depth
+            Some(DomItem::Element(_)) => {
+                let _ = sto.next().expect("dom storage to match dom iter");
+                depth += 1;
+            }
+            // child text: remove from storage, track sub-tree depth
+            Some(DomItem::Text(_)) => {
+                let _ = sto.next().expect("dom storage to match dom iter");
+                depth += 1;
+            }
+            // component: remove it from storage and the dom
+            Some(DomItem::Component { .. }) => {
+                let web_item = sto.next().expect("dom storage to match dom iter");
+                patch_set.push(Patch::RemoveComponent(take_component(web_item)));
+                depth += 1;
+            }
+            // event: remove from storage
+            Some(DomItem::Event { .. }) => {
+                let _ = sto.next().expect("dom storage to match dom iter");
+            }
+            // innerHtml: ignore
+            Some(DomItem::UnsafeInnerHtml(_)) => { }
+            // attribute: ignore
+            Some(DomItem::Attr { .. }) => { }
+            // end of child: track sub-tree depth
+            Some(DomItem::Up) if depth > 0 => {
+                depth -= 1;
+            }
+            // end of node: stop processing
+            Some(DomItem::Up) => {
+                return old.next();
+            }
+            o @ None => {
+                return o;
             }
         }
     }
