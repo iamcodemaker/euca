@@ -97,7 +97,6 @@ pub fn diff<'a, Message, Command, I1, I2>(mut old: I1, mut new: I2, storage: &'a
     let mut patch_set = PatchSet::new();
 
     let mut o_state = State::new();
-    let mut n_state = State::new();
 
     let mut o_item = old.next();
     let mut n_item = new.next();
@@ -249,12 +248,8 @@ pub fn diff<'a, Message, Command, I1, I2>(mut old: I1, mut new: I2, storage: &'a
                         DomItem::Attr { name: o_name, value: o_value },
                         DomItem::Attr { name: n_name, value: n_value }
                     ) => { // compare attributes
-                        if n_state.is_create() {
-                            // add attribute
-                            patch_set.push(Patch::SetAttribute { name: n_name, value: n_value });
-                        }
                         // names are different
-                        else if o_name != n_name {
+                        if o_name != n_name {
                             if o_state.is_copy() {
                                 // remove old attribute
                                 patch_set.push(Patch::RemoveAttribute(o_name));
@@ -296,10 +291,6 @@ pub fn diff<'a, Message, Command, I1, I2>(mut old: I1, mut new: I2, storage: &'a
                             // add new listener
                             patch_set.push(Patch::AddListener { trigger: n_trigger, handler: n_handler.into() });
                         }
-                        else if n_state.is_create() {
-                            // add listener
-                            patch_set.push(Patch::AddListener { trigger: n_trigger, handler: n_handler.into() });
-                        }
                         else {
                             // just copy the existing listener
                             patch_set.push(Patch::CopyListener(take_closure(web_item)));
@@ -312,10 +303,6 @@ pub fn diff<'a, Message, Command, I1, I2>(mut old: I1, mut new: I2, storage: &'a
 
                         if o_state.is_copy() {
                             o_state.pop();
-                        }
-
-                        if n_state.is_create() {
-                            n_state.pop();
                         }
 
                         o_item = old.next();
