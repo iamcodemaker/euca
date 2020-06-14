@@ -61,42 +61,7 @@ pub fn diff<'a, Message, Command, I1, I2>(mut old: I1, mut new: I2, storage: &'a
     I1: Iterator<Item = DomItem<'a, Message, Command>>,
     I2: Iterator<Item = DomItem<'a, Message, Command>>,
 {
-    #[derive(PartialEq)]
-    enum NodeState {
-        Create,
-        Copy,
-        Child,
-    }
-
-    struct State(Vec<NodeState>);
-
-    impl State {
-        fn new() -> Self {
-            State(vec![])
-        }
-        fn push(&mut self, state: NodeState) {
-            self.0.push(state)
-        }
-        fn pop(&mut self) -> Option<NodeState> {
-            self.0.pop()
-        }
-        fn is_create(&self) -> bool {
-            self.0.last()
-                .map_or(false, |ns| *ns == NodeState::Create)
-        }
-        fn is_copy(&self) -> bool {
-            self.0.last()
-                .map_or(false, |ns| *ns == NodeState::Copy)
-        }
-        fn is_child(&self) -> bool {
-            self.0.last()
-                .map_or(false, |ns| *ns == NodeState::Child)
-        }
-    }
-
     let mut patch_set = PatchSet::new();
-
-    let mut o_state = State::new();
 
     let mut o_item = old.next();
     let mut n_item = new.next();
@@ -178,7 +143,6 @@ pub fn diff<'a, Message, Command, I1, I2>(mut old: I1, mut new: I2, storage: &'a
 
                         // copy the node
                         patch_set.push(Patch::CopyElement(take_element(web_item)));
-                        o_state.push(NodeState::Copy);
 
                         o_item = old.next();
                         n_item = new.next();
@@ -198,7 +162,6 @@ pub fn diff<'a, Message, Command, I1, I2>(mut old: I1, mut new: I2, storage: &'a
                         else {
                             patch_set.push(Patch::ReplaceText { take: take_text(web_item) , text: n_text });
                         }
-                        o_state.push(NodeState::Copy);
 
                         o_item = old.next();
                         n_item = new.next();
@@ -238,10 +201,9 @@ pub fn diff<'a, Message, Command, I1, I2>(mut old: I1, mut new: I2, storage: &'a
                     ) => { // compare attributes
                         // names are different
                         if o_name != n_name {
-                            if o_state.is_copy() {
-                                // remove old attribute
-                                patch_set.push(Patch::RemoveAttribute(o_name));
-                            }
+                            // remove old attribute
+                            patch_set.push(Patch::RemoveAttribute(o_name));
+
                             // add new attribute
                             patch_set.push(Patch::SetAttribute { name: n_name, value: n_value });
                         }
@@ -272,10 +234,9 @@ pub fn diff<'a, Message, Command, I1, I2>(mut old: I1, mut new: I2, storage: &'a
                         let web_item = sto.next().expect("dom storage to match dom iter");
 
                         if o_trigger != n_trigger || o_handler != n_handler {
-                            if o_state.is_copy() {
-                                // remove old listener
-                                patch_set.push(Patch::RemoveListener { trigger: o_trigger, take: take_closure(web_item) });
-                            }
+                            // remove old listener
+                            patch_set.push(Patch::RemoveListener { trigger: o_trigger, take: take_closure(web_item) });
+
                             // add new listener
                             patch_set.push(Patch::AddListener { trigger: n_trigger, handler: n_handler.into() });
                         }
@@ -288,10 +249,6 @@ pub fn diff<'a, Message, Command, I1, I2>(mut old: I1, mut new: I2, storage: &'a
                     }
                     (DomItem::Up, DomItem::Up) => { // end of two items
                         patch_set.push(Patch::Up);
-
-                        if o_state.is_copy() {
-                            o_state.pop();
-                        }
 
                         o_item = old.next();
                         n_item = new.next();
@@ -323,18 +280,14 @@ pub fn diff<'a, Message, Command, I1, I2>(mut old: I1, mut new: I2, storage: &'a
                             }
                             // remove attribute from old node
                             DomItem::Attr { name, value: _ } => {
-                                if o_state.is_copy() {
-                                    patch_set.push(Patch::RemoveAttribute(name));
-                                }
+                                patch_set.push(Patch::RemoveAttribute(name));
                                 old.next()
                             }
                             // remove event from old node
                             DomItem::Event { trigger, .. } => {
                                 let web_item = sto.next().expect("dom storage to match dom iter");
 
-                                if o_state.is_copy() {
-                                    patch_set.push(Patch::RemoveListener { trigger, take: take_closure(web_item) });
-                                }
+                                patch_set.push(Patch::RemoveListener { trigger, take: take_closure(web_item) });
                                 old.next()
                             }
                             // remove old component
