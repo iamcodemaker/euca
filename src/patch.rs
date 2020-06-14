@@ -124,7 +124,7 @@ impl<'a, Message, Command> fmt::Debug for Patch<'a, Message, Command> where
             Patch::CreateComponent { msg, create: _ } => write!(f, "CreateComponent {{ msg: {:?}, create: _ }}", msg),
             Patch::UpdateComponent { take: _, msg } => write!(f, "CreateComponent {{ take: _, msg: {:?} }}", msg),
             Patch::CopyComponent(_) => write!(f, "CopyComponent(_)"),
-            Patch::RemoveComponent(_) => write!(f, "CopyComponent(_)"),
+            Patch::RemoveComponent(_) => write!(f, "RemoveComponent(_)"),
             Patch::SetAttribute { name: n, value: v } => write!(f, "SetAttribute {{ name: {:?}, value: {:?} }}", n, v),
             Patch::RemoveAttribute(s) => write!(f, "RemoveAttribute({:?})", s),
             Patch::AddListener { trigger: t, handler: h } => write!(f, "AddListener {{ trigger: {:?}, handler: {:?} }}", t, h),
