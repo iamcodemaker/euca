@@ -293,12 +293,12 @@ impl<'a, Message, Command> PatchSet<'a, Message, Command> {
     /// will be dispatched via the given [`Dispatch`]er.
     ///
     /// [`Dispatch`]: ../app/trait.Dispatch.html
-    pub fn prepare(self, parent: &web_sys::Element, app: &Dispatcher<Message, Command>) -> (Storage<Message>, Vec<web_sys::Node>) where
+    pub fn prepare(self, _parent: &web_sys::Element, app: &Dispatcher<Message, Command>) -> (Storage<Message>, Vec<web_sys::Node>) where
         Message: Clone + PartialEq + fmt::Debug + 'static,
         Command: SideEffect<Message> + 'static,
         EventHandler<'a, Message>: Clone,
     {
-        let mut node_stack = NodeStack::new(parent.clone());
+        let mut node_stack = NodeStack::new();
         let mut special_attributes: Vec<(web_sys::Node, &str, &str)> = vec![];
 
         let PatchSet { patches, mut storage } = self;
@@ -309,10 +309,7 @@ impl<'a, Message, Command> PatchSet<'a, Message, Command> {
         for p in patches.into_iter() {
             match p {
                 Patch::RemoveElement(mut take) => {
-                    node_stack.last()
-                        .expect("no previous node")
-                        .remove_child(&take())
-                        .expect("failed to remove child node");
+                    take().remove();
                 }
                 Patch::CreateElement { element } => {
                     let node = document.create_element(&element).expect("failed to create element");
@@ -616,7 +613,7 @@ impl<'a, Message, Command> PatchSet<'a, Message, Command> {
             }
         }
 
-        assert_eq!(node_stack.depth(), 1, "only the parent should be pending");
+        assert_eq!(node_stack.depth(), 0, "only the parent should be pending");
         (storage, node_stack.pop_pending())
     }
 
@@ -646,12 +643,14 @@ impl<'a, Message, Command> PatchSet<'a, Message, Command> {
 struct NodeStack {
     /// Parent nodes in the tree [(parent, [pending children])].
     stack: Vec<(web_sys::Node, Vec<web_sys::Node>)>,
+    pending: Vec<web_sys::Node>,
 }
 
 impl NodeStack {
-    fn new(parent: impl Into<web_sys::Node>) -> Self {
+    fn new() -> Self {
         Self {
-            stack: vec![(parent.into(), vec![])],
+            stack: vec![],
+            pending: vec![],
         }
     }
 
@@ -673,8 +672,7 @@ impl NodeStack {
     /// Append a pending child node to the current parent.
     fn push_child(&mut self, child: impl Into<web_sys::Node>) {
         self.stack.last_mut()
-            .map(|(_parent, pending)| pending)
-            .expect("no pending inserts entry")
+            .map_or(&mut self.pending, |(_parent, pending)| pending)
             .push(child.into());
     }
 
@@ -687,20 +685,30 @@ impl NodeStack {
 
     /// Pop and return pending items.
     fn pop_pending(&mut self) -> Vec<web_sys::Node> {
-        self.stack.pop().map(|(_parent, pending)| pending)
-            .expect("no pending inserts entry")
+        let mut pending = vec![];
+        std::mem::swap(&mut self.pending, &mut pending);
+        pending
     }
 
     /// Insert any pending children into the parent before the given child node.
     fn insert_before(&mut self, child: Option<&web_sys::Node>) {
-        let (parent, pending) = &mut self.stack.last_mut()
-            .expect("no parent entry for pending child nodes");
-
-        for node in pending.drain(..) {
-            parent
-                .insert_before(&node, child)
-                .expect("failed to insert child node");
+        if let Some((parent, pending)) = &mut self.stack.last_mut() {
+            for node in pending.drain(..) {
+                parent
+                    .insert_before(&node, child)
+                    .expect("failed to insert child node");
+            }
         }
+        else if let Some(sibling) = child {
+            let parent = sibling.parent_node();
+            for node in self.pending.drain(..) {
+                parent.as_ref()
+                    .expect("no parent node")
+                    .insert_before(&node, Some(sibling))
+                    .expect("failed to insert child node");
+            }
+        }
+
     }
 }
 
