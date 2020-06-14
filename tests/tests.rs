@@ -129,6 +129,12 @@ macro_rules! compare {
                     assert_eq!(h1, h2, "[{}] unexpected innerHtml\n{}", i, dump);
                 }
                 (Patch::UnsetInnerHtml, Patch::UnsetInnerHtml) => {}
+                (Patch::CreateComponent { msg: m1, create: f1 }, Patch::CreateComponent { msg: m2, create: f2 }) => {
+                    assert_eq!(m1, m2, "[{}] component messages don't match\n{}", i, dump);
+                    assert_eq!(f1, f2, "[{}] component create functions don't match\n{}", i, dump);
+                }
+                (Patch::RemoveComponent(_), Patch::RemoveComponent(_)) => {}
+                (Patch::CopyComponent(_), Patch::CopyComponent(_)) => {}
                 (Patch::Up, Patch::Up) => {}
                 (item1, item2) => panic!("[{}] patch items don't match\n  left: {:?}\n right: {:?}\n{}", i, item1, item2, dump),
             }
