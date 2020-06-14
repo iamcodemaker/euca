@@ -323,35 +323,35 @@ pub fn diff<'a, Message, Command, I1, I2>(mut old: I1, mut new: I2, storage: &'a
                     }
                     (o, n) => { // no match
                         // remove the old item
-                        match o {
+                        o_item = match o {
                             DomItem::Up => { // end of old item
-                                o_item = Some(o);
+                                Some(o)
                             }
                             // remove the old node if present
                             DomItem::Element(_) => {
                                 let web_item = sto.next().expect("dom storage to match dom iter");
 
                                 patch_set.push(Patch::RemoveElement(take_element(web_item)));
-                                o_item = remove_sub_tree(&mut old, &mut patch_set, &mut sto);
+                                remove_sub_tree(&mut old, &mut patch_set, &mut sto)
                             }
                             // remove the old text if present
                             DomItem::Text(_) => {
                                 let web_item = sto.next().expect("dom storage to match dom iter");
 
                                 patch_set.push(Patch::RemoveText(take_text(web_item)));
-                                o_item = remove_sub_tree(&mut old, &mut patch_set, &mut sto);
+                                remove_sub_tree(&mut old, &mut patch_set, &mut sto)
                             }
                             // remove inner html
                             DomItem::UnsafeInnerHtml(_) => {
                                 patch_set.push(Patch::UnsetInnerHtml);
-                                o_item = old.next();
+                                old.next()
                             }
                             // remove attribute from old node
                             DomItem::Attr { name, value: _ } => {
                                 if o_state.is_copy() {
                                     patch_set.push(Patch::RemoveAttribute(name));
                                 }
-                                o_item = old.next();
+                                old.next()
                             }
                             // remove event from old node
                             DomItem::Event { trigger, .. } => {
@@ -360,50 +360,50 @@ pub fn diff<'a, Message, Command, I1, I2>(mut old: I1, mut new: I2, storage: &'a
                                 if o_state.is_copy() {
                                     patch_set.push(Patch::RemoveListener { trigger, take: take_closure(web_item) });
                                 }
-                                o_item = old.next();
+                                old.next()
                             }
                             // remove old component
                             DomItem::Component { .. } => {
                                 let web_item = sto.next().expect("dom storage to match dom iter");
                                 patch_set.push(Patch::RemoveComponent(take_component(web_item)));
-                                o_item = remove_sub_tree(&mut old, &mut patch_set, &mut sto);
+                                remove_sub_tree(&mut old, &mut patch_set, &mut sto)
                             }
-                        }
+                        };
 
                         // add the new item
-                        match n {
+                        n_item = match n {
                             DomItem::Up => { // end of new item
-                                n_item = Some(n);
+                                Some(n)
                             }
                             // add a new child node
                             DomItem::Element(element) => {
                                 patch_set.push(Patch::CreateElement { element });
-                                n_item = add_sub_tree(&mut new, &mut patch_set);
+                                add_sub_tree(&mut new, &mut patch_set)
                             }
                             // add a new text node
                             DomItem::Text(text) => {
                                 patch_set.push(Patch::CreateText { text });
-                                n_item = add_sub_tree(&mut new, &mut patch_set);
+                                add_sub_tree(&mut new, &mut patch_set)
                             }
                             // set inner html
                             DomItem::UnsafeInnerHtml(html) => {
                                 patch_set.push(Patch::SetInnerHtml(html));
-                                n_item = new.next();
+                                new.next()
                             }
                             // add a new component
                             DomItem::Component { msg, create } => {
                                 patch_set.push(Patch::CreateComponent { msg, create });
-                                n_item = add_sub_tree(&mut new, &mut patch_set);
+                                add_sub_tree(&mut new, &mut patch_set)
                             }
                             // add attribute to new node
                             DomItem::Attr { name, value } => {
                                 patch_set.push(Patch::SetAttribute { name, value });
-                                n_item = new.next();
+                                new.next()
                             }
                             // add event to new node
                             DomItem::Event { trigger, handler } => {
                                 patch_set.push(Patch::AddListener { trigger, handler: handler.into() });
-                                n_item = new.next();
+                                new.next()
                             }
                         }
                     }
