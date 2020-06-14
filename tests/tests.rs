@@ -39,6 +39,12 @@ impl FakeComponent {
     fn new() -> Box<Self> {
         Box::new(FakeComponent { })
     }
+
+    fn create(_: web_sys::Element, _: euca::app::dispatch::Dispatcher<Msg, Cmd>)
+    -> Box<dyn Component<Msg>>
+    {
+        Self::new()
+    }
 }
 
 impl<Message> Component<Message> for FakeComponent {
@@ -973,5 +979,173 @@ fn inner_html_remove_parent_node() {
             .item(1)
             .is_none(),
         "unexpected second child node, should only be one child node"
+    );
+}
+
+#[test]
+fn diff_empty_create_component() {
+    let old = iter::empty();
+    let mut storage = vec![];
+
+    let new = Dom::component((), FakeComponent::create);
+
+    let o = old.into_iter();
+    let n = new.dom_iter();
+    let patch_set = diff::diff(o, n, &mut storage);
+
+    compare!(
+        patch_set,
+        [
+            Patch::CreateComponent { msg: (), create: FakeComponent::create },
+            Patch::Up,
+        ]
+    );
+}
+
+#[wasm_bindgen_test]
+fn diff_basic_component() {
+
+    let old = Dom::elem("div");
+    let new = Dom::elem("div")
+        .push(Dom::component((), FakeComponent::create));
+
+    let mut storage = gen_storage(old.dom_iter());
+    let o = old.dom_iter();
+    let n = new.dom_iter();
+    let patch_set = diff::diff(o, n, &mut storage);
+
+    compare!(
+        patch_set,
+        [
+            Patch::CopyElement(Box::new(|| e("div"))),
+              Patch::CreateComponent { msg: (), create: FakeComponent::create },
+              Patch::Up,
+            Patch::Up,
+        ]
+    );
+}
+
+#[wasm_bindgen_test]
+fn diff_add_nested_component() {
+    let old = Dom::elem("div")
+        .push(Dom::elem("div")
+            .push(Dom::elem("div"))
+            .push(Dom::elem("div"))
+            .push(Dom::elem("div"))
+        )
+        .push(Dom::elem("div"));
+    let new = Dom::elem("div")
+        .push(Dom::elem("div")
+            .push(Dom::elem("div"))
+            .push(Dom::elem("div"))
+            .push(Dom::elem("div"))
+            .push(Dom::component((), FakeComponent::create))
+        )
+        .push(Dom::elem("div"));
+
+    let mut storage = gen_storage(old.dom_iter());
+    let o = old.dom_iter();
+    let n = new.dom_iter();
+    let patch_set = diff::diff(o, n, &mut storage);
+
+    compare!(
+        patch_set,
+        [
+            Patch::CopyElement(Box::new(|| e("div"))),
+              Patch::CopyElement(Box::new(|| e("div"))),
+                Patch::CopyElement(Box::new(|| e("div"))),
+                Patch::Up,
+                Patch::CopyElement(Box::new(|| e("div"))),
+                Patch::Up,
+                Patch::CopyElement(Box::new(|| e("div"))),
+                Patch::Up,
+                Patch::CreateComponent { msg: (), create: FakeComponent::create },
+                Patch::Up,
+              Patch::Up,
+              Patch::CopyElement(Box::new(|| e("div"))),
+              Patch::Up,
+            Patch::Up,
+        ]
+    );
+}
+
+#[wasm_bindgen_test]
+fn diff_copy_nested_component() {
+    let old = Dom::elem("div")
+        .push(Dom::elem("div")
+            .push(Dom::elem("div"))
+            .push(Dom::component((), FakeComponent::create))
+            .push(Dom::elem("div"))
+        )
+        .push(Dom::elem("div"));
+    let new = Dom::elem("div")
+        .push(Dom::elem("div")
+            .push(Dom::elem("div"))
+            .push(Dom::component((), FakeComponent::create))
+            .push(Dom::elem("div"))
+        )
+        .push(Dom::elem("div"));
+
+    let mut storage = gen_storage(old.dom_iter());
+    let o = old.dom_iter();
+    let n = new.dom_iter();
+    let patch_set = diff::diff(o, n, &mut storage);
+
+    compare!(
+        patch_set,
+        [
+            Patch::CopyElement(Box::new(|| e("div"))),
+              Patch::CopyElement(Box::new(|| e("div"))),
+                Patch::CopyElement(Box::new(|| e("div"))),
+                Patch::Up,
+                Patch::CopyComponent(Box::new(|| FakeComponent::new())),
+                Patch::Up,
+                Patch::CopyElement(Box::new(|| e("div"))),
+                Patch::Up,
+              Patch::Up,
+              Patch::CopyElement(Box::new(|| e("div"))),
+              Patch::Up,
+            Patch::Up,
+        ]
+    );
+}
+
+#[wasm_bindgen_test]
+fn diff_remove_nested_component() {
+    let old = Dom::elem("div")
+        .push(Dom::elem("div")
+            .push(Dom::elem("div"))
+            .push(Dom::component((), FakeComponent::create))
+            .push(Dom::elem("div"))
+        )
+        .push(Dom::elem("div"));
+    let new = Dom::elem("div")
+        .push(Dom::elem("div")
+            .push(Dom::elem("div"))
+            .push(Dom::elem("div"))
+        )
+        .push(Dom::elem("div"));
+
+    let mut storage = gen_storage(old.dom_iter());
+    let o = old.dom_iter();
+    let n = new.dom_iter();
+    let patch_set = diff::diff(o, n, &mut storage);
+
+    compare!(
+        patch_set,
+        [
+            Patch::CopyElement(Box::new(|| e("div"))),
+              Patch::CopyElement(Box::new(|| e("div"))),
+                Patch::CopyElement(Box::new(|| e("div"))),
+                Patch::Up,
+                Patch::RemoveComponent(Box::new(|| FakeComponent::new())),
+                Patch::CreateElement { element: "div" },
+                Patch::Up,
+                Patch::RemoveElement(Box::new(|| e("div"))),
+              Patch::Up,
+              Patch::CopyElement(Box::new(|| e("div"))),
+              Patch::Up,
+            Patch::Up,
+        ]
     );
 }

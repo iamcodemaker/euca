@@ -369,6 +369,7 @@ pub fn diff<'a, Message, Command, I1, I2>(mut old: I1, mut new: I2, storage: &'a
                                         Some(DomItem::Component { .. }) => {
                                             let web_item = sto.next().expect("dom storage to match dom iter");
                                             patch_set.push(Patch::RemoveComponent(take_component(web_item)));
+                                            depth += 1;
                                         }
                                         o @ None => {
                                             o_item = o;
@@ -420,6 +421,7 @@ pub fn diff<'a, Message, Command, I1, I2>(mut old: I1, mut new: I2, storage: &'a
                                         Some(DomItem::Component { .. }) => {
                                             let web_item = sto.next().expect("dom storage to match dom iter");
                                             patch_set.push(Patch::RemoveComponent(take_component(web_item)));
+                                            depth += 1;
                                         }
                                         o @ None => {
                                             o_item = o;
@@ -453,7 +455,52 @@ pub fn diff<'a, Message, Command, I1, I2>(mut old: I1, mut new: I2, storage: &'a
                             DomItem::Component { .. } => {
                                 let web_item = sto.next().expect("dom storage to match dom iter");
                                 patch_set.push(Patch::RemoveComponent(take_component(web_item)));
-                                o_item = old.next();
+
+                                // skip the rest of the items in the old tree for this element, this
+                                // will cause attributes and such to be created on the new element
+                                let mut depth = 0;
+                                loop {
+                                    match old.next() {
+                                        // child element: remove from storage, track sub-tree depth
+                                        Some(DomItem::Element(_)) => {
+                                            let _ = sto.next().expect("dom storage to match dom iter");
+                                            depth += 1;
+                                        }
+                                        // child text: remove from storage, track sub-tree depth
+                                        Some(DomItem::Text(_)) => {
+                                            let _ = sto.next().expect("dom storage to match dom iter");
+                                            depth += 1;
+                                        }
+                                        // end of child: track sub-tree depth
+                                        Some(DomItem::Up) if depth > 0 => {
+                                            depth -= 1;
+                                        }
+                                        // event: remove from storage
+                                        Some(DomItem::Event { .. }) => {
+                                            let _ = sto.next().expect("dom storage to match dom iter");
+                                        }
+                                        // innerHtml: ignore
+                                        Some(DomItem::UnsafeInnerHtml(_)) => { }
+                                        // attribute: ignore
+                                        Some(DomItem::Attr { .. }) => { }
+                                        // end of node: stop processing
+                                        Some(DomItem::Up) => {
+                                            o_item = old.next();
+                                            break;
+                                        }
+                                        // component: shouldn't be possible as the child of a
+                                        // component node, but remove it anyway
+                                        Some(DomItem::Component { .. }) => {
+                                            let web_item = sto.next().expect("dom storage to match dom iter");
+                                            patch_set.push(Patch::RemoveComponent(take_component(web_item)));
+                                            depth += 1;
+                                        }
+                                        o @ None => {
+                                            o_item = o;
+                                            break;
+                                        }
+                                    }
+                                }
                             }
                         }
 
@@ -498,6 +545,7 @@ pub fn diff<'a, Message, Command, I1, I2>(mut old: I1, mut new: I2, storage: &'a
                                         }
                                         Some(DomItem::Component { msg, create }) => {
                                             patch_set.push(Patch::CreateComponent { msg, create });
+                                            depth += 1;
                                         }
                                         n @ None => {
                                             n_item = n;
@@ -542,6 +590,7 @@ pub fn diff<'a, Message, Command, I1, I2>(mut old: I1, mut new: I2, storage: &'a
                                         }
                                         Some(DomItem::Component { msg, create }) => {
                                             patch_set.push(Patch::CreateComponent { msg, create });
+                                            depth += 1;
                                         }
                                         n @ None => {
                                             n_item = n;
@@ -558,7 +607,47 @@ pub fn diff<'a, Message, Command, I1, I2>(mut old: I1, mut new: I2, storage: &'a
                             // add a new component
                             DomItem::Component { msg, create } => {
                                 patch_set.push(Patch::CreateComponent { msg, create });
-                                n_item = new.next();
+
+                                // add this entire element tree
+                                let mut depth = 0;
+                                loop {
+                                    match new.next() {
+                                        Some(DomItem::Element(element)) => {
+                                            patch_set.push(Patch::CreateElement { element });
+                                            depth += 1;
+                                        }
+                                        Some(DomItem::Text(text)) => {
+                                            patch_set.push(Patch::CreateText { text });
+                                            depth += 1;
+                                        }
+                                        Some(DomItem::UnsafeInnerHtml(html)) => {
+                                            patch_set.push(Patch::SetInnerHtml(html));
+                                        }
+                                        Some(DomItem::Up) if depth > 0 => {
+                                            patch_set.push(Patch::Up);
+                                            depth -= 1;
+                                        }
+                                        Some(DomItem::Event { trigger, handler }) => {
+                                            patch_set.push(Patch::AddListener { trigger, handler: handler.into() });
+                                        }
+                                        Some(DomItem::Attr { name, value }) => {
+                                            patch_set.push(Patch::SetAttribute { name, value });
+                                        }
+                                        Some(DomItem::Up) => {
+                                            patch_set.push(Patch::Up);
+                                            n_item = new.next();
+                                            break;
+                                        }
+                                        Some(DomItem::Component { msg, create }) => {
+                                            patch_set.push(Patch::CreateComponent { msg, create });
+                                            depth += 1;
+                                        }
+                                        n @ None => {
+                                            n_item = n;
+                                            break;
+                                        }
+                                    }
+                                }
                             }
                             // add attribute to new node
                             DomItem::Attr { name, value } => {
