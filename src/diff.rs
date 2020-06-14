@@ -135,50 +135,38 @@ pub fn diff<'a, Message, Command, I1, I2>(mut old: I1, mut new: I2, storage: &'a
                 n_item = new.next();
             }
             (Some(o), None) => { // delete remaining old nodes
-                match o {
+                o_item = match o {
                     DomItem::Element(_) => {
                         let web_item = sto.next().expect("dom storage to match dom iter");
-
-                        // ignore child nodes
-                        if !o_state.is_child() {
-                            patch_set.push(Patch::RemoveElement(take_element(web_item)));
-                        }
-
-                        o_state.push(NodeState::Child);
+                        patch_set.push(Patch::RemoveElement(take_element(web_item)));
+                        remove_sub_tree(&mut old, &mut patch_set, &mut sto)
                     }
                     DomItem::Text(_) => {
                         let web_item = sto.next().expect("dom storage to match dom iter");
-
-                        // ignore child nodes
-                        if !o_state.is_child() {
-                            patch_set.push(Patch::RemoveText(take_text(web_item)));
-                        }
-
-                        o_state.push(NodeState::Child);
-                    }
-                    DomItem::UnsafeInnerHtml(_) => {
-                        // ignore child nodes
-                        if !o_state.is_child() {
-                            patch_set.push(Patch::UnsetInnerHtml);
-                        }
-                    }
-                    DomItem::Up => {
-                        if o_state.is_child() {
-                            o_state.pop();
-                        }
-                    }
-                    DomItem::Event { .. } => {
-                        let _ = sto.next().expect("dom storage to match dom iter");
+                        patch_set.push(Patch::RemoveText(take_text(web_item)));
+                        remove_sub_tree(&mut old, &mut patch_set, &mut sto)
                     }
                     DomItem::Component { .. } => {
                         let web_item = sto.next().expect("dom storage to match dom iter");
                         patch_set.push(Patch::RemoveComponent(take_component(web_item)));
+                        remove_sub_tree(&mut old, &mut patch_set, &mut sto)
+                    }
+                    DomItem::UnsafeInnerHtml(_) => {
+                        patch_set.push(Patch::UnsetInnerHtml);
+                        old.next()
+                    }
+                    DomItem::Event { .. } => {
+                        let _ = sto.next().expect("dom storage to match dom iter");
+                        old.next()
                     }
                     // ignore attributes
-                    DomItem::Attr { .. } => {}
-                }
-
-                o_item = old.next();
+                    DomItem::Attr { .. } => {
+                        old.next()
+                    }
+                    DomItem::Up => {
+                        Some(o)
+                    }
+                };
             }
             (Some(o), Some(n)) => { // compare nodes
                 match (o, n) {
