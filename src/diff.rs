@@ -512,92 +512,12 @@ pub fn diff<'a, Message, Command, I1, I2>(mut old: I1, mut new: I2, storage: &'a
                             // add a new child node
                             DomItem::Element(element) => {
                                 patch_set.push(Patch::CreateElement { element });
-
-                                // add this entire element tree
-                                let mut depth = 0;
-                                loop {
-                                    match new.next() {
-                                        Some(DomItem::Element(element)) => {
-                                            patch_set.push(Patch::CreateElement { element });
-                                            depth += 1;
-                                        }
-                                        Some(DomItem::Text(text)) => {
-                                            patch_set.push(Patch::CreateText { text });
-                                            depth += 1;
-                                        }
-                                        Some(DomItem::UnsafeInnerHtml(html)) => {
-                                            patch_set.push(Patch::SetInnerHtml(html));
-                                        }
-                                        Some(DomItem::Up) if depth > 0 => {
-                                            patch_set.push(Patch::Up);
-                                            depth -= 1;
-                                        }
-                                        Some(DomItem::Event { trigger, handler }) => {
-                                            patch_set.push(Patch::AddListener { trigger, handler: handler.into() });
-                                        }
-                                        Some(DomItem::Attr { name, value }) => {
-                                            patch_set.push(Patch::SetAttribute { name, value });
-                                        }
-                                        Some(DomItem::Up) => {
-                                            patch_set.push(Patch::Up);
-                                            n_item = new.next();
-                                            break;
-                                        }
-                                        Some(DomItem::Component { msg, create }) => {
-                                            patch_set.push(Patch::CreateComponent { msg, create });
-                                            depth += 1;
-                                        }
-                                        n @ None => {
-                                            n_item = n;
-                                            break;
-                                        }
-                                    }
-                                }
+                                n_item = add_sub_tree(&mut new, &mut patch_set);
                             }
                             // add a new text node
                             DomItem::Text(text) => {
                                 patch_set.push(Patch::CreateText { text });
-
-                                // add this entire element tree
-                                let mut depth = 0;
-                                loop {
-                                    match new.next() {
-                                        Some(DomItem::Element(element)) => {
-                                            patch_set.push(Patch::CreateElement { element });
-                                            depth += 1;
-                                        }
-                                        Some(DomItem::Text(text)) => {
-                                            patch_set.push(Patch::CreateText { text });
-                                            depth += 1;
-                                        }
-                                        Some(DomItem::UnsafeInnerHtml(html)) => {
-                                            patch_set.push(Patch::SetInnerHtml(html));
-                                        }
-                                        Some(DomItem::Up) if depth > 0 => {
-                                            patch_set.push(Patch::Up);
-                                            depth -= 1;
-                                        }
-                                        Some(DomItem::Event { trigger, handler }) => {
-                                            patch_set.push(Patch::AddListener { trigger, handler: handler.into() });
-                                        }
-                                        Some(DomItem::Attr { name, value }) => {
-                                            patch_set.push(Patch::SetAttribute { name, value });
-                                        }
-                                        Some(DomItem::Up) => {
-                                            patch_set.push(Patch::Up);
-                                            n_item = new.next();
-                                            break;
-                                        }
-                                        Some(DomItem::Component { msg, create }) => {
-                                            patch_set.push(Patch::CreateComponent { msg, create });
-                                            depth += 1;
-                                        }
-                                        n @ None => {
-                                            n_item = n;
-                                            break;
-                                        }
-                                    }
-                                }
+                                n_item = add_sub_tree(&mut new, &mut patch_set);
                             }
                             // set inner html
                             DomItem::UnsafeInnerHtml(html) => {
@@ -607,47 +527,7 @@ pub fn diff<'a, Message, Command, I1, I2>(mut old: I1, mut new: I2, storage: &'a
                             // add a new component
                             DomItem::Component { msg, create } => {
                                 patch_set.push(Patch::CreateComponent { msg, create });
-
-                                // add this entire element tree
-                                let mut depth = 0;
-                                loop {
-                                    match new.next() {
-                                        Some(DomItem::Element(element)) => {
-                                            patch_set.push(Patch::CreateElement { element });
-                                            depth += 1;
-                                        }
-                                        Some(DomItem::Text(text)) => {
-                                            patch_set.push(Patch::CreateText { text });
-                                            depth += 1;
-                                        }
-                                        Some(DomItem::UnsafeInnerHtml(html)) => {
-                                            patch_set.push(Patch::SetInnerHtml(html));
-                                        }
-                                        Some(DomItem::Up) if depth > 0 => {
-                                            patch_set.push(Patch::Up);
-                                            depth -= 1;
-                                        }
-                                        Some(DomItem::Event { trigger, handler }) => {
-                                            patch_set.push(Patch::AddListener { trigger, handler: handler.into() });
-                                        }
-                                        Some(DomItem::Attr { name, value }) => {
-                                            patch_set.push(Patch::SetAttribute { name, value });
-                                        }
-                                        Some(DomItem::Up) => {
-                                            patch_set.push(Patch::Up);
-                                            n_item = new.next();
-                                            break;
-                                        }
-                                        Some(DomItem::Component { msg, create }) => {
-                                            patch_set.push(Patch::CreateComponent { msg, create });
-                                            depth += 1;
-                                        }
-                                        n @ None => {
-                                            n_item = n;
-                                            break;
-                                        }
-                                    }
-                                }
+                                n_item = add_sub_tree(&mut new, &mut patch_set);
                             }
                             // add attribute to new node
                             DomItem::Attr { name, value } => {
@@ -667,4 +547,53 @@ pub fn diff<'a, Message, Command, I1, I2>(mut old: I1, mut new: I2, storage: &'a
     }
 
     patch_set
+}
+
+/// Add this entire element tree.
+///
+/// Expected to be called where `new.next()` just returned a node that may have children. This will
+/// handle creating all of the nodes up to the matching `DomItem::Up` entry.
+fn add_sub_tree<'a, Message, Command, I>(new: &mut I, patch_set: &mut PatchSet<'a, Message, Command>)
+-> Option<DomItem<'a, Message, Command>>
+where
+    Message: 'a + PartialEq + Clone + fmt::Debug,
+    I: Iterator<Item = DomItem<'a, Message, Command>>,
+{
+    let mut depth = 0;
+    loop {
+        match new.next() {
+            Some(DomItem::Element(element)) => {
+                patch_set.push(Patch::CreateElement { element });
+                depth += 1;
+            }
+            Some(DomItem::Text(text)) => {
+                patch_set.push(Patch::CreateText { text });
+                depth += 1;
+            }
+            Some(DomItem::Component { msg, create }) => {
+                patch_set.push(Patch::CreateComponent { msg, create });
+                depth += 1;
+            }
+            Some(DomItem::UnsafeInnerHtml(html)) => {
+                patch_set.push(Patch::SetInnerHtml(html));
+            }
+            Some(DomItem::Event { trigger, handler }) => {
+                patch_set.push(Patch::AddListener { trigger, handler: handler.into() });
+            }
+            Some(DomItem::Attr { name, value }) => {
+                patch_set.push(Patch::SetAttribute { name, value });
+            }
+            Some(DomItem::Up) if depth > 0 => {
+                patch_set.push(Patch::Up);
+                depth -= 1;
+            }
+            Some(DomItem::Up) => {
+                patch_set.push(Patch::Up);
+                return new.next();
+            }
+            n @ None => {
+                return n;
+            }
+        }
+    }
 }
