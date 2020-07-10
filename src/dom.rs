@@ -56,7 +56,7 @@ pub enum Node<Message, Command> {
         /// A message to pass to the component.
         msg: Message,
         /// A function to create the component.
-        create: fn(web_sys::Element, Dispatcher<Message, Command>) -> Box<dyn Component<Message>>,
+        create: fn(Dispatcher<Message, Command>) -> Box<dyn Component<Message>>,
     },
 }
 
@@ -72,7 +72,7 @@ impl<Message, Command> Node<Message, Command> {
     }
 
     /// Generate a component.
-    pub fn component(msg: Message, create: fn(web_sys::Element, Dispatcher<Message, Command>) -> Box<dyn Component<Message>>) -> Self {
+    pub fn component(msg: Message, create: fn(Dispatcher<Message, Command>) -> Box<dyn Component<Message>>) -> Self {
         Node::Component { msg, create }
     }
 }
@@ -145,7 +145,7 @@ impl<Message, Command> Dom<Message, Command> {
     }
 
     /// Create a component.
-    pub fn component(msg: Message, create: fn(web_sys::Element, Dispatcher<Message, Command>) -> Box<dyn Component<Message>>) -> Self {
+    pub fn component(msg: Message, create: fn(Dispatcher<Message, Command>) -> Box<dyn Component<Message>>) -> Self {
         Dom {
             element: Node::component(msg, create),
             events: vec![],

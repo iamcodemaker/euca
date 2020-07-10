@@ -65,7 +65,7 @@ pub enum Patch<'a, Message, Command> {
         /// The initial message to send to the component.
         msg: Message,
         /// The function used to create the component.
-        create: fn(web_sys::Element, Dispatcher<Message, Command>) -> Box<dyn Component<Message>>,
+        create: fn(Dispatcher<Message, Command>) -> Box<dyn Component<Message>>,
     },
     /// Move a component from the old dom to the new one.
     CopyComponent(Box<dyn FnMut() -> Box<dyn Component<Message>> + 'a>),
@@ -293,7 +293,7 @@ impl<'a, Message, Command> PatchSet<'a, Message, Command> {
     /// will be dispatched via the given [`Dispatch`]er.
     ///
     /// [`Dispatch`]: ../app/trait.Dispatch.html
-    pub fn prepare(self, _parent: &web_sys::Element, app: &Dispatcher<Message, Command>) -> (Storage<Message>, Vec<web_sys::Node>) where
+    pub fn prepare(self, app: &Dispatcher<Message, Command>) -> (Storage<Message>, Vec<web_sys::Node>) where
         Message: Clone + PartialEq + fmt::Debug + 'static,
         Command: SideEffect<Message> + 'static,
         EventHandler<'a, Message>: Clone,
@@ -506,13 +506,7 @@ impl<'a, Message, Command> PatchSet<'a, Message, Command> {
                         .expect("failed to remove event listener");
                 }
                 Patch::CreateComponent { msg, create } => {
-                    let node = node_stack.last()
-                        .expect("no previous node")
-                        .dyn_ref::<web_sys::Element>()
-                        .expect("components can only be added to elements")
-                        .clone();
-
-                    let mut component = create(node, app.clone());
+                    let mut component = create(app.clone());
                     for n in component.pending().into_iter() {
                         node_stack.push_child(n);
                     }
@@ -626,7 +620,7 @@ impl<'a, Message, Command> PatchSet<'a, Message, Command> {
         Command: SideEffect<Message> + 'static,
         EventHandler<'a, Message>: Clone,
     {
-        let (storage, pending) = self.prepare(parent, app);
+        let (storage, pending) = self.prepare(app);
 
         // add top level nodes
         for node in pending.iter() {

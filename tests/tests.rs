@@ -40,7 +40,7 @@ impl FakeComponent {
         Box::new(FakeComponent { })
     }
 
-    fn create(_: web_sys::Element, _: euca::app::dispatch::Dispatcher<Msg, Cmd>)
+    fn create(_: euca::app::dispatch::Dispatcher<Msg, Cmd>)
     -> Box<dyn Component<Msg>>
     {
         Self::new()

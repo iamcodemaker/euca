@@ -58,7 +58,7 @@ impl<Message, Command, ParentMessage> ComponentBuilder<Message, Command, ParentM
     }
 
     /// Create a component from the given app, and it's parent.
-    pub fn create<ParentCommand, Model, DomTree>(self, parent: web_sys::Element, model: Model, parent_app: Dispatcher<ParentMessage, ParentCommand>)
+    pub fn create<ParentCommand, Model, DomTree>(self, model: Model, parent_app: Dispatcher<ParentMessage, ParentCommand>)
     -> Box<dyn Component<ParentMessage>>
     where
         ParentMessage: fmt::Debug + Clone + PartialEq + 'static,
@@ -76,7 +76,7 @@ impl<Message, Command, ParentMessage> ComponentBuilder<Message, Command, ParentM
         let processor = ComponentProcessor::new(parent_app, unmap);
         let (app, pending) = AppBuilder::default()
             .processor(processor)
-            .create(parent, model);
+            .create(model);
 
         Box::new(ComponentImpl {
             app: app,

@@ -114,7 +114,7 @@ pub enum DomItem<'a, Message, Command> {
         // XXX msg: &'a Message,
         msg: Message,
         /// A function to create the component if necessary.
-        create: fn(web_sys::Element, Dispatcher<Message, Command>) -> Box<dyn Component<Message>>,
+        create: fn(Dispatcher<Message, Command>) -> Box<dyn Component<Message>>,
     }
 }
 

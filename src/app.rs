@@ -128,7 +128,7 @@ where
     ///
     /// Initialize everything, but don't actually attach the app to the dom. Instead return all of
     /// the top level nodes.
-    pub(crate) fn create<Model, DomTree>(self, parent: web_sys::Element, mut model: Model)
+    pub(crate) fn create<Model, DomTree>(self, mut model: Model)
     -> (Rc<RefCell<Box<dyn Application<Message, Command>>>>, Vec<web_sys::Node>)
     where
         Model: Update<Message, Command> + Render<DomTree> + 'static,
@@ -159,7 +159,7 @@ where
         }
 
         // create the app
-        let (app_rc, nodes) = App::create(parent, model, processor);
+        let (app_rc, nodes) = App::create(model, processor);
 
         if let Some(ref router) = router {
             let window = web_sys::window()
@@ -225,9 +225,9 @@ where
         }
 
         // create the app
-        let (app_rc, nodes) = self.create(parent.clone(), model);
+        let (app_rc, nodes) = self.create(model);
 
-        // attach it to the dom
+        // attach this app to the dom
         for node in nodes.iter() {
             parent.append_child(node)
                 .expect("failed to append child to parent element");
@@ -287,8 +287,12 @@ where
     }
 
     fn render(&mut self, app_rc: &Dispatcher<Message, Command>) -> Vec<Command> {
+        let parent = self.node()
+            .expect("empty app?")
+            .parent_element()
+            .expect("app not attached to the dom");
+
         let App {
-            ref parent,
             ref mut model,
             ref mut storage,
             ref dom,
@@ -302,7 +306,7 @@ where
         let old = dom.dom_iter();
         let new = new_dom.dom_iter();
         let patch_set = diff::diff(old, new, storage);
-        self.storage = patch_set.apply(parent, app_rc);
+        self.storage = patch_set.apply(&parent, app_rc);
 
         self.dom = new_dom;
 
@@ -331,8 +335,12 @@ where
     fn detach(&mut self, app: &Dispatcher<Message, Command>) {
         use std::iter;
 
+        let parent = self.node()
+            .expect("empty app?")
+            .parent_element()
+            .expect("app not attached to the dom");
+
         let App {
-            ref parent,
             ref mut storage,
             ref dom,
             ref mut listeners,
@@ -352,7 +360,7 @@ where
         // remove the current app from the browser's dom by diffing it with an empty virtual dom.
         let o = dom.dom_iter();
         let patch_set = diff::diff(o, iter::empty(), storage);
-        self.storage = patch_set.apply(parent, app);
+        self.storage = patch_set.apply(&parent, app);
     }
 
     fn node(&self) -> Option<web_sys::Node> {
@@ -372,7 +380,6 @@ where
         use std::iter;
 
         let App {
-            ref parent,
             ref mut storage,
             ref dom,
             ..
@@ -381,7 +388,7 @@ where
         let n = dom.dom_iter();
         let patch_set = diff::diff(iter::empty(), n, storage);
 
-        let (storage, pending) = patch_set.prepare(parent, app);
+        let (storage, pending) = patch_set.prepare(app);
         self.storage = storage;
         pending
     }
@@ -395,7 +402,6 @@ where
     Processor: side_effect::Processor<Message, Command>,
 {
     dom: DomTree,
-    parent: web_sys::Element,
     model: Model,
     storage: Storage<Message>,
     listeners: Vec<(String, Closure<dyn FnMut(web_sys::Event)>)>,
@@ -454,7 +460,8 @@ where
     }
 }
 
-impl<Model, DomTree, Processor, Message, Command> App<Model, DomTree, Processor, Message, Command>
+impl<Model, DomTree, Processor, Message, Command>
+App<Model, DomTree, Processor, Message, Command>
 where
     Command: SideEffect<Message>,
     Processor: side_effect::Processor<Message, Command> + 'static,
@@ -463,7 +470,7 @@ where
     ///
     /// The app will be initialized with the given model.  Dom nodes will be created and event
     /// handlers will be registered as necessary.
-    fn create(parent: web_sys::Element, model: Model, processor: Processor)
+    fn create(model: Model, processor: Processor)
     -> (Rc<RefCell<Box<dyn Application<Message, Command>>>>, Vec<web_sys::Node>)
     where
         Model: Update<Message, Command> + Render<DomTree> + 'static,
@@ -476,7 +483,6 @@ where
         let dom = model.render();
         let app = App {
             dom: dom,
-            parent: parent.clone(),
             model: model,
             storage: vec![],
             listeners: vec![],
