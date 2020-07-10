@@ -78,6 +78,7 @@ where
     /// The router will need to implement the [`Route`] trait.
     ///
     /// [`Route`]: ../route/trait.Route.html
+    #[must_use]
     pub fn router<R: Route<Message>>(self, router: R) -> AppBuilder<Message, Command, Processor, R> {
         let AppBuilder {
             message,
@@ -97,6 +98,7 @@ where
     }
 
     /// Process side-effecting commands.
+    #[must_use]
     pub(crate) fn processor<P: side_effect::Processor<Message, Command>>(self, processor: P) -> AppBuilder<Message, Command, P, Router> {
         let AppBuilder {
             message,
@@ -119,6 +121,7 @@ where
     ///
     /// This is useful for displaying fallback text or a loading screen that will then be removed
     /// when the app is attached.
+    #[must_use]
     pub fn clear(mut self) -> Self {
         self.clear_parent = true;
         self
@@ -128,6 +131,7 @@ where
     ///
     /// Initialize everything, but don't actually attach the app to the dom. Instead return all of
     /// the top level nodes.
+    #[must_use]
     pub(crate) fn create<Model, DomTree>(self, mut model: Model)
     -> (Rc<RefCell<Box<dyn Application<Message, Command>>>>, Vec<web_sys::Node>)
     where
@@ -208,6 +212,7 @@ where
     ///
     /// The app will be attached at the given parent node and initialized with the given model.
     /// Event handlers will be registered as necessary.
+    #[must_use]
     pub fn attach<Model, DomTree>(self, parent: web_sys::Element, model: Model)
     -> Rc<RefCell<Box<dyn Application<Message, Command>>>>
     where
