@@ -607,7 +607,7 @@ impl<'a, Message, Command> PatchSet<'a, Message, Command> {
             }
         }
 
-        assert_eq!(node_stack.depth(), 0, "only the parent should be pending");
+        assert_eq!(node_stack.depth(), 0, "the stack should be empty");
         (storage, node_stack.pop_pending())
     }
 
