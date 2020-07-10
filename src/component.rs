@@ -46,18 +46,21 @@ impl<Message, Command, ParentMessage> Default for ComponentBuilder<Message, Comm
 
 impl<Message, Command, ParentMessage> ComponentBuilder<Message, Command, ParentMessage> {
     /// A function to optionally map a message from the parent to the component.
+    #[must_use]
     pub fn map(mut self, f: fn(ParentMessage) -> Option<Message>) -> Self {
         self.map = f;
         self
     }
 
     /// A funciton to optionally map a command from the component to the parent.
+    #[must_use]
     pub fn unmap(mut self, f: fn(Command) -> Option<ParentMessage>) -> Self {
         self.unmap = f;
         self
     }
 
     /// Create a component from the given app, and it's parent.
+    #[must_use]
     pub fn create<ParentCommand, Model, DomTree>(self, model: Model, parent_app: Dispatcher<ParentMessage, ParentCommand>)
     -> Box<dyn Component<ParentMessage>>
     where
