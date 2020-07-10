@@ -702,7 +702,9 @@ impl NodeStack {
                     .expect("failed to insert child node");
             }
         }
-
+        else {
+            unreachable!("there should never be an None sibling and an empty stack");
+        }
     }
 }
 
