@@ -74,7 +74,7 @@ pub fn diff<'a, Message, Command, I1, I2>(mut old: I1, mut new: I2, storage: &'a
             }
             (None, Some(n)) => { // create remaining new nodes
                 match n {
-                    DomItem::Element(element) => {
+                    DomItem::Element { name: element, .. } => {
                         patch_set.push(Patch::CreateElement { element });
                     }
                     DomItem::Text(text) => {
@@ -101,7 +101,7 @@ pub fn diff<'a, Message, Command, I1, I2>(mut old: I1, mut new: I2, storage: &'a
             }
             (Some(o), None) => { // delete remaining old nodes
                 o_item = match o {
-                    DomItem::Element(_) => {
+                    DomItem::Element { .. } => {
                         let web_item = sto.next().expect("dom storage to match dom iter");
                         patch_set.push(Patch::RemoveElement(take_element(web_item)));
                         remove_sub_tree(&mut old, &mut patch_set, &mut sto)
@@ -136,8 +136,8 @@ pub fn diff<'a, Message, Command, I1, I2>(mut old: I1, mut new: I2, storage: &'a
             (Some(o), Some(n)) => { // compare nodes
                 match (o, n) {
                     (
-                        DomItem::Element(o_element),
-                        DomItem::Element(n_element)
+                        DomItem::Element { name: o_element, .. },
+                        DomItem::Element { name: n_element, .. },
                     ) if o_element == n_element => { // compare elements
                         let web_item = sto.next().expect("dom storage to match dom iter");
 
@@ -260,7 +260,7 @@ pub fn diff<'a, Message, Command, I1, I2>(mut old: I1, mut new: I2, storage: &'a
                                 Some(o)
                             }
                             // remove the old node if present
-                            DomItem::Element(_) => {
+                            DomItem::Element { .. } => {
                                 let web_item = sto.next().expect("dom storage to match dom iter");
 
                                 patch_set.push(Patch::RemoveElement(take_element(web_item)));
@@ -304,7 +304,7 @@ pub fn diff<'a, Message, Command, I1, I2>(mut old: I1, mut new: I2, storage: &'a
                                 Some(n)
                             }
                             // add a new child node
-                            DomItem::Element(element) => {
+                            DomItem::Element { name: element, .. } => {
                                 patch_set.push(Patch::CreateElement { element });
                                 add_sub_tree(&mut new, &mut patch_set)
                             }
@@ -356,7 +356,7 @@ where
     let mut depth = 0;
     loop {
         match new.next() {
-            Some(DomItem::Element(element)) => {
+            Some(DomItem::Element { name: element, .. }) => {
                 patch_set.push(Patch::CreateElement { element });
                 depth += 1;
             }
@@ -408,7 +408,7 @@ where
     loop {
         match old.next() {
             // child element: remove from storage, track sub-tree depth
-            Some(DomItem::Element(_)) => {
+            Some(DomItem::Element { .. }) => {
                 let _ = sto.next().expect("dom storage to match dom iter");
                 depth += 1;
             }

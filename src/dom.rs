@@ -224,7 +224,7 @@ impl<Message: Clone, Command> DomIter<Message, Command> for Dom<Message, Command
     {
         let iter = iter::once(&self.element)
             .map(|node| match node {
-                Node::Elem { name } => DomItem::Element(name),
+                Node::Elem { name } => DomItem::Element { name, key: None },
                 Node::Text { text } => DomItem::Text(text),
                 Node::Component { msg, create } => DomItem::Component { msg: msg.clone(), create: *create },
             })

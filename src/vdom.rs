@@ -86,7 +86,16 @@ pub type Storage<Message> = Vec<WebItem<Message>>;
 #[derive(Debug, PartialEq)]
 pub enum DomItem<'a, Message, Command> {
     /// An element in the tree.
-    Element(&'a str),
+    Element {
+        /// The element name.
+        name: &'a str,
+        /// An optional key for this element. Should have been generated from a type implementing
+        /// [`Hash`] using a [`Hasher`].
+        ///
+        /// [`Hash`]: https://doc.rust-lang.org/std/hash/trait.Hash.html
+        /// [`Hasher`]: https://doc.rust-lang.org/std/hash/trait.Hasher.html
+        key: Option<u64>,
+    },
     /// A text node in the tree.
     Text(&'a str),
     /// Raw HTML code to be rendered using innerHTML. Use with caution as this can be used as an

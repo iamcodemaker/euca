@@ -62,7 +62,7 @@ fn gen_storage<'a, Message, Command, Iter>(iter: Iter) -> Storage<Message> where
         // filter items that do not have storage
         .filter(|i| {
             match i {
-                DomItem::Element(_) | DomItem::Text(_) | DomItem::Event { .. }
+                DomItem::Element { .. } | DomItem::Text(_) | DomItem::Event { .. }
                 | DomItem::Component { .. } => true,
                 DomItem::Attr { .. } | DomItem::UnsafeInnerHtml(_)
                 | DomItem::Up => false,
@@ -70,7 +70,7 @@ fn gen_storage<'a, Message, Command, Iter>(iter: Iter) -> Storage<Message> where
         })
         .map(|i| {
             match i {
-                DomItem::Element(element) => WebItem::Element(e(element)),
+                DomItem::Element { name: element, .. } => WebItem::Element(e(element)),
                 DomItem::Text(text) => WebItem::Text(
                     web_sys::window().expect("expected window")
                         .document().expect("expected document")
