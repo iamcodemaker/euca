@@ -8,6 +8,7 @@
 //! [`patch`]: ../patch/enum.Patch.html
 
 use std::fmt;
+use std::mem;
 use wasm_bindgen::prelude::*;
 pub use crate::component::Component;
 pub use crate::app::Dispatcher;
@@ -55,6 +56,15 @@ pub enum WebItem<Message> {
     Component(Box<dyn Component<Message>>),
     /// A previously occupied, now empty storage entry.
     Taken,
+}
+
+impl<Message> WebItem<Message> {
+    /// Swap this WebItem with WebItem::Taken and return the item.
+    pub fn take(&mut self) -> Self {
+        let mut taken = WebItem::Taken;
+        mem::swap(self, &mut taken);
+        taken
+    }
 }
 
 impl<Message> fmt::Debug for WebItem<Message> {
