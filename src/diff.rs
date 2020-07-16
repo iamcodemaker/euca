@@ -103,7 +103,7 @@ pub fn diff<'a, Message, Command, I1, I2>(mut old: I1, mut new: I2, storage: &'a
                 o_item = match o {
                     DomItem::Element { .. } => {
                         let web_item = sto.next().expect("dom storage to match dom iter");
-                        patch_set.push(Patch::RemoveElement(take_element(web_item)));
+                        patch_set.push(Patch::RemoveElement(web_item));
                         remove_sub_tree(&mut old, &mut patch_set, &mut sto)
                     }
                     DomItem::Text(_) => {
@@ -263,7 +263,7 @@ pub fn diff<'a, Message, Command, I1, I2>(mut old: I1, mut new: I2, storage: &'a
                             DomItem::Element { .. } => {
                                 let web_item = sto.next().expect("dom storage to match dom iter");
 
-                                patch_set.push(Patch::RemoveElement(take_element(web_item)));
+                                patch_set.push(Patch::RemoveElement(web_item));
                                 remove_sub_tree(&mut old, &mut patch_set, &mut sto)
                             }
                             // remove the old text if present

@@ -10,6 +10,7 @@
 //! [`PatchSet::apply`]: struct.PatchSet.html#method.apply
 
 use std::fmt;
+use std::mem;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 use crate::vdom::EventHandler;
@@ -32,7 +33,7 @@ use log::warn;
 /// [`Closure`]: https://rustwasm.github.io/wasm-bindgen/api/wasm_bindgen/closure/struct.Closure.html
 pub enum Patch<'a, Message, Command> {
     /// Remove an element.
-    RemoveElement(Box<dyn FnMut() -> web_sys::Element + 'a>),
+    RemoveElement(&'a mut WebItem<Message>),
     /// Create an element of the given type.
     CreateElement {
         /// The name/type of element that will be created.
@@ -112,7 +113,7 @@ impl<'a, Message, Command> fmt::Debug for Patch<'a, Message, Command> where
 {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            Patch::RemoveElement(_) => write!(f, "RemoveElement(_)"),
+            Patch::RemoveElement(e) => write!(f, "RemoveElement({:?})", e),
             Patch::CreateElement { element: s } => write!(f, "CreateElement {{ element: {:?} }}", s),
             Patch::CopyElement(_) => write!(f, "CopyElement(_)"),
             Patch::RemoveText(_) => write!(f, "RemoveText(_)"),
@@ -308,8 +309,15 @@ impl<'a, Message, Command> PatchSet<'a, Message, Command> {
 
         for p in patches.into_iter() {
             match p {
-                Patch::RemoveElement(mut take) => {
-                    take().remove();
+                Patch::RemoveElement(item) => {
+                    let mut taken_item = WebItem::Taken;
+                    mem::swap(item, &mut taken_item);
+                    let item = match taken_item {
+                        WebItem::Element(i) => i,
+                        _ => panic!("storage type mismatch"),
+                    };
+
+                    item.remove();
                 }
                 Patch::CreateElement { element } => {
                     let node = document.create_element(&element).expect("failed to create element");

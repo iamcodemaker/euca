@@ -129,7 +129,9 @@ macro_rules! compare {
                     assert_eq!(t1, t2, "[{}] trigger names don't match\n{}", i, dump);
                 }
                 (Patch::CopyListener(_), Patch::CopyListener(_)) => {}
-                (Patch::RemoveElement(_), Patch::RemoveElement(_)) => {}
+                (Patch::RemoveElement(WebItem::Element(e1)), Patch::RemoveElement(WebItem::Element(e2))) => {
+                    assert_eq!(e1.tag_name(), e2.tag_name(), "[{}] unexpected RemoveElement\n{}", i, dump);
+                }
                 (Patch::RemoveText(_), Patch::RemoveText(_)) => {}
                 (Patch::SetInnerHtml(h1), Patch::SetInnerHtml(h2)) => {
                     assert_eq!(h1, h2, "[{}] unexpected innerHtml\n{}", i, dump);
@@ -292,7 +294,7 @@ fn to_empty() {
     compare!(
         patch_set,
         [
-            Patch::RemoveElement(Box::new(|| e("div"))),
+            Patch::RemoveElement(Box::leak(Box::new(WebItem::Element(e("div"))))),
         ]
     );
 }
@@ -317,8 +319,8 @@ fn to_empty_vec() {
     compare!(
         patch_set,
         [
-            Patch::RemoveElement(Box::new(|| e("b"))),
-            Patch::RemoveElement(Box::new(|| e("i"))),
+            Patch::RemoveElement(Box::leak(Box::new(WebItem::Element(e("b"))))),
+            Patch::RemoveElement(Box::leak(Box::new(WebItem::Element(e("i"))))),
         ]
     );
 }
@@ -355,7 +357,7 @@ fn basic_diff_with_element() {
     compare!(
         patch_set,
         [
-            Patch::RemoveElement(Box::new(|| e("div"))),
+            Patch::RemoveElement(Box::leak(Box::new(WebItem::Element(e("div"))))),
             Patch::CreateElement { element: "span".into() },
             Patch::Up,
         ]
@@ -428,8 +430,8 @@ fn old_child_nodes_with_element() {
         patch_set,
         [
             Patch::CopyElement(Box::new(|| e("div"))),
-            Patch::RemoveElement(Box::new(|| e("b"))),
-            Patch::RemoveElement(Box::new(|| e("i"))),
+            Patch::RemoveElement(Box::leak(Box::new(WebItem::Element(e("b"))))),
+            Patch::RemoveElement(Box::leak(Box::new(WebItem::Element(e("i"))))),
             Patch::Up,
         ]
     );
@@ -463,10 +465,10 @@ fn old_child_nodes_with_element_and_child() {
         patch_set,
         [
             Patch::CopyElement(Box::new(|| e("div"))),
-            Patch::RemoveElement(Box::new(|| e("b"))),
+            Patch::RemoveElement(Box::leak(Box::new(WebItem::Element(e("b"))))),
             Patch::CreateElement { element: "i".into() },
             Patch::Up,
-            Patch::RemoveElement(Box::new(|| e("i"))),
+            Patch::RemoveElement(Box::leak(Box::new(WebItem::Element(e("i"))))),
             Patch::Up,
         ]
     );
@@ -535,13 +537,13 @@ fn assorted_child_nodes() {
             Patch::CreateText { text: "paragraph1" },
             Patch::Up,
             Patch::Up,
-            Patch::RemoveElement(Box::new(|| e("p"))),
+            Patch::RemoveElement(Box::leak(Box::new(WebItem::Element(e("p"))))),
             Patch::CreateElement { element: "button".into() },
             Patch::AddListener { trigger: "click", handler: euca::vdom::EventHandler::Msg(&()) },
             Patch::CreateText { text: "submit" },
             Patch::Up,
             Patch::Up,
-            Patch::RemoveElement(Box::new(|| e("p"))),
+            Patch::RemoveElement(Box::leak(Box::new(WebItem::Element(e("p"))))),
             Patch::Up,
         ]
     );
@@ -572,7 +574,7 @@ fn diff_old_child_nodes_with_new_element() {
     compare!(
         patch_set,
         [
-            Patch::RemoveElement(Box::new(|| e("span"))),
+            Patch::RemoveElement(Box::leak(Box::new(WebItem::Element(e("span"))))),
             Patch::CreateElement { element: "div".into() },
             Patch::Up,
         ]
@@ -715,7 +717,7 @@ fn replace_element_with_text() {
     compare!(
         patch_set,
         [
-            Patch::RemoveElement(Box::new(|| e("div"))),
+            Patch::RemoveElement(Box::leak(Box::new(WebItem::Element(e("div"))))),
             Patch::CreateText { text: "div".into() },
             Patch::Up,
         ]
@@ -923,7 +925,7 @@ fn inner_html_replace_children() {
         patch_set,
         [
             Patch::CopyElement(Box::new(|| e("div"))),
-            Patch::RemoveElement(Box::new(|| e("div"))),
+            Patch::RemoveElement(Box::leak(Box::new(WebItem::Element(e("div"))))),
             Patch::SetInnerHtml("html"),
             Patch::Up,
         ]
@@ -1141,7 +1143,7 @@ fn diff_remove_nested_component() {
                 Patch::RemoveComponent(Box::new(|| FakeComponent::new())),
                 Patch::CreateElement { element: "div" },
                 Patch::Up,
-                Patch::RemoveElement(Box::new(|| e("div"))),
+                Patch::RemoveElement(Box::leak(Box::new(WebItem::Element(e("div"))))),
               Patch::Up,
               Patch::CopyElement(Box::new(|| e("div"))),
               Patch::Up,
