@@ -1,7 +1,6 @@
 //! Tools to get the difference between two virtual dom trees.
 
 use std::fmt;
-use std::mem;
 use wasm_bindgen::prelude::Closure;
 use crate::patch::PatchSet;
 use crate::patch::Patch;
@@ -12,9 +11,7 @@ use crate::component::Component;
 
 fn take_element<'a, Message>(item: &'a mut WebItem<Message>) -> Box<dyn FnMut() -> web_sys::Element + 'a> {
     Box::new(move || {
-        let mut taken_item = WebItem::Taken;
-        mem::swap(item, &mut taken_item);
-        match taken_item {
+        match item.take() {
             WebItem::Element(i) => i,
             _ => panic!("storage type mismatch"),
         }
@@ -23,9 +20,7 @@ fn take_element<'a, Message>(item: &'a mut WebItem<Message>) -> Box<dyn FnMut() 
 
 fn take_text<'a, Message>(item: &'a mut WebItem<Message>) -> Box<dyn FnMut() -> web_sys::Text + 'a> {
     Box::new(move || {
-        let mut taken_item = WebItem::Taken;
-        mem::swap(item, &mut taken_item);
-        match taken_item {
+        match item.take() {
             WebItem::Text(i) => i,
             _ => panic!("storage type mismatch"),
         }
@@ -34,9 +29,7 @@ fn take_text<'a, Message>(item: &'a mut WebItem<Message>) -> Box<dyn FnMut() -> 
 
 fn take_closure<'a, Message>(item: &'a mut WebItem<Message>) -> Box<dyn FnMut() -> Closure<dyn FnMut(web_sys::Event)> + 'a> {
     Box::new(move || {
-        let mut taken_item = WebItem::Taken;
-        mem::swap(item, &mut taken_item);
-        match taken_item {
+        match item.take() {
             WebItem::Closure(i) => i,
             _ => panic!("storage type mismatch"),
         }
@@ -45,9 +38,7 @@ fn take_closure<'a, Message>(item: &'a mut WebItem<Message>) -> Box<dyn FnMut() 
 
 fn take_component<'a, Message>(item: &'a mut WebItem<Message>) -> Box<dyn FnMut() -> Box<dyn Component<Message>> + 'a> {
     Box::new(move || {
-        let mut taken_item = WebItem::Taken;
-        mem::swap(item, &mut taken_item);
-        match taken_item {
+        match item.take() {
             WebItem::Component(i) => i,
             _ => panic!("storage type mismatch"),
         }
