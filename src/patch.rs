@@ -10,7 +10,6 @@
 //! [`PatchSet::apply`]: struct.PatchSet.html#method.apply
 
 use std::fmt;
-use std::mem;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 use crate::vdom::EventHandler;
@@ -310,14 +309,7 @@ impl<'a, Message, Command> PatchSet<'a, Message, Command> {
         for p in patches.into_iter() {
             match p {
                 Patch::RemoveElement(item) => {
-                    let mut taken_item = WebItem::Taken;
-                    mem::swap(item, &mut taken_item);
-                    let item = match taken_item {
-                        WebItem::Element(i) => i,
-                        _ => panic!("storage type mismatch"),
-                    };
-
-                    item.remove();
+                    take_element(item).remove();
                 }
                 Patch::CreateElement { element } => {
                     let node = document.create_element(&element).expect("failed to create element");
@@ -731,6 +723,13 @@ impl<'a, Message, Command> IntoIterator for PatchSet<'a, Message, Command> {
 
     fn into_iter(self) -> Self::IntoIter {
         self.patches.into_iter()
+    }
+}
+
+fn take_element<Message>(item: &mut WebItem<Message>) -> web_sys::Element {
+    match item.take() {
+        WebItem::Element(i) => i,
+        _ => panic!("storage type mismatch"),
     }
 }
 
