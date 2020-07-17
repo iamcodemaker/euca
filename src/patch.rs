@@ -243,7 +243,6 @@ macro_rules! attribute_unsetter {
 pub struct PatchSet<'a, Message, Command> {
     /// The patches in this patch set.
     pub patches: Vec<Patch<'a, Message, Command>>,
-    storage: Storage<Message>,
 }
 
 impl<'a, Message, Command> PatchSet<'a, Message, Command> {
@@ -251,7 +250,6 @@ impl<'a, Message, Command> PatchSet<'a, Message, Command> {
     pub fn new() -> Self {
         PatchSet {
             patches: vec![],
-            storage: vec![],
         }
     }
 
@@ -301,7 +299,8 @@ impl<'a, Message, Command> PatchSet<'a, Message, Command> {
         let mut node_stack = NodeStack::new();
         let mut special_attributes: Vec<(web_sys::Node, &str, &str)> = vec![];
 
-        let PatchSet { patches, mut storage } = self;
+        let mut storage = vec![];
+        let PatchSet { patches } = self;
 
         let document = web_sys::window().expect("expected window")
             .document().expect("expected document");
@@ -712,7 +711,6 @@ impl<'a, Message, Command> From<Vec<Patch<'a, Message, Command>>> for PatchSet<'
     fn from(v: Vec<Patch<'a, Message, Command>>) -> Self {
         PatchSet {
             patches: v,
-            storage: vec![],
         }
     }
 }
