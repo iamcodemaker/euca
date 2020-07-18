@@ -258,6 +258,15 @@ impl<'a, Message, Command> PatchSet<'a, Message, Command> {
         self.patches.push(patch)
     }
 
+    /// Put the patches from the given iter into this PatchSet.
+    pub fn extend<I>(&mut self, iter: I)
+    where
+        I: IntoIterator<Item = Patch<'a, Message, Command>>,
+    {
+        self.patches.extend(iter)
+    }
+
+
     /// Return the length of the PatchSet.
     pub fn len(&self) -> usize {
         return self.patches.len()
