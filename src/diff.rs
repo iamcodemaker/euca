@@ -5,7 +5,6 @@ use wasm_bindgen::prelude::Closure;
 use crate::patch::PatchSet;
 use crate::patch::Patch;
 use crate::vdom::DomItem;
-use crate::vdom::Storage;
 use crate::vdom::WebItem;
 use crate::component::Component;
 
@@ -47,16 +46,26 @@ fn take_component<'a, Message>(item: &'a mut WebItem<Message>) -> Box<dyn FnMut(
 
 /// Return the series of steps required to move from the given old/existing virtual dom to the
 /// given new virtual dom.
-pub fn diff<'a, Message, Command, I1, I2>(mut old: I1, mut new: I2, storage: &'a mut Storage<Message>) -> PatchSet<'a, Message, Command> where
+pub fn diff<'a, Message, Command, I1, I2, S>(
+    old: I1,
+    new: I2,
+    storage: S,
+)
+-> PatchSet<'a, Message, Command>
+where
     Message: 'a + PartialEq + Clone + fmt::Debug,
-    I1: Iterator<Item = DomItem<'a, Message, Command>>,
-    I2: Iterator<Item = DomItem<'a, Message, Command>>,
+    I1: IntoIterator<Item = DomItem<'a, Message, Command>>,
+    I2: IntoIterator<Item = DomItem<'a, Message, Command>>,
+    S: IntoIterator<Item = &'a mut WebItem<Message>>,
 {
     let mut patch_set = PatchSet::new();
 
+    let mut old = old.into_iter();
+    let mut new = new.into_iter();
+    let mut sto = storage.into_iter();
+
     let mut o_item = old.next();
     let mut n_item = new.next();
-    let mut sto = storage.iter_mut();
 
     loop {
         match (o_item.take(), n_item.take()) {
