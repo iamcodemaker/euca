@@ -65,6 +65,14 @@ impl<Message> WebItem<Message> {
         mem::swap(self, &mut taken);
         taken
     }
+
+    /// Possibly get a reference to the web_sys::Element in this WebItem.
+    pub fn as_element(&self) -> Option<&web_sys::Element> {
+        match self {
+            WebItem::Element(node) => Some(node),
+            _ =>  None,
+        }
+    }
 }
 
 impl<Message> fmt::Debug for WebItem<Message> {

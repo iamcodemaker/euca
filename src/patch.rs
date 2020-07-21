@@ -327,10 +327,9 @@ impl<'a, Message, Command> PatchSet<'a, Message, Command> {
                 }
                 Patch::CopyElement(item) => {
                     let item = item.take();
-                    let node = match item {
-                        WebItem::Element(ref node) => node.clone(),
-                        i => panic!("unexpected WebItem: {:?}", i),
-                    };
+                    let node = item.as_element()
+                        .expect("unexpected WebItem, expected element")
+                        .clone();
 
                     storage.push(item);
                     node_stack.insert_before(Some(&node));
