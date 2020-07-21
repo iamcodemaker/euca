@@ -110,7 +110,9 @@ macro_rules! compare {
                 (Patch::CreateElement { element: e1 }, Patch::CreateElement { element: e2 }) => {
                     assert_eq!(e1, e2, "[{}] unexpected CreateElement\n{}", i, dump);
                 }
-                (Patch::CopyElement(_), Patch::CopyElement(_)) => {}
+                (Patch::CopyElement(WebItem::Element(e1)), Patch::CopyElement(WebItem::Element(e2))) => {
+                    assert_eq!(e1.tag_name(), e2.tag_name(), "[{}] WebItems don't match for CopyElement\n{}", i, dump);
+                }
                 (Patch::SetAttribute { name: n1, value: v1 }, Patch::SetAttribute { name: n2, value: v2 }) => {
                     assert_eq!(n1, n2, "[{}] attribute names don't match\n{}", i, dump);
                     assert_eq!(v1, v2, "[{}] attribute values don't match\n{}", i, dump);
@@ -222,7 +224,7 @@ fn new_child_nodes() {
     compare!(
         patch_set,
         [
-            Patch::CopyElement(Box::new(|| e("div"))),
+            Patch::CopyElement(leaked_e("div")),
             Patch::CreateElement { element: "b".into() },
             Patch::SetAttribute { name: "class", value: "item" },
             Patch::SetAttribute { name: "id", value: "id1" },
@@ -342,7 +344,7 @@ fn no_difference() {
     compare!(
         patch_set,
         [
-            Patch::CopyElement(Box::new(|| e("div"))),
+            Patch::CopyElement(leaked_e("div")),
             Patch::Up,
         ]
     );
@@ -381,7 +383,7 @@ fn diff_attributes() {
     compare!(
         patch_set,
         [
-            Patch::CopyElement(Box::new(|| e("div"))),
+            Patch::CopyElement(leaked_e("div")),
             Patch::SetAttribute { name: "name", value: "new value" },
             Patch::Up,
         ]
@@ -401,7 +403,7 @@ fn diff_checked() {
     compare!(
         patch_set,
         [
-            Patch::CopyElement(Box::new(|| e("input"))),
+            Patch::CopyElement(leaked_e("input")),
             Patch::SetAttribute { name: "checked", value: "false" },
             Patch::Up,
         ]
@@ -433,7 +435,7 @@ fn old_child_nodes_with_element() {
     compare!(
         patch_set,
         [
-            Patch::CopyElement(Box::new(|| e("div"))),
+            Patch::CopyElement(leaked_e("div")),
             Patch::RemoveElement(leaked_e("b")),
             Patch::RemoveElement(leaked_e("i")),
             Patch::Up,
@@ -468,7 +470,7 @@ fn old_child_nodes_with_element_and_child() {
     compare!(
         patch_set,
         [
-            Patch::CopyElement(Box::new(|| e("div"))),
+            Patch::CopyElement(leaked_e("div")),
             Patch::RemoveElement(leaked_e("b")),
             Patch::CreateElement { element: "i".into() },
             Patch::Up,
@@ -526,13 +528,13 @@ fn assorted_child_nodes() {
     compare!(
         patch_set,
         [
-            Patch::CopyElement(Box::new(|| e("div"))),
-            Patch::CopyElement(Box::new(|| e("h1"))),
+            Patch::CopyElement(leaked_e("div")),
+            Patch::CopyElement(leaked_e("h1")),
             Patch::CopyListener(Box::new(|| Closure::wrap(Box::new(|_|{}) as Box<dyn FnMut(web_sys::Event)>))),
             Patch::ReplaceText { take: Box::new(|| t("h1")), text: "header" },
             Patch::Up,
             Patch::Up,
-            Patch::CopyElement(Box::new(|| e("p"))),
+            Patch::CopyElement(leaked_e("p")),
             Patch::RemoveText(Box::new(|| t("paragraph1"))),
             Patch::CreateElement { element: "b".into() },
             Patch::CreateText { text: "bold" },
@@ -767,7 +769,7 @@ fn inner_html_noop() {
     compare!(
         patch_set,
         [
-            Patch::CopyElement(Box::new(|| e("div"))),
+            Patch::CopyElement(leaked_e("div")),
             Patch::Up,
         ]
     );
@@ -790,7 +792,7 @@ fn inner_html_add() {
     compare!(
         patch_set,
         [
-            Patch::CopyElement(Box::new(|| e("div"))),
+            Patch::CopyElement(leaked_e("div")),
             Patch::SetInnerHtml("html"),
             Patch::Up,
         ]
@@ -816,7 +818,7 @@ fn inner_html_change() {
     compare!(
         patch_set,
         [
-            Patch::CopyElement(Box::new(|| e("div"))),
+            Patch::CopyElement(leaked_e("div")),
             Patch::SetInnerHtml("html"),
             Patch::Up,
         ]
@@ -840,7 +842,7 @@ fn inner_html_remove() {
     compare!(
         patch_set,
         [
-            Patch::CopyElement(Box::new(|| e("div"))),
+            Patch::CopyElement(leaked_e("div")),
             Patch::UnsetInnerHtml,
             Patch::Up,
         ]
@@ -865,7 +867,7 @@ fn inner_html_replace() {
     compare!(
         patch_set,
         [
-            Patch::CopyElement(Box::new(|| e("div"))),
+            Patch::CopyElement(leaked_e("div")),
             Patch::UnsetInnerHtml,
             Patch::CreateText { text: "html" },
             Patch::Up,
@@ -896,7 +898,7 @@ fn inner_html_replace_with_children() {
     compare!(
         patch_set,
         [
-            Patch::CopyElement(Box::new(|| e("div"))),
+            Patch::CopyElement(leaked_e("div")),
             Patch::UnsetInnerHtml,
             Patch::CreateElement { element: "div" },
             Patch::SetInnerHtml("html"),
@@ -928,7 +930,7 @@ fn inner_html_replace_children() {
     compare!(
         patch_set,
         [
-            Patch::CopyElement(Box::new(|| e("div"))),
+            Patch::CopyElement(leaked_e("div")),
             Patch::RemoveElement(leaked_e("div")),
             Patch::SetInnerHtml("html"),
             Patch::Up,
@@ -1023,7 +1025,7 @@ fn diff_basic_component() {
     compare!(
         patch_set,
         [
-            Patch::CopyElement(Box::new(|| e("div"))),
+            Patch::CopyElement(leaked_e("div")),
               Patch::CreateComponent { msg: (), create: FakeComponent::create },
               Patch::Up,
             Patch::Up,
@@ -1057,18 +1059,18 @@ fn diff_add_nested_component() {
     compare!(
         patch_set,
         [
-            Patch::CopyElement(Box::new(|| e("div"))),
-              Patch::CopyElement(Box::new(|| e("div"))),
-                Patch::CopyElement(Box::new(|| e("div"))),
+            Patch::CopyElement(leaked_e("div")),
+              Patch::CopyElement(leaked_e("div")),
+                Patch::CopyElement(leaked_e("div")),
                 Patch::Up,
-                Patch::CopyElement(Box::new(|| e("div"))),
+                Patch::CopyElement(leaked_e("div")),
                 Patch::Up,
-                Patch::CopyElement(Box::new(|| e("div"))),
+                Patch::CopyElement(leaked_e("div")),
                 Patch::Up,
                 Patch::CreateComponent { msg: (), create: FakeComponent::create },
                 Patch::Up,
               Patch::Up,
-              Patch::CopyElement(Box::new(|| e("div"))),
+              Patch::CopyElement(leaked_e("div")),
               Patch::Up,
             Patch::Up,
         ]
@@ -1100,16 +1102,16 @@ fn diff_copy_nested_component() {
     compare!(
         patch_set,
         [
-            Patch::CopyElement(Box::new(|| e("div"))),
-              Patch::CopyElement(Box::new(|| e("div"))),
-                Patch::CopyElement(Box::new(|| e("div"))),
+            Patch::CopyElement(leaked_e("div")),
+              Patch::CopyElement(leaked_e("div")),
+                Patch::CopyElement(leaked_e("div")),
                 Patch::Up,
                 Patch::CopyComponent(Box::new(|| FakeComponent::new())),
                 Patch::Up,
-                Patch::CopyElement(Box::new(|| e("div"))),
+                Patch::CopyElement(leaked_e("div")),
                 Patch::Up,
               Patch::Up,
-              Patch::CopyElement(Box::new(|| e("div"))),
+              Patch::CopyElement(leaked_e("div")),
               Patch::Up,
             Patch::Up,
         ]
@@ -1140,16 +1142,16 @@ fn diff_remove_nested_component() {
     compare!(
         patch_set,
         [
-            Patch::CopyElement(Box::new(|| e("div"))),
-              Patch::CopyElement(Box::new(|| e("div"))),
-                Patch::CopyElement(Box::new(|| e("div"))),
+            Patch::CopyElement(leaked_e("div")),
+              Patch::CopyElement(leaked_e("div")),
+                Patch::CopyElement(leaked_e("div")),
                 Patch::Up,
                 Patch::RemoveComponent(Box::new(|| FakeComponent::new())),
                 Patch::CreateElement { element: "div" },
                 Patch::Up,
                 Patch::RemoveElement(leaked_e("div")),
               Patch::Up,
-              Patch::CopyElement(Box::new(|| e("div"))),
+              Patch::CopyElement(leaked_e("div")),
               Patch::Up,
             Patch::Up,
         ]

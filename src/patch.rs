@@ -39,7 +39,7 @@ pub enum Patch<'a, Message, Command> {
         element: &'a str,
     },
     /// Copy and element from the old dom tree to the new dom tree.
-    CopyElement(Box<dyn FnMut() -> web_sys::Element + 'a>),
+    CopyElement(&'a mut WebItem<Message>),
     /// Remove a text element.
     RemoveText(Box<dyn FnMut() -> web_sys::Text + 'a>),
     /// Replace the value of a text element.
@@ -114,7 +114,7 @@ impl<'a, Message, Command> fmt::Debug for Patch<'a, Message, Command> where
         match self {
             Patch::RemoveElement(e) => write!(f, "RemoveElement({:?})", e),
             Patch::CreateElement { element: s } => write!(f, "CreateElement {{ element: {:?} }}", s),
-            Patch::CopyElement(_) => write!(f, "CopyElement(_)"),
+            Patch::CopyElement(e) => write!(f, "CopyElement({:?})", e),
             Patch::RemoveText(_) => write!(f, "RemoveText(_)"),
             Patch::ReplaceText { take: _, text: t }  => write!(f, "ReplaceText {{ take: _, text: {:?} }}", t),
             Patch::CreateText { text: t } => write!(f, "CreateText {{ text: {:?} }}", t),
@@ -325,8 +325,8 @@ impl<'a, Message, Command> PatchSet<'a, Message, Command> {
                     node_stack.push_child(node.clone());
                     node_stack.push_parent(node);
                 }
-                Patch::CopyElement(mut take) => {
-                    let node = take();
+                Patch::CopyElement(item) => {
+                    let node = take_element(item);
 
                     storage.push(WebItem::Element(node.clone()));
                     node_stack.insert_before(Some(&node));
@@ -756,6 +756,10 @@ mod tests {
             .create_element(name).expect("expected element")
     }
 
+    fn leaked_elem<Message>(name: &str) -> &mut WebItem<Message> {
+        Box::leak(Box::new(WebItem::Element(elem(name))))
+    }
+
     #[test]
     fn empty_patch_set_is_noop() {
         assert!(PatchSet::<Msg, Cmd>::new().is_noop());
@@ -764,7 +768,7 @@ mod tests {
     #[wasm_bindgen_test]
     fn noop_patch_set_is_noop() {
         let patch_set: PatchSet<Msg, Cmd> = vec![
-            Patch::CopyElement(Box::new(|| elem("test"))),
+            Patch::CopyElement(leaked_elem("test")),
             Patch::Up,
         ].into();
 
@@ -785,7 +789,7 @@ mod tests {
     #[wasm_bindgen_test]
     fn copy_element() {
         let patch_set: PatchSet<Msg, Cmd> = vec![
-            Patch::CopyElement(Box::new(|| elem("test"))),
+            Patch::CopyElement(leaked_elem("test")),
             Patch::Up,
         ].into();
 
@@ -801,14 +805,14 @@ mod tests {
     fn add_attribute() {
         use Patch::*;
 
+        let mut e = WebItem::Element({
+            let e = elem("test");
+            assert!(e.get_attribute("name").is_none());
+            e
+        });
+
         let patch_set: PatchSet<Msg, Cmd> = vec![
-            CopyElement(
-                Box::new(|| {
-                    let e = elem("test");
-                    assert!(e.get_attribute("name").is_none());
-                    e
-                }),
-            ),
+            CopyElement(&mut e),
             SetAttribute { name: "name", value: "value" },
             Up,
         ].into();
@@ -879,14 +883,14 @@ mod tests {
     fn remove_attribute() {
         use Patch::*;
 
+        let mut e = WebItem::Element({
+            let e = elem("test");
+            e.set_attribute("name", "value").expect("setting attribute failed");
+            e
+        });
+
         let patch_set: PatchSet<Msg, Cmd> = vec![
-            CopyElement(
-                Box::new(|| {
-                    let e = elem("test");
-                    e.set_attribute("name", "value").expect("setting attribute failed");
-                    e
-                }),
-            ),
+            CopyElement(&mut e),
             RemoveAttribute("name"),
             Up,
         ].into();
@@ -906,14 +910,14 @@ mod tests {
     fn remove_attribute_checked() {
         use Patch::*;
 
+        let mut e = WebItem::Element({
+            let e = elem("input");
+            e.set_attribute("checked", "true").expect("setting attribute failed");
+            e
+        });
+
         let patch_set: PatchSet<Msg, Cmd> = vec![
-            CopyElement(
-                Box::new(|| {
-                    let e = elem("input");
-                    e.set_attribute("checked", "true").expect("setting attribute failed");
-                    e
-                }),
-            ),
+            CopyElement(&mut e),
             RemoveAttribute("checked"),
             Up,
         ].into();
@@ -935,14 +939,14 @@ mod tests {
     fn remove_attribute_disabled() {
         use Patch::*;
 
+        let mut e = WebItem::Element({
+            let e = elem("input");
+            e.set_attribute("disabled", "true").expect("setting attribute failed");
+            e
+        });
+
         let patch_set: PatchSet<Msg, Cmd> = vec![
-            CopyElement(
-                Box::new(|| {
-                    let e = elem("input");
-                    e.set_attribute("disabled", "true").expect("setting attribute failed");
-                    e
-                }),
-            ),
+            CopyElement(&mut e),
             RemoveAttribute("disabled"),
             Up,
         ].into();

@@ -8,15 +8,6 @@ use crate::vdom::DomItem;
 use crate::vdom::WebItem;
 use crate::component::Component;
 
-fn take_element<'a, Message>(item: &'a mut WebItem<Message>) -> Box<dyn FnMut() -> web_sys::Element + 'a> {
-    Box::new(move || {
-        match item.take() {
-            WebItem::Element(i) => i,
-            _ => panic!("storage type mismatch"),
-        }
-    })
-}
-
 fn take_text<'a, Message>(item: &'a mut WebItem<Message>) -> Box<dyn FnMut() -> web_sys::Text + 'a> {
     Box::new(move || {
         match item.take() {
@@ -142,7 +133,7 @@ where
                         let web_item = sto.next().expect("dom storage to match dom iter");
 
                         // copy the node
-                        patch_set.push(Patch::CopyElement(take_element(web_item)));
+                        patch_set.push(Patch::CopyElement(web_item));
 
                         o_item = old.next();
                         n_item = new.next();
