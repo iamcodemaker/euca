@@ -26,6 +26,10 @@ fn e(name: &str) -> web_sys::Element {
         .create_element(name).expect("expected element")
 }
 
+fn leaked_e<Message>(name: &str) -> &mut WebItem<Message> {
+    Box::leak(Box::new(WebItem::Element(e(name))))
+}
+
 fn t(text: &str) -> web_sys::Text {
     web_sys::window().expect("expected window")
         .document().expect("expected document")
@@ -294,7 +298,7 @@ fn to_empty() {
     compare!(
         patch_set,
         [
-            Patch::RemoveElement(Box::leak(Box::new(WebItem::Element(e("div"))))),
+            Patch::RemoveElement(leaked_e("div")),
         ]
     );
 }
@@ -319,8 +323,8 @@ fn to_empty_vec() {
     compare!(
         patch_set,
         [
-            Patch::RemoveElement(Box::leak(Box::new(WebItem::Element(e("b"))))),
-            Patch::RemoveElement(Box::leak(Box::new(WebItem::Element(e("i"))))),
+            Patch::RemoveElement(leaked_e("b")),
+            Patch::RemoveElement(leaked_e("i")),
         ]
     );
 }
@@ -357,7 +361,7 @@ fn basic_diff_with_element() {
     compare!(
         patch_set,
         [
-            Patch::RemoveElement(Box::leak(Box::new(WebItem::Element(e("div"))))),
+            Patch::RemoveElement(leaked_e("div")),
             Patch::CreateElement { element: "span".into() },
             Patch::Up,
         ]
@@ -430,8 +434,8 @@ fn old_child_nodes_with_element() {
         patch_set,
         [
             Patch::CopyElement(Box::new(|| e("div"))),
-            Patch::RemoveElement(Box::leak(Box::new(WebItem::Element(e("b"))))),
-            Patch::RemoveElement(Box::leak(Box::new(WebItem::Element(e("i"))))),
+            Patch::RemoveElement(leaked_e("b")),
+            Patch::RemoveElement(leaked_e("i")),
             Patch::Up,
         ]
     );
@@ -465,10 +469,10 @@ fn old_child_nodes_with_element_and_child() {
         patch_set,
         [
             Patch::CopyElement(Box::new(|| e("div"))),
-            Patch::RemoveElement(Box::leak(Box::new(WebItem::Element(e("b"))))),
+            Patch::RemoveElement(leaked_e("b")),
             Patch::CreateElement { element: "i".into() },
             Patch::Up,
-            Patch::RemoveElement(Box::leak(Box::new(WebItem::Element(e("i"))))),
+            Patch::RemoveElement(leaked_e("i")),
             Patch::Up,
         ]
     );
@@ -537,13 +541,13 @@ fn assorted_child_nodes() {
             Patch::CreateText { text: "paragraph1" },
             Patch::Up,
             Patch::Up,
-            Patch::RemoveElement(Box::leak(Box::new(WebItem::Element(e("p"))))),
+            Patch::RemoveElement(leaked_e("p")),
             Patch::CreateElement { element: "button".into() },
             Patch::AddListener { trigger: "click", handler: euca::vdom::EventHandler::Msg(&()) },
             Patch::CreateText { text: "submit" },
             Patch::Up,
             Patch::Up,
-            Patch::RemoveElement(Box::leak(Box::new(WebItem::Element(e("p"))))),
+            Patch::RemoveElement(leaked_e("p")),
             Patch::Up,
         ]
     );
@@ -574,7 +578,7 @@ fn diff_old_child_nodes_with_new_element() {
     compare!(
         patch_set,
         [
-            Patch::RemoveElement(Box::leak(Box::new(WebItem::Element(e("span"))))),
+            Patch::RemoveElement(leaked_e("span")),
             Patch::CreateElement { element: "div".into() },
             Patch::Up,
         ]
@@ -717,7 +721,7 @@ fn replace_element_with_text() {
     compare!(
         patch_set,
         [
-            Patch::RemoveElement(Box::leak(Box::new(WebItem::Element(e("div"))))),
+            Patch::RemoveElement(leaked_e("div")),
             Patch::CreateText { text: "div".into() },
             Patch::Up,
         ]
@@ -925,7 +929,7 @@ fn inner_html_replace_children() {
         patch_set,
         [
             Patch::CopyElement(Box::new(|| e("div"))),
-            Patch::RemoveElement(Box::leak(Box::new(WebItem::Element(e("div"))))),
+            Patch::RemoveElement(leaked_e("div")),
             Patch::SetInnerHtml("html"),
             Patch::Up,
         ]
@@ -1143,7 +1147,7 @@ fn diff_remove_nested_component() {
                 Patch::RemoveComponent(Box::new(|| FakeComponent::new())),
                 Patch::CreateElement { element: "div" },
                 Patch::Up,
-                Patch::RemoveElement(Box::leak(Box::new(WebItem::Element(e("div"))))),
+                Patch::RemoveElement(leaked_e("div")),
               Patch::Up,
               Patch::CopyElement(Box::new(|| e("div"))),
               Patch::Up,
