@@ -10,6 +10,7 @@
 //! [`PatchSet::apply`]: struct.PatchSet.html#method.apply
 
 use std::fmt;
+use std::collections::hash_map::HashMap;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 use crate::vdom::EventHandler;
@@ -38,8 +39,12 @@ pub enum Patch<'a, Message, Command> {
         /// The name/type of element that will be created.
         element: &'a str,
     },
+    /// Create a keyed thing.
+    CreateKeyed(u64),
     /// Copy and element from the old dom tree to the new dom tree.
     CopyElement(&'a mut WebItem<Message>),
+    /// Move the given element from it's old position in the dom to a new position.
+    MoveElement(&'a mut WebItem<Message>),
     /// Remove a text element.
     RemoveText(Box<dyn FnMut() -> web_sys::Text + 'a>),
     /// Replace the value of a text element.
@@ -114,7 +119,9 @@ impl<'a, Message, Command> fmt::Debug for Patch<'a, Message, Command> where
         match self {
             Patch::RemoveElement(e) => write!(f, "RemoveElement({:?})", e),
             Patch::CreateElement { element: s } => write!(f, "CreateElement {{ element: {:?} }}", s),
+            Patch::CreateKeyed(k) => write!(f, "CreateKeyed({})", k),
             Patch::CopyElement(e) => write!(f, "CopyElement({:?})", e),
+            Patch::MoveElement(k) => write!(f, "MoveElement({:?})", k),
             Patch::RemoveText(_) => write!(f, "RemoveText(_)"),
             Patch::ReplaceText { take: _, text: t }  => write!(f, "ReplaceText {{ take: _, text: {:?} }}", t),
             Patch::CreateText { text: t } => write!(f, "CreateText {{ text: {:?} }}", t),
@@ -243,6 +250,8 @@ macro_rules! attribute_unsetter {
 pub struct PatchSet<'a, Message, Command> {
     /// The patches in this patch set.
     pub patches: Vec<Patch<'a, Message, Command>>,
+    /// Mini patch sets for keyed nodes.
+    pub keyed: HashMap<u64, Vec<Patch<'a, Message, Command>>>,
 }
 
 impl<'a, Message, Command> PatchSet<'a, Message, Command> {
@@ -250,12 +259,26 @@ impl<'a, Message, Command> PatchSet<'a, Message, Command> {
     pub fn new() -> Self {
         PatchSet {
             patches: vec![],
+            keyed: HashMap::new(),
         }
     }
 
     /// Push a patch on to the end of the PatchSet.
     pub fn push(&mut self, patch: Patch<'a, Message, Command>) {
         self.patches.push(patch)
+    }
+
+    /// Insert a keyed PatchSet.
+    pub fn insert<I>(&mut self, k: u64, v: I)
+    -> Option<Self>
+    where
+        I: IntoIterator<Item = Patch<'a, Message, Command>>,
+    {
+        self.keyed.insert(k, v.into_iter().collect())
+            .map(|p| Self {
+                patches: p,
+                keyed: HashMap::new(),
+            })
     }
 
     /// Put the patches from the given iter into this PatchSet.
@@ -277,14 +300,18 @@ impl<'a, Message, Command> PatchSet<'a, Message, Command> {
     pub fn is_noop(&self) -> bool {
         use Patch::*;
 
-        self.patches.iter().all(|p| match p {
+        self.patches.iter()
+            .chain(self.keyed.values().flatten())
+            .all(|p| match p {
             // these patches just copy stuff into the new virtual dom tree, thus if we just keep
             // the old dom tree, the end result is the same
             CopyElement(_) | CopyListener(_)
+            | CreateKeyed(_)
             | CopyText(_) | CopyComponent(_) | Up
             => true,
             // these patches change the dom
             RemoveElement(_) | CreateElement { .. }
+            | MoveElement(_)
             | CreateComponent { .. } | UpdateComponent { .. }
             | RemoveComponent(_)
             | SetInnerHtml(_) | UnsetInnerHtml
@@ -295,12 +322,14 @@ impl<'a, Message, Command> PatchSet<'a, Message, Command> {
         })
     }
 
-    /// Prep the given PatchSet by creating any elements in the set and placing them in Storage.
-    /// While elements will be removed from the given parent, nothing will be attached.  Events
-    /// will be dispatched via the given [`Dispatch`]er.
-    ///
-    /// [`Dispatch`]: ../app/trait.Dispatch.html
-    pub fn prepare(self, app: &Dispatcher<Message, Command>) -> (Storage<Message>, Vec<web_sys::Node>) where
+    fn process_patch_list(
+        patches: Vec<Patch<'a, Message, Command>>,
+        keyed: &mut HashMap<u64, Vec<Patch<'a, Message, Command>>>,
+        app: &Dispatcher<Message, Command>,
+        storage: &mut Storage<Message>,
+    )
+    -> Vec<web_sys::Node>
+    where
         Message: Clone + PartialEq + fmt::Debug + 'static,
         Command: SideEffect<Message> + 'static,
         EventHandler<'a, Message>: Clone,
@@ -308,14 +337,19 @@ impl<'a, Message, Command> PatchSet<'a, Message, Command> {
         let mut node_stack = NodeStack::new();
         let mut special_attributes: Vec<(web_sys::Node, &str, &str)> = vec![];
 
-        let mut storage = vec![];
-        let PatchSet { patches } = self;
-
         let document = web_sys::window().expect("expected window")
             .document().expect("expected document");
 
         for p in patches.into_iter() {
             match p {
+                Patch::CreateKeyed(key) => {
+                    let patches = keyed.remove(&key)
+                        .expect("patches for given key not found");
+                    let nodes = Self::process_patch_list(patches, keyed, app, storage);
+                    for node in nodes {
+                        node_stack.push_child(node);
+                    }
+                }
                 Patch::RemoveElement(item) => {
                     take_element(item).remove();
                 }
@@ -333,6 +367,13 @@ impl<'a, Message, Command> PatchSet<'a, Message, Command> {
 
                     storage.push(item);
                     node_stack.insert_before(Some(&node));
+                    node_stack.push_parent(node);
+                }
+                Patch::MoveElement(item) => {
+                    let node = take_element(item);
+
+                    storage.push(WebItem::Element(node.clone()));
+                    node_stack.push_child(node.clone());
                     node_stack.push_parent(node);
                 }
                 Patch::RemoveText(mut take) => {
@@ -619,7 +660,24 @@ impl<'a, Message, Command> PatchSet<'a, Message, Command> {
         }
 
         assert_eq!(node_stack.depth(), 0, "the stack should be empty");
-        (storage, node_stack.pop_pending())
+        node_stack.pop_pending()
+    }
+
+    /// Prep the given PatchSet by creating any elements in the set and placing them in Storage.
+    /// While elements will be removed from the given parent, nothing will be attached.  Events
+    /// will be dispatched via the given [`Dispatch`]er.
+    ///
+    /// [`Dispatch`]: ../app/trait.Dispatch.html
+    pub fn prepare(self, app: &Dispatcher<Message, Command>) -> (Storage<Message>, Vec<web_sys::Node>) where
+        Message: Clone + PartialEq + fmt::Debug + 'static,
+        Command: SideEffect<Message> + 'static,
+        EventHandler<'a, Message>: Clone,
+    {
+        let mut storage = vec![];
+        let PatchSet { patches, mut keyed } = self;
+
+        let nodes = Self::process_patch_list(patches, &mut keyed, app, &mut storage);
+        (storage, nodes)
     }
 
     /// Apply the given PatchSet creating any elements under the given parent node. Events are
@@ -723,6 +781,7 @@ impl<'a, Message, Command> From<Vec<Patch<'a, Message, Command>>> for PatchSet<'
     fn from(v: Vec<Patch<'a, Message, Command>>) -> Self {
         PatchSet {
             patches: v,
+            keyed: HashMap::new(),
         }
     }
 }
@@ -778,6 +837,24 @@ mod tests {
         assert!(patch_set.is_noop());
     }
 
+    #[wasm_bindgen_test]
+    fn keyed_noop_patch_set_is_noop() {
+        let mut keyed: HashMap<_, Vec<Patch<Msg, Cmd>>> = HashMap::new();
+        keyed.insert(1, vec![
+            Patch::CopyElement(leaked_elem("test")),
+            Patch::Up,
+        ]);
+        let patch_set = PatchSet {
+            patches: vec![
+                Patch::CreateKeyed(1),
+                Patch::Up,
+            ],
+            keyed
+        };
+
+        assert!(patch_set.is_noop());
+    }
+
     #[test]
     fn not_noop() {
         let patch_set: PatchSet<Msg, Cmd> = vec![
@@ -785,6 +862,25 @@ mod tests {
                 element: "",
             },
         ].into();
+
+        assert!(!patch_set.is_noop());
+    }
+
+    #[test]
+    fn keyed_not_noop() {
+        let mut keyed: HashMap<_, Vec<Patch<Msg, Cmd>>> = HashMap::new();
+        keyed.insert(1, vec![
+            Patch::CreateElement { element: "" },
+            Patch::Up,
+        ]);
+
+        let patch_set = PatchSet {
+            patches: vec![
+                Patch::CreateKeyed(1),
+                Patch::Up,
+            ],
+            keyed
+        };
 
         assert!(!patch_set.is_noop());
     }

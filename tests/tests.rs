@@ -107,11 +107,17 @@ macro_rules! compare {
 
         for (i, (l, r)) in $patch_set.into_iter().zip(cmp).enumerate() {
             match (l, r) {
+                (Patch::CreateKeyed(k1), Patch::CreateKeyed(k2)) => {
+                    assert_eq!(k1, k2, "[{}] CreateKeyed keys don't match\n{}", i, dump);
+                }
                 (Patch::CreateElement { element: e1 }, Patch::CreateElement { element: e2 }) => {
                     assert_eq!(e1, e2, "[{}] unexpected CreateElement\n{}", i, dump);
                 }
                 (Patch::CopyElement(WebItem::Element(e1)), Patch::CopyElement(WebItem::Element(e2))) => {
                     assert_eq!(e1.tag_name(), e2.tag_name(), "[{}] WebItems don't match for CopyElement\n{}", i, dump);
+                }
+                (Patch::MoveElement(WebItem::Element(e1)), Patch::MoveElement(WebItem::Element(e2))) => {
+                    assert_eq!(e1.tag_name(), e2.tag_name(), "[{}] WebItems don't match for MoveElement\n{}", i, dump);
                 }
                 (Patch::SetAttribute { name: n1, value: v1 }, Patch::SetAttribute { name: n2, value: v2 }) => {
                     assert_eq!(n1, n2, "[{}] attribute names don't match\n{}", i, dump);
