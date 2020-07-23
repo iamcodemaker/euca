@@ -94,70 +94,103 @@ fn gen_storage<'a, Message, Command, Iter>(iter: Iter) -> Storage<Message> where
         .collect()
 }
 
+fn compare_patch_vecs(left: &Vec<Patch<Msg, Cmd>>, right: &Vec<Patch<Msg, Cmd>>, dump: &str) {
+    assert_eq!(left.len(), right.len(), "lengths don't match\n{}", dump);
+
+    for (i, (l, r)) in left.iter().zip(right).enumerate() {
+        match (l, r) {
+            (Patch::CreateKeyed(k1), Patch::CreateKeyed(k2)) => {
+                assert_eq!(k1, k2, "[{}] CreateKeyed keys don't match\n{}", i, dump);
+            }
+            (Patch::CreateElement { element: e1 }, Patch::CreateElement { element: e2 }) => {
+                assert_eq!(e1, e2, "[{}] unexpected CreateElement\n{}", i, dump);
+            }
+            (Patch::CopyElement(WebItem::Element(e1)), Patch::CopyElement(WebItem::Element(e2))) => {
+                assert_eq!(e1.tag_name(), e2.tag_name(), "[{}] WebItems don't match for CopyElement\n{}", i, dump);
+            }
+            (Patch::MoveElement(WebItem::Element(e1)), Patch::MoveElement(WebItem::Element(e2))) => {
+                assert_eq!(e1.tag_name(), e2.tag_name(), "[{}] WebItems don't match for MoveElement\n{}", i, dump);
+            }
+            (Patch::SetAttribute { name: n1, value: v1 }, Patch::SetAttribute { name: n2, value: v2 }) => {
+                assert_eq!(n1, n2, "[{}] attribute names don't match\n{}", i, dump);
+                assert_eq!(v1, v2, "[{}] attribute values don't match\n{}", i, dump);
+            }
+            (Patch::ReplaceText { take: _, text: t1 }, Patch::ReplaceText { take: _, text: t2 }) => {
+                assert_eq!(t1, t2, "[{}] unexpected ReplaceText\n{}", i, dump);
+            }
+            (Patch::CreateText { text: t1 }, Patch::CreateText { text: t2 }) => {
+                assert_eq!(t1, t2, "[{}] unexpected CreateText\n{}", i, dump);
+            }
+            (Patch::CopyText(_), Patch::CopyText(_)) => {}
+            (Patch::RemoveAttribute(a1), Patch::RemoveAttribute(a2)) => {
+                assert_eq!(a1, a2, "[{}] attribute names don't match\n{}", i, dump);
+            }
+            (Patch::AddListener { trigger: t1, handler: h1 }, Patch::AddListener { trigger: t2, handler: h2 }) => {
+                assert_eq!(t1, t2, "[{}] trigger names don't match\n{}", i, dump);
+                assert_eq!(h1, h2, "[{}] handlers don't match\n{}", i, dump);
+            }
+            (Patch::RemoveListener { trigger: t1, take: _ }, Patch::RemoveListener { trigger: t2, take: _ }) => {
+                assert_eq!(t1, t2, "[{}] trigger names don't match\n{}", i, dump);
+            }
+            (Patch::CopyListener(_), Patch::CopyListener(_)) => {}
+            (Patch::RemoveElement(WebItem::Element(e1)), Patch::RemoveElement(WebItem::Element(e2))) => {
+                assert_eq!(e1.tag_name(), e2.tag_name(), "[{}] unexpected RemoveElement\n{}", i, dump);
+            }
+            (Patch::RemoveText(_), Patch::RemoveText(_)) => {}
+            (Patch::SetInnerHtml(h1), Patch::SetInnerHtml(h2)) => {
+                assert_eq!(h1, h2, "[{}] unexpected innerHtml\n{}", i, dump);
+            }
+            (Patch::UnsetInnerHtml, Patch::UnsetInnerHtml) => {}
+            (Patch::CreateComponent { msg: m1, create: f1 }, Patch::CreateComponent { msg: m2, create: f2 }) => {
+                assert_eq!(m1, m2, "[{}] component messages don't match\n{}", i, dump);
+                assert_eq!(f1, f2, "[{}] component create functions don't match\n{}", i, dump);
+            }
+            (Patch::RemoveComponent(_), Patch::RemoveComponent(_)) => {}
+            (Patch::CopyComponent(_), Patch::CopyComponent(_)) => {}
+            (Patch::Up, Patch::Up) => {}
+            (item1, item2) => panic!("[{}] patch items don't match\n  left: {:?}\n right: {:?}\n{}", i, item1, item2, dump),
+        }
+    }
+}
+
 macro_rules! compare {
     ( $patch_set:ident, [ $( $x:expr ,)* ] ) => {
         compare!($patch_set, [ $($x),* ]);
     };
     ( $patch_set:ident, [ $( $x:expr),* ] ) => {
         let cmp: PatchSet<Msg, Cmd> = vec!($($x),*).into();
+        compare!($patch_set, cmp)
+    };
+    ( $patch_set:ident, [ $( $x:expr ,)* ], $( $k:expr => [ $( $v:expr ,)* ], )* ) => {
+        compare!($patch_set, [ $($x),* ], $( $k => [ $($v),* ] ),*)
+    };
+    ( $patch_set:ident, [ $( $x:expr),* ], $( $k:expr => [ $( $v:expr),* ] ),* ) => {
+        let mut cmp: PatchSet<Msg, Cmd> = vec!($($x),*).into();
+        $(
+            cmp.keyed.insert($k, vec!($($v),*));
+        )*
 
-        let dump = format!("patch_set: {:#?}\nexpected: {:#?}",  $patch_set, cmp);
+        compare!($patch_set, cmp)
+    };
+    ( $patch_set:ident, $cmp_set:ident ) => {
 
-        assert_eq!($patch_set.len(), cmp.len(), "lengths don't match\n{}", dump);
+        let dump = format!("patch_set: {:#?}\nexpected: {:#?}",  $patch_set, $cmp_set);
 
-        for (i, (l, r)) in $patch_set.into_iter().zip(cmp).enumerate() {
-            match (l, r) {
-                (Patch::CreateKeyed(k1), Patch::CreateKeyed(k2)) => {
-                    assert_eq!(k1, k2, "[{}] CreateKeyed keys don't match\n{}", i, dump);
-                }
-                (Patch::CreateElement { element: e1 }, Patch::CreateElement { element: e2 }) => {
-                    assert_eq!(e1, e2, "[{}] unexpected CreateElement\n{}", i, dump);
-                }
-                (Patch::CopyElement(WebItem::Element(e1)), Patch::CopyElement(WebItem::Element(e2))) => {
-                    assert_eq!(e1.tag_name(), e2.tag_name(), "[{}] WebItems don't match for CopyElement\n{}", i, dump);
-                }
-                (Patch::MoveElement(WebItem::Element(e1)), Patch::MoveElement(WebItem::Element(e2))) => {
-                    assert_eq!(e1.tag_name(), e2.tag_name(), "[{}] WebItems don't match for MoveElement\n{}", i, dump);
-                }
-                (Patch::SetAttribute { name: n1, value: v1 }, Patch::SetAttribute { name: n2, value: v2 }) => {
-                    assert_eq!(n1, n2, "[{}] attribute names don't match\n{}", i, dump);
-                    assert_eq!(v1, v2, "[{}] attribute values don't match\n{}", i, dump);
-                }
-                (Patch::ReplaceText { take: _, text: t1 }, Patch::ReplaceText { take: _, text: t2 }) => {
-                    assert_eq!(t1, t2, "[{}] unexpected ReplaceText\n{}", i, dump);
-                }
-                (Patch::CreateText { text: t1 }, Patch::CreateText { text: t2 }) => {
-                    assert_eq!(t1, t2, "[{}] unexpected CreateText\n{}", i, dump);
-                }
-                (Patch::CopyText(_), Patch::CopyText(_)) => {}
-                (Patch::RemoveAttribute(a1), Patch::RemoveAttribute(a2)) => {
-                    assert_eq!(a1, a2, "[{}] attribute names don't match\n{}", i, dump);
-                }
-                (Patch::AddListener { trigger: t1, handler: h1 }, Patch::AddListener { trigger: t2, handler: h2 }) => {
-                    assert_eq!(t1, t2, "[{}] trigger names don't match\n{}", i, dump);
-                    assert_eq!(h1, h2, "[{}] handlers don't match\n{}", i, dump);
-                }
-                (Patch::RemoveListener { trigger: t1, take: _ }, Patch::RemoveListener { trigger: t2, take: _ }) => {
-                    assert_eq!(t1, t2, "[{}] trigger names don't match\n{}", i, dump);
-                }
-                (Patch::CopyListener(_), Patch::CopyListener(_)) => {}
-                (Patch::RemoveElement(WebItem::Element(e1)), Patch::RemoveElement(WebItem::Element(e2))) => {
-                    assert_eq!(e1.tag_name(), e2.tag_name(), "[{}] unexpected RemoveElement\n{}", i, dump);
-                }
-                (Patch::RemoveText(_), Patch::RemoveText(_)) => {}
-                (Patch::SetInnerHtml(h1), Patch::SetInnerHtml(h2)) => {
-                    assert_eq!(h1, h2, "[{}] unexpected innerHtml\n{}", i, dump);
-                }
-                (Patch::UnsetInnerHtml, Patch::UnsetInnerHtml) => {}
-                (Patch::CreateComponent { msg: m1, create: f1 }, Patch::CreateComponent { msg: m2, create: f2 }) => {
-                    assert_eq!(m1, m2, "[{}] component messages don't match\n{}", i, dump);
-                    assert_eq!(f1, f2, "[{}] component create functions don't match\n{}", i, dump);
-                }
-                (Patch::RemoveComponent(_), Patch::RemoveComponent(_)) => {}
-                (Patch::CopyComponent(_), Patch::CopyComponent(_)) => {}
-                (Patch::Up, Patch::Up) => {}
-                (item1, item2) => panic!("[{}] patch items don't match\n  left: {:?}\n right: {:?}\n{}", i, item1, item2, dump),
+        compare_patch_vecs(&$patch_set.patches, &$cmp_set.patches, &dump);
+
+        let mut patch_set = $patch_set;
+        let mut cmp_set = $cmp_set;
+        for (key, cmp) in cmp_set.keyed.drain() {
+            if let Some(patches) = patch_set.keyed.remove(&key) {
+                compare_patch_vecs(&patches, &cmp, &dump);
             }
+            else {
+                panic!("failed to find expected key '{}' in patch set\n{}", key, dump);
+            }
+        }
+
+        if !patch_set.keyed.is_empty() {
+            panic!("unexpected keys in patch set\n{}", dump);
         }
     };
 }
