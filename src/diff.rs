@@ -191,85 +191,10 @@ where
                     }
                     (o, n) => { // no match
                         // remove the old item
-                        o_item = match o {
-                            DomItem::Up => { // end of old item
-                                Some(o)
-                            }
-                            // remove the old node if present
-                            DomItem::Element { .. } => {
-                                let web_item = sto.next().expect("dom storage to match dom iter");
-
-                                patch_set.push(Patch::RemoveElement(web_item));
-                                remove_sub_tree(&mut old, &mut patch_set, &mut sto)
-                            }
-                            // remove the old text if present
-                            DomItem::Text(_) => {
-                                let web_item = sto.next().expect("dom storage to match dom iter");
-
-                                patch_set.push(Patch::RemoveText(take_text(web_item)));
-                                remove_sub_tree(&mut old, &mut patch_set, &mut sto)
-                            }
-                            // remove inner html
-                            DomItem::UnsafeInnerHtml(_) => {
-                                patch_set.push(Patch::UnsetInnerHtml);
-                                old.next()
-                            }
-                            // remove attribute from old node
-                            DomItem::Attr { name, value: _ } => {
-                                patch_set.push(Patch::RemoveAttribute(name));
-                                old.next()
-                            }
-                            // remove event from old node
-                            DomItem::Event { trigger, .. } => {
-                                let web_item = sto.next().expect("dom storage to match dom iter");
-
-                                patch_set.push(Patch::RemoveListener { trigger, take: take_closure(web_item) });
-                                old.next()
-                            }
-                            // remove old component
-                            DomItem::Component { .. } => {
-                                let web_item = sto.next().expect("dom storage to match dom iter");
-                                patch_set.push(Patch::RemoveComponent(take_component(web_item)));
-                                remove_sub_tree(&mut old, &mut patch_set, &mut sto)
-                            }
-                        };
+                        o_item = remove(o, &mut old, &mut patch_set, &mut sto);
 
                         // add the new item
-                        n_item = match n {
-                            DomItem::Up => { // end of new item
-                                Some(n)
-                            }
-                            // add a new child node
-                            DomItem::Element { name: element, .. } => {
-                                patch_set.push(Patch::CreateElement { element });
-                                add_sub_tree(&mut new, &mut patch_set)
-                            }
-                            // add a new text node
-                            DomItem::Text(text) => {
-                                patch_set.push(Patch::CreateText { text });
-                                add_sub_tree(&mut new, &mut patch_set)
-                            }
-                            // set inner html
-                            DomItem::UnsafeInnerHtml(html) => {
-                                patch_set.push(Patch::SetInnerHtml(html));
-                                new.next()
-                            }
-                            // add a new component
-                            DomItem::Component { msg, create } => {
-                                patch_set.push(Patch::CreateComponent { msg, create });
-                                add_sub_tree(&mut new, &mut patch_set)
-                            }
-                            // add attribute to new node
-                            DomItem::Attr { name, value } => {
-                                patch_set.push(Patch::SetAttribute { name, value });
-                                new.next()
-                            }
-                            // add event to new node
-                            DomItem::Event { trigger, handler } => {
-                                patch_set.push(Patch::AddListener { trigger, handler: handler.into() });
-                                new.next()
-                            }
-                        }
+                        n_item = add(n, &mut new, &mut patch_set);
                     }
                 }
             }
@@ -318,8 +243,12 @@ where
         DomItem::Attr { .. } => {
             old.next()
         }
+        // this should only be possible when comparing two nodes, and in that case we expect this
+        // to effectively be a noop while we add items to the node we are comparing to. When
+        // removing entire elements, remove_sub_tree() is called above and this condition is never
+        // hit.
         DomItem::Up => {
-            old.next()
+            Some(item)
         }
     }
 }
@@ -359,9 +288,11 @@ where
             patch_set.push(Patch::AddListener { trigger, handler: handler.into() });
             new.next()
         }
+        // this should only be possible when comparing two nodes, and in that case we expect this
+        // to effectively be a noop while we remove items from the node we are comparing to. When
+        // adding entire elements, add_sub_tree() is called above and this condition is never hit.
         DomItem::Up => {
-            patch_set.push(Patch::Up);
-            new.next()
+            Some(item)
         }
     }
 }
