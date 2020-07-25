@@ -49,6 +49,12 @@ impl FakeComponent {
     {
         Self::new()
     }
+
+    fn create2(_: euca::app::dispatch::Dispatcher<Msg, Cmd>)
+    -> Box<dyn Component<Msg>>
+    {
+        Self::new()
+    }
 }
 
 impl<Message> Component<Message> for FakeComponent {
@@ -1066,6 +1072,31 @@ fn diff_basic_component() {
         [
             Patch::CopyElement(leaked_e("div")),
               Patch::CreateComponent { msg: (), create: FakeComponent::create },
+              Patch::Up,
+            Patch::Up,
+        ]
+    );
+}
+
+#[wasm_bindgen_test]
+fn diff_two_components() {
+
+    let old = Dom::elem("div")
+        .push(Dom::component((), FakeComponent::create));
+    let new = Dom::elem("div")
+        .push(Dom::component((), FakeComponent::create2));
+
+    let mut storage = gen_storage(old.dom_iter());
+    let o = old.dom_iter();
+    let n = new.dom_iter();
+    let patch_set = diff::diff(o, n, &mut storage);
+
+    compare!(
+        patch_set,
+        [
+            Patch::CopyElement(leaked_e("div")),
+              Patch::RemoveComponent(Box::new(|| FakeComponent::new())),
+              Patch::CreateComponent { msg: (), create: FakeComponent::create2 },
               Patch::Up,
             Patch::Up,
         ]

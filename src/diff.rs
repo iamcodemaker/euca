@@ -116,7 +116,7 @@ where
                     (
                         DomItem::Component { msg: o_msg, create: o_create },
                         DomItem::Component { msg: n_msg, create: n_create }
-                    ) => if o_create == n_create { // compare components
+                    ) if o_create == n_create => { // compare components
                         let web_item = sto.next().expect("dom storage to match dom iter");
 
                         // message matches, copy the storage
