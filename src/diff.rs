@@ -120,7 +120,7 @@ where
                         old.next()
                     }
                     DomItem::Up => {
-                        Some(o)
+                        old.next()
                     }
                 };
             }
