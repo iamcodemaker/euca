@@ -62,17 +62,10 @@ where
     I2: IntoIterator<Item = DomItem<'a, Message, Command>>,
     S: IntoIterator<Item = &'a mut WebItem<Message>>,
 {
-    let state = DiffImpl::new(old, new, storage);
+    let mut state = DiffImpl::new(old, new, storage);
 
-    let DiffImpl {
-        mut patch_set,
-        mut old,
-        mut new,
-        mut sto,
-    } = state;
-
-    let mut o_item = old.next();
-    let mut n_item = new.next();
+    let mut o_item = state.old.next();
+    let mut n_item = state.new.next();
 
     loop {
         match (o_item.take(), n_item.take()) {
@@ -80,20 +73,20 @@ where
                 break;
             }
             (None, Some(n)) => { // create remaining new nodes
-                n_item = add(n, &mut new, &mut patch_set);
+                n_item = state.add(n);
             }
             (Some(o), None) => { // delete remaining old nodes
-                o_item = remove(o, &mut old, &mut patch_set, &mut sto);
+                o_item = state.remove(o);
             }
             (Some(o), Some(n)) => { // compare nodes
-                let (o_next, n_next) = compare(o, n, &mut old, &mut new, &mut patch_set, &mut sto);
+                let (o_next, n_next) = state.compare(o, n);
                 o_item = o_next;
                 n_item = n_next;
             }
         }
     }
 
-    patch_set
+    state.patch_set
 }
 
 impl<'a, Message, Command, O, N, S>
@@ -112,22 +105,19 @@ where
             patch_set: PatchSet::new(),
         }
     }
-}
 
 /// Compare two items.
-fn compare<'a, Message, Command, I1, I2>(
+fn compare(
+    &mut self,
     o_item: DomItem<'a, Message, Command>,
     n_item: DomItem<'a, Message, Command>,
-    old: &mut I1,
-    new: &mut I2,
-    patch_set: &mut PatchSet<'a, Message, Command>,
-    sto: &mut dyn Iterator<Item = &'a mut WebItem<Message>>,
 ) -> (Option<DomItem<'a, Message, Command>>, Option<DomItem<'a, Message, Command>>)
-where
-    Message: 'a + PartialEq + Clone + fmt::Debug,
-    I1: Iterator<Item = DomItem<'a, Message, Command>>,
-    I2: Iterator<Item = DomItem<'a, Message, Command>>,
 {
+    let patch_set = &mut self.patch_set;
+    let sto = &mut self.sto;
+    let old = &mut self.old;
+    let new = &mut self.new;
+
     match (o_item, n_item) {
         (
             DomItem::Element { name: o_element, .. },
@@ -242,10 +232,10 @@ where
         }
         (o, n) => { // no match
             // remove the old item
-            let o_next = remove(o, old, patch_set, sto);
+            let o_next = self.remove(o);
 
             // add the new item
-            let n_next = add(n, new, patch_set);
+            let n_next = self.add(n);
 
             (o_next, n_next)
         }
@@ -253,31 +243,30 @@ where
 }
 
 /// Add patches to remove this item.
-fn remove<'a, Message, Command, I>(
+fn remove(
+    &mut self,
     item: DomItem<'a, Message, Command>,
-    old: &mut I,
-    patch_set: &mut PatchSet<'a, Message, Command>,
-    sto: &mut dyn Iterator<Item = &'a mut WebItem<Message>>,
 ) -> Option<DomItem<'a, Message, Command>>
-where
-    Message: 'a + PartialEq + Clone + fmt::Debug,
-    I: Iterator<Item = DomItem<'a, Message, Command>>,
 {
+    let patch_set = &mut self.patch_set;
+    let sto = &mut self.sto;
+    let old = &mut self.old;
+
     match item {
         DomItem::Element { .. } => {
             let web_item = sto.next().expect("dom storage to match dom iter");
             patch_set.push(Patch::RemoveElement(web_item));
-            remove_sub_tree(old, patch_set, sto)
+            self.remove_sub_tree()
         }
         DomItem::Text(_) => {
             let web_item = sto.next().expect("dom storage to match dom iter");
             patch_set.push(Patch::RemoveText(take_text(web_item)));
-            remove_sub_tree(old, patch_set, sto)
+            self.remove_sub_tree()
         }
         DomItem::Component { .. } => {
             let web_item = sto.next().expect("dom storage to match dom iter");
             patch_set.push(Patch::RemoveComponent(take_component(web_item)));
-            remove_sub_tree(old, patch_set, sto)
+            self.remove_sub_tree()
         }
         DomItem::UnsafeInnerHtml(_) => {
             patch_set.push(Patch::UnsetInnerHtml);
@@ -302,27 +291,26 @@ where
 }
 
 /// Add patches to add this item.
-fn add<'a, Message, Command, I>(
+fn add(
+    &mut self,
     item: DomItem<'a, Message, Command>,
-    new: &mut I,
-    patch_set: &mut PatchSet<'a, Message, Command>,
 ) -> Option<DomItem<'a, Message, Command>>
-where
-    Message: 'a + PartialEq + Clone + fmt::Debug,
-    I: Iterator<Item = DomItem<'a, Message, Command>>,
 {
+    let patch_set = &mut self.patch_set;
+    let new = &mut self.new;
+
     match item {
         DomItem::Element { name: element, .. } => {
             patch_set.push(Patch::CreateElement { element });
-            add_sub_tree(new, patch_set)
+            self.add_sub_tree()
         }
         DomItem::Text(text) => {
             patch_set.push(Patch::CreateText { text });
-            add_sub_tree(new, patch_set)
+            self.add_sub_tree()
         }
         DomItem::Component { msg, create } => {
             patch_set.push(Patch::CreateComponent { msg, create });
-            add_sub_tree(new, patch_set)
+            self.add_sub_tree()
         }
         DomItem::UnsafeInnerHtml(html) => {
             patch_set.push(Patch::SetInnerHtml(html));
@@ -349,12 +337,12 @@ where
 ///
 /// Expected to be called where `new.next()` just returned a node that may have children. This will
 /// handle creating all of the nodes up to the matching `DomItem::Up` entry.
-fn add_sub_tree<'a, Message, Command, I>(new: &mut I, patch_set: &mut PatchSet<'a, Message, Command>)
+fn add_sub_tree(&mut self)
 -> Option<DomItem<'a, Message, Command>>
-where
-    Message: 'a + PartialEq + Clone + fmt::Debug,
-    I: Iterator<Item = DomItem<'a, Message, Command>>,
 {
+    let patch_set = &mut self.patch_set;
+    let new = &mut self.new;
+
     let mut depth = 0;
     loop {
         match new.next() {
@@ -398,12 +386,13 @@ where
 ///
 /// Expected to be called where `old.next()` just returned a node that may have children. This will
 /// handle removing nodes from storage, up to the matching `DomItem::Up` entry.
-fn remove_sub_tree<'a, Message, Command, I>(old: &mut I, patch_set: &mut PatchSet<'a, Message, Command>, sto: &mut dyn Iterator<Item = &'a mut WebItem<Message>>)
+fn remove_sub_tree(&mut self)
 -> Option<DomItem<'a, Message, Command>>
-where
-    Message: 'a + PartialEq + Clone + fmt::Debug,
-    I: Iterator<Item = DomItem<'a, Message, Command>>,
 {
+    let patch_set = &mut self.patch_set;
+    let old = &mut self.old;
+    let sto = &mut self.sto;
+
     // skip the rest of the items in the old tree for this element, this
     // will cause attributes and such to be created on the new element
     let mut depth = 0;
@@ -447,3 +436,5 @@ where
         }
     }
 }
+
+} // end of impl DiffImpl
