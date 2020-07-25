@@ -64,36 +64,7 @@ where
                 break;
             }
             (None, Some(n)) => { // create remaining new nodes
-                n_item = match n {
-                    DomItem::Element { name: element, .. } => {
-                        patch_set.push(Patch::CreateElement { element });
-                        add_sub_tree(&mut new, &mut patch_set)
-                    }
-                    DomItem::Text(text) => {
-                        patch_set.push(Patch::CreateText { text });
-                        add_sub_tree(&mut new, &mut patch_set)
-                    }
-                    DomItem::Component { msg, create } => {
-                        patch_set.push(Patch::CreateComponent { msg, create });
-                        add_sub_tree(&mut new, &mut patch_set)
-                    }
-                    DomItem::UnsafeInnerHtml(html) => {
-                        patch_set.push(Patch::SetInnerHtml(html));
-                        new.next()
-                    }
-                    DomItem::Attr { name, value } => {
-                        patch_set.push(Patch::SetAttribute { name, value });
-                        new.next()
-                    }
-                    DomItem::Event { trigger, handler } => {
-                        patch_set.push(Patch::AddListener { trigger, handler: handler.into() });
-                        new.next()
-                    }
-                    DomItem::Up => {
-                        patch_set.push(Patch::Up);
-                        new.next()
-                    }
-                };
+                n_item = add(n, &mut new, &mut patch_set);
             }
             (Some(o), None) => { // delete remaining old nodes
                 o_item = remove(o, &mut old, &mut patch_set, &mut sto);
@@ -349,6 +320,48 @@ where
         }
         DomItem::Up => {
             old.next()
+        }
+    }
+}
+
+/// Add patches to add this item.
+fn add<'a, Message, Command, I>(
+    item: DomItem<'a, Message, Command>,
+    new: &mut I,
+    patch_set: &mut PatchSet<'a, Message, Command>,
+) -> Option<DomItem<'a, Message, Command>>
+where
+    Message: 'a + PartialEq + Clone + fmt::Debug,
+    I: Iterator<Item = DomItem<'a, Message, Command>>,
+{
+    match item {
+        DomItem::Element { name: element, .. } => {
+            patch_set.push(Patch::CreateElement { element });
+            add_sub_tree(new, patch_set)
+        }
+        DomItem::Text(text) => {
+            patch_set.push(Patch::CreateText { text });
+            add_sub_tree(new, patch_set)
+        }
+        DomItem::Component { msg, create } => {
+            patch_set.push(Patch::CreateComponent { msg, create });
+            add_sub_tree(new, patch_set)
+        }
+        DomItem::UnsafeInnerHtml(html) => {
+            patch_set.push(Patch::SetInnerHtml(html));
+            new.next()
+        }
+        DomItem::Attr { name, value } => {
+            patch_set.push(Patch::SetAttribute { name, value });
+            new.next()
+        }
+        DomItem::Event { trigger, handler } => {
+            patch_set.push(Patch::AddListener { trigger, handler: handler.into() });
+            new.next()
+        }
+        DomItem::Up => {
+            patch_set.push(Patch::Up);
+            new.next()
         }
     }
 }
