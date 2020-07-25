@@ -64,31 +64,36 @@ where
                 break;
             }
             (None, Some(n)) => { // create remaining new nodes
-                match n {
+                n_item = match n {
                     DomItem::Element { name: element, .. } => {
                         patch_set.push(Patch::CreateElement { element });
+                        add_sub_tree(&mut new, &mut patch_set)
                     }
                     DomItem::Text(text) => {
                         patch_set.push(Patch::CreateText { text });
-                    }
-                    DomItem::UnsafeInnerHtml(html) => {
-                        patch_set.push(Patch::SetInnerHtml(html));
-                    }
-                    DomItem::Attr { name, value } => {
-                        patch_set.push(Patch::SetAttribute { name, value });
-                    }
-                    DomItem::Event { trigger, handler } => {
-                        patch_set.push(Patch::AddListener { trigger, handler: handler.into() });
-                    }
-                    DomItem::Up => {
-                        patch_set.push(Patch::Up);
+                        add_sub_tree(&mut new, &mut patch_set)
                     }
                     DomItem::Component { msg, create } => {
                         patch_set.push(Patch::CreateComponent { msg, create });
+                        add_sub_tree(&mut new, &mut patch_set)
                     }
-                }
-
-                n_item = new.next();
+                    DomItem::UnsafeInnerHtml(html) => {
+                        patch_set.push(Patch::SetInnerHtml(html));
+                        new.next()
+                    }
+                    DomItem::Attr { name, value } => {
+                        patch_set.push(Patch::SetAttribute { name, value });
+                        new.next()
+                    }
+                    DomItem::Event { trigger, handler } => {
+                        patch_set.push(Patch::AddListener { trigger, handler: handler.into() });
+                        new.next()
+                    }
+                    DomItem::Up => {
+                        patch_set.push(Patch::Up);
+                        new.next()
+                    }
+                };
             }
             (Some(o), None) => { // delete remaining old nodes
                 o_item = match o {
