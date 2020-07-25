@@ -35,6 +35,19 @@ fn take_component<'a, Message>(item: &'a mut WebItem<Message>) -> Box<dyn FnMut(
     })
 }
 
+struct DiffImpl<'a, Message, Command, O, N, S>
+where
+    Message: 'a + PartialEq + Clone + fmt::Debug,
+    O: IntoIterator<Item = DomItem<'a, Message, Command>>,
+    N: IntoIterator<Item = DomItem<'a, Message, Command>>,
+    S: IntoIterator<Item = &'a mut WebItem<Message>>,
+{
+    old: O::IntoIter,
+    new: N::IntoIter,
+    sto: S::IntoIter,
+    patch_set: PatchSet<'a, Message, Command>,
+}
+
 /// Return the series of steps required to move from the given old/existing virtual dom to the
 /// given new virtual dom.
 pub fn diff<'a, Message, Command, I1, I2, S>(
@@ -49,11 +62,14 @@ where
     I2: IntoIterator<Item = DomItem<'a, Message, Command>>,
     S: IntoIterator<Item = &'a mut WebItem<Message>>,
 {
-    let mut patch_set = PatchSet::new();
+    let state = DiffImpl::new(old, new, storage);
 
-    let mut old = old.into_iter();
-    let mut new = new.into_iter();
-    let mut sto = storage.into_iter();
+    let DiffImpl {
+        mut patch_set,
+        mut old,
+        mut new,
+        mut sto,
+    } = state;
 
     let mut o_item = old.next();
     let mut n_item = new.next();
@@ -78,6 +94,24 @@ where
     }
 
     patch_set
+}
+
+impl<'a, Message, Command, O, N, S>
+DiffImpl<'a, Message, Command, O, N, S>
+where
+    Message: 'a + PartialEq + Clone + fmt::Debug,
+    O: IntoIterator<Item = DomItem<'a, Message, Command>>,
+    N: IntoIterator<Item = DomItem<'a, Message, Command>>,
+    S: IntoIterator<Item = &'a mut WebItem<Message>>,
+{
+    fn new(old: O, new: N, sto: S) -> Self {
+        DiffImpl {
+            old: old.into_iter(),
+            new: new.into_iter(),
+            sto: sto.into_iter(),
+            patch_set: PatchSet::new(),
+        }
+    }
 }
 
 /// Compare two items.
