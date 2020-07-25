@@ -96,38 +96,7 @@ where
                 };
             }
             (Some(o), None) => { // delete remaining old nodes
-                o_item = match o {
-                    DomItem::Element { .. } => {
-                        let web_item = sto.next().expect("dom storage to match dom iter");
-                        patch_set.push(Patch::RemoveElement(web_item));
-                        remove_sub_tree(&mut old, &mut patch_set, &mut sto)
-                    }
-                    DomItem::Text(_) => {
-                        let web_item = sto.next().expect("dom storage to match dom iter");
-                        patch_set.push(Patch::RemoveText(take_text(web_item)));
-                        remove_sub_tree(&mut old, &mut patch_set, &mut sto)
-                    }
-                    DomItem::Component { .. } => {
-                        let web_item = sto.next().expect("dom storage to match dom iter");
-                        patch_set.push(Patch::RemoveComponent(take_component(web_item)));
-                        remove_sub_tree(&mut old, &mut patch_set, &mut sto)
-                    }
-                    DomItem::UnsafeInnerHtml(_) => {
-                        patch_set.push(Patch::UnsetInnerHtml);
-                        old.next()
-                    }
-                    DomItem::Event { .. } => {
-                        let _ = sto.next().expect("dom storage to match dom iter");
-                        old.next()
-                    }
-                    // ignore attributes
-                    DomItem::Attr { .. } => {
-                        old.next()
-                    }
-                    DomItem::Up => {
-                        old.next()
-                    }
-                };
+                o_item = remove(o, &mut old, &mut patch_set, &mut sto);
             }
             (Some(o), Some(n)) => { // compare nodes
                 match (o, n) {
@@ -337,6 +306,51 @@ where
     }
 
     patch_set
+}
+
+/// Add patches to remove this item.
+fn remove<'a, Message, Command, I>(
+    item: DomItem<'a, Message, Command>,
+    old: &mut I,
+    patch_set: &mut PatchSet<'a, Message, Command>,
+    sto: &mut dyn Iterator<Item = &'a mut WebItem<Message>>,
+) -> Option<DomItem<'a, Message, Command>>
+where
+    Message: 'a + PartialEq + Clone + fmt::Debug,
+    I: Iterator<Item = DomItem<'a, Message, Command>>,
+{
+    match item {
+        DomItem::Element { .. } => {
+            let web_item = sto.next().expect("dom storage to match dom iter");
+            patch_set.push(Patch::RemoveElement(web_item));
+            remove_sub_tree(old, patch_set, sto)
+        }
+        DomItem::Text(_) => {
+            let web_item = sto.next().expect("dom storage to match dom iter");
+            patch_set.push(Patch::RemoveText(take_text(web_item)));
+            remove_sub_tree(old, patch_set, sto)
+        }
+        DomItem::Component { .. } => {
+            let web_item = sto.next().expect("dom storage to match dom iter");
+            patch_set.push(Patch::RemoveComponent(take_component(web_item)));
+            remove_sub_tree(old, patch_set, sto)
+        }
+        DomItem::UnsafeInnerHtml(_) => {
+            patch_set.push(Patch::UnsetInnerHtml);
+            old.next()
+        }
+        DomItem::Event { .. } => {
+            let _ = sto.next().expect("dom storage to match dom iter");
+            old.next()
+        }
+        // ignore attributes
+        DomItem::Attr { .. } => {
+            old.next()
+        }
+        DomItem::Up => {
+            old.next()
+        }
+    }
 }
 
 /// Add this entire element tree.
