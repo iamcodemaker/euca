@@ -70,138 +70,152 @@ where
                 o_item = remove(o, &mut old, &mut patch_set, &mut sto);
             }
             (Some(o), Some(n)) => { // compare nodes
-                match (o, n) {
-                    (
-                        DomItem::Element { name: o_element, .. },
-                        DomItem::Element { name: n_element, .. },
-                    ) if o_element == n_element => { // compare elements
-                        let web_item = sto.next().expect("dom storage to match dom iter");
-
-                        // copy the node
-                        patch_set.push(Patch::CopyElement(web_item));
-
-                        o_item = old.next();
-                        n_item = new.next();
-                    }
-                    (
-                        DomItem::Text(o_text),
-                        DomItem::Text(n_text)
-                    ) => { // compare text
-                        let web_item = sto.next().expect("dom storage to match dom iter");
-
-                        // if the text matches, use the web_sys::Text
-                        if o_text == n_text {
-                            // copy the node
-                            patch_set.push(Patch::CopyText(take_text(web_item)));
-                        }
-                        // text doesn't match, update it
-                        else {
-                            patch_set.push(Patch::ReplaceText { take: take_text(web_item) , text: n_text });
-                        }
-
-                        o_item = old.next();
-                        n_item = new.next();
-                    }
-                    (
-                        DomItem::UnsafeInnerHtml(o_html),
-                        DomItem::UnsafeInnerHtml(n_html)
-                    ) => { // compare inner html
-                        if o_html != n_html {
-                            patch_set.push(Patch::SetInnerHtml(n_html));
-                        }
-
-                        o_item = old.next();
-                        n_item = new.next();
-                    }
-                    (
-                        DomItem::Component { msg: o_msg, create: o_create },
-                        DomItem::Component { msg: n_msg, create: n_create }
-                    ) if o_create == n_create => { // compare components
-                        let web_item = sto.next().expect("dom storage to match dom iter");
-
-                        // message matches, copy the storage
-                        if o_msg == n_msg {
-                            patch_set.push(Patch::CopyComponent(take_component(web_item)));
-                        }
-                        // message doesn't match, dispatch it to the component
-                        else {
-                            patch_set.push(Patch::UpdateComponent { take: take_component(web_item), msg: n_msg });
-                        }
-
-                        o_item = old.next();
-                        n_item = new.next();
-                    }
-                    (
-                        DomItem::Attr { name: o_name, value: o_value },
-                        DomItem::Attr { name: n_name, value: n_value }
-                    ) => { // compare attributes
-                        // names are different
-                        if o_name != n_name {
-                            // remove old attribute
-                            patch_set.push(Patch::RemoveAttribute(o_name));
-
-                            // add new attribute
-                            patch_set.push(Patch::SetAttribute { name: n_name, value: n_value });
-                        }
-                        // only values are different
-                        else if o_value != n_value {
-                            // set new attribute value
-                            patch_set.push(Patch::SetAttribute { name: n_name, value: n_value });
-                        }
-                        // values are the same, check for special attributes. These are attributes
-                        // attributes that the browser can change as the result of user actions, so
-                        // we won't detect that if we only go by the state of the vdom. To work
-                        // around that, we just always set these.
-                        else {
-                            match n_name {
-                                "checked" | "selected" | "spellcheck" => {
-                                    patch_set.push(Patch::SetAttribute { name: n_name, value: n_value })
-                                }
-                                _ => {}
-                            }
-                        }
-                        o_item = old.next();
-                        n_item = new.next();
-                    }
-                    (
-                        DomItem::Event { trigger: o_trigger, handler: o_handler },
-                        DomItem::Event { trigger: n_trigger, handler: n_handler }
-                    ) => { // compare event listeners
-                        let web_item = sto.next().expect("dom storage to match dom iter");
-
-                        if o_trigger != n_trigger || o_handler != n_handler {
-                            // remove old listener
-                            patch_set.push(Patch::RemoveListener { trigger: o_trigger, take: take_closure(web_item) });
-
-                            // add new listener
-                            patch_set.push(Patch::AddListener { trigger: n_trigger, handler: n_handler.into() });
-                        }
-                        else {
-                            // just copy the existing listener
-                            patch_set.push(Patch::CopyListener(take_closure(web_item)));
-                        }
-                        o_item = old.next();
-                        n_item = new.next();
-                    }
-                    (DomItem::Up, DomItem::Up) => { // end of two items
-                        patch_set.push(Patch::Up);
-
-                        o_item = old.next();
-                        n_item = new.next();
-                    }
-                    (o, n) => { // no match
-                        // remove the old item
-                        o_item = remove(o, &mut old, &mut patch_set, &mut sto);
-
-                        // add the new item
-                        n_item = add(n, &mut new, &mut patch_set);
-                    }
-                }
+                let (o_next, n_next) = compare(o, n, &mut old, &mut new, &mut patch_set, &mut sto);
+                o_item = o_next;
+                n_item = n_next;
             }
         }
     }
 
     patch_set
+}
+
+/// Compare two items.
+fn compare<'a, Message, Command, I1, I2>(
+    o_item: DomItem<'a, Message, Command>,
+    n_item: DomItem<'a, Message, Command>,
+    old: &mut I1,
+    new: &mut I2,
+    patch_set: &mut PatchSet<'a, Message, Command>,
+    sto: &mut dyn Iterator<Item = &'a mut WebItem<Message>>,
+) -> (Option<DomItem<'a, Message, Command>>, Option<DomItem<'a, Message, Command>>)
+where
+    Message: 'a + PartialEq + Clone + fmt::Debug,
+    I1: Iterator<Item = DomItem<'a, Message, Command>>,
+    I2: Iterator<Item = DomItem<'a, Message, Command>>,
+{
+    match (o_item, n_item) {
+        (
+            DomItem::Element { name: o_element, .. },
+            DomItem::Element { name: n_element, .. },
+        ) if o_element == n_element => { // compare elements
+            let web_item = sto.next().expect("dom storage to match dom iter");
+
+            // copy the node
+            patch_set.push(Patch::CopyElement(web_item));
+            (old.next(), new.next())
+        }
+        (
+            DomItem::Text(o_text),
+            DomItem::Text(n_text)
+        ) => { // compare text
+            let web_item = sto.next().expect("dom storage to match dom iter");
+
+            // if the text matches, use the web_sys::Text
+            if o_text == n_text {
+                // copy the node
+                patch_set.push(Patch::CopyText(take_text(web_item)));
+            }
+            // text doesn't match, update it
+            else {
+                patch_set.push(Patch::ReplaceText { take: take_text(web_item) , text: n_text });
+            }
+
+            (old.next(), new.next())
+        }
+        (
+            DomItem::UnsafeInnerHtml(o_html),
+            DomItem::UnsafeInnerHtml(n_html)
+        ) => { // compare inner html
+            if o_html != n_html {
+                patch_set.push(Patch::SetInnerHtml(n_html));
+            }
+
+            (old.next(), new.next())
+        }
+        (
+            DomItem::Component { msg: o_msg, create: o_create },
+            DomItem::Component { msg: n_msg, create: n_create }
+        ) if o_create == n_create => { // compare components
+            let web_item = sto.next().expect("dom storage to match dom iter");
+
+            // message matches, copy the storage
+            if o_msg == n_msg {
+                patch_set.push(Patch::CopyComponent(take_component(web_item)));
+            }
+            // message doesn't match, dispatch it to the component
+            else {
+                patch_set.push(Patch::UpdateComponent { take: take_component(web_item), msg: n_msg });
+            }
+
+            (old.next(), new.next())
+        }
+        (
+            DomItem::Attr { name: o_name, value: o_value },
+            DomItem::Attr { name: n_name, value: n_value }
+        ) => { // compare attributes
+            // names are different
+            if o_name != n_name {
+                // remove old attribute
+                patch_set.push(Patch::RemoveAttribute(o_name));
+
+                // add new attribute
+                patch_set.push(Patch::SetAttribute { name: n_name, value: n_value });
+            }
+            // only values are different
+            else if o_value != n_value {
+                // set new attribute value
+                patch_set.push(Patch::SetAttribute { name: n_name, value: n_value });
+            }
+            // values are the same, check for special attributes. These are attributes
+            // attributes that the browser can change as the result of user actions, so
+            // we won't detect that if we only go by the state of the vdom. To work
+            // around that, we just always set these.
+            else {
+                match n_name {
+                    "checked" | "selected" | "spellcheck" => {
+                        patch_set.push(Patch::SetAttribute { name: n_name, value: n_value })
+                    }
+                    _ => {}
+                }
+            }
+
+            (old.next(), new.next())
+        }
+        (
+            DomItem::Event { trigger: o_trigger, handler: o_handler },
+            DomItem::Event { trigger: n_trigger, handler: n_handler }
+        ) => { // compare event listeners
+            let web_item = sto.next().expect("dom storage to match dom iter");
+
+            if o_trigger != n_trigger || o_handler != n_handler {
+                // remove old listener
+                patch_set.push(Patch::RemoveListener { trigger: o_trigger, take: take_closure(web_item) });
+
+                // add new listener
+                patch_set.push(Patch::AddListener { trigger: n_trigger, handler: n_handler.into() });
+            }
+            else {
+                // just copy the existing listener
+                patch_set.push(Patch::CopyListener(take_closure(web_item)));
+            }
+
+            (old.next(), new.next())
+        }
+        (DomItem::Up, DomItem::Up) => { // end of two items
+            patch_set.push(Patch::Up);
+            (old.next(), new.next())
+        }
+        (o, n) => { // no match
+            // remove the old item
+            let o_next = remove(o, old, patch_set, sto);
+
+            // add the new item
+            let n_next = add(n, new, patch_set);
+
+            (o_next, n_next)
+        }
+    }
 }
 
 /// Add patches to remove this item.
