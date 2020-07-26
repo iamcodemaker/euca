@@ -345,40 +345,45 @@ where
     fn add_sub_tree(&mut self)
     -> Option<DomItem<'a, Message, Command>>
     {
-        let patch_set = &mut self.patch_set;
-        let new = &mut self.new;
-
         let mut depth = 0;
+        let mut item = self.new.next();
         loop {
-            match new.next() {
+            item = match item {
                 Some(DomItem::Element { name: element, .. }) => {
-                    patch_set.push(Patch::CreateElement { element });
+                    self.patch_set.push(Patch::CreateElement { element });
                     depth += 1;
+                    self.new.next()
                 }
                 Some(DomItem::Text(text)) => {
-                    patch_set.push(Patch::CreateText { text });
+                    self.patch_set.push(Patch::CreateText { text });
                     depth += 1;
+                    self.new.next()
                 }
                 Some(DomItem::Component { msg, create }) => {
-                    patch_set.push(Patch::CreateComponent { msg, create });
+                    self.patch_set.push(Patch::CreateComponent { msg, create });
                     depth += 1;
+                    self.new.next()
                 }
                 Some(DomItem::UnsafeInnerHtml(html)) => {
-                    patch_set.push(Patch::SetInnerHtml(html));
+                    self.patch_set.push(Patch::SetInnerHtml(html));
+                    self.new.next()
                 }
                 Some(DomItem::Event { trigger, handler }) => {
-                    patch_set.push(Patch::AddListener { trigger, handler: handler.into() });
+                    self.patch_set.push(Patch::AddListener { trigger, handler: handler.into() });
+                    self.new.next()
                 }
                 Some(DomItem::Attr { name, value }) => {
-                    patch_set.push(Patch::SetAttribute { name, value });
+                    self.patch_set.push(Patch::SetAttribute { name, value });
+                    self.new.next()
                 }
                 Some(DomItem::Up) if depth > 0 => {
-                    patch_set.push(Patch::Up);
+                    self.patch_set.push(Patch::Up);
                     depth -= 1;
+                    self.new.next()
                 }
                 Some(DomItem::Up) => {
-                    patch_set.push(Patch::Up);
-                    return new.next();
+                    self.patch_set.push(Patch::Up);
+                    return self.new.next();
                 }
                 n @ None => {
                     return n;
@@ -394,46 +399,52 @@ where
     fn remove_sub_tree(&mut self)
     -> Option<DomItem<'a, Message, Command>>
     {
-        let patch_set = &mut self.patch_set;
-        let old = &mut self.old;
-        let sto = &mut self.sto;
-
         // skip the rest of the items in the old tree for this element, this
         // will cause attributes and such to be created on the new element
         let mut depth = 0;
+        let mut item = self.old.next();
         loop {
-            match old.next() {
+            item = match item {
                 // child element: remove from storage, track sub-tree depth
                 Some(DomItem::Element { .. }) => {
-                    let _ = sto.next().expect("dom storage to match dom iter");
+                    let _ = self.sto.next().expect("dom storage to match dom iter");
                     depth += 1;
+                    self.old.next()
                 }
                 // child text: remove from storage, track sub-tree depth
                 Some(DomItem::Text(_)) => {
-                    let _ = sto.next().expect("dom storage to match dom iter");
+                    let _ = self.sto.next().expect("dom storage to match dom iter");
                     depth += 1;
+                    self.old.next()
                 }
                 // component: remove it from storage and the dom
                 Some(DomItem::Component { .. }) => {
-                    let web_item = sto.next().expect("dom storage to match dom iter");
-                    patch_set.push(Patch::RemoveComponent(take_component(web_item)));
+                    let web_item = self.sto.next().expect("dom storage to match dom iter");
+                    self.patch_set.push(Patch::RemoveComponent(take_component(web_item)));
                     depth += 1;
+                    self.old.next()
                 }
                 // event: remove from storage
                 Some(DomItem::Event { .. }) => {
-                    let _ = sto.next().expect("dom storage to match dom iter");
+                    let _ = self.sto.next().expect("dom storage to match dom iter");
+                    self.old.next()
                 }
                 // innerHtml: ignore
-                Some(DomItem::UnsafeInnerHtml(_)) => { }
+                Some(DomItem::UnsafeInnerHtml(_)) => {
+                    self.old.next()
+                }
                 // attribute: ignore
-                Some(DomItem::Attr { .. }) => { }
+                Some(DomItem::Attr { .. }) => {
+                    self.old.next()
+                }
                 // end of child: track sub-tree depth
                 Some(DomItem::Up) if depth > 0 => {
                     depth -= 1;
+                    self.old.next()
                 }
                 // end of node: stop processing
                 Some(DomItem::Up) => {
-                    return old.next();
+                    return self.old.next();
                 }
                 o @ None => {
                     return o;
