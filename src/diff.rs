@@ -35,6 +35,23 @@ fn take_component<'a, Message>(item: &'a mut WebItem<Message>) -> Box<dyn FnMut(
     })
 }
 
+/// Return the series of steps required to move from the given old/existing virtual dom to the
+/// given new virtual dom.
+pub fn diff<'a, Message, Command, O, N, S>(
+    old: O,
+    new: N,
+    storage: S,
+)
+-> PatchSet<'a, Message, Command>
+where
+    Message: 'a + PartialEq + Clone + fmt::Debug,
+    O: IntoIterator<Item = DomItem<'a, Message, Command>>,
+    N: IntoIterator<Item = DomItem<'a, Message, Command>>,
+    S: IntoIterator<Item = &'a mut WebItem<Message>>,
+{
+    DiffImpl::new(old, new, storage).diff()
+}
+
 struct DiffImpl<'a, Message, Command, O, N, S>
 where
     Message: 'a + PartialEq + Clone + fmt::Debug,
@@ -46,47 +63,6 @@ where
     new: N::IntoIter,
     sto: S::IntoIter,
     patch_set: PatchSet<'a, Message, Command>,
-}
-
-/// Return the series of steps required to move from the given old/existing virtual dom to the
-/// given new virtual dom.
-pub fn diff<'a, Message, Command, I1, I2, S>(
-    old: I1,
-    new: I2,
-    storage: S,
-)
--> PatchSet<'a, Message, Command>
-where
-    Message: 'a + PartialEq + Clone + fmt::Debug,
-    I1: IntoIterator<Item = DomItem<'a, Message, Command>>,
-    I2: IntoIterator<Item = DomItem<'a, Message, Command>>,
-    S: IntoIterator<Item = &'a mut WebItem<Message>>,
-{
-    let mut state = DiffImpl::new(old, new, storage);
-
-    let mut o_item = state.old.next();
-    let mut n_item = state.new.next();
-
-    loop {
-        match (o_item.take(), n_item.take()) {
-            (None, None) => { // return patch set
-                break;
-            }
-            (None, Some(n)) => { // create remaining new nodes
-                n_item = state.add(n);
-            }
-            (Some(o), None) => { // delete remaining old nodes
-                o_item = state.remove(o);
-            }
-            (Some(o), Some(n)) => { // compare nodes
-                let (o_next, n_next) = state.compare(o, n);
-                o_item = o_next;
-                n_item = n_next;
-            }
-        }
-    }
-
-    state.patch_set
 }
 
 impl<'a, Message, Command, O, N, S>
@@ -105,6 +81,35 @@ where
             patch_set: PatchSet::new(),
         }
     }
+
+    /// Return the series of steps required to move from the given old/existing virtual dom to the
+    /// given new virtual dom.
+    pub fn diff(mut self) -> PatchSet<'a, Message, Command> {
+        let mut o_item = self.old.next();
+        let mut n_item = self.new.next();
+
+        loop {
+            match (o_item.take(), n_item.take()) {
+                (None, None) => { // return patch set
+                    break;
+                }
+                (None, Some(n)) => { // create remaining new nodes
+                    n_item = self.add(n);
+                }
+                (Some(o), None) => { // delete remaining old nodes
+                    o_item = self.remove(o);
+                }
+                (Some(o), Some(n)) => { // compare nodes
+                    let (o_next, n_next) = self.compare(o, n);
+                    o_item = o_next;
+                    n_item = n_next;
+                }
+            }
+        }
+
+        self.patch_set
+    }
+
 
     /// Compare two items.
     fn compare(
