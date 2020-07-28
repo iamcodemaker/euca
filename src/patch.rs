@@ -39,8 +39,8 @@ pub enum Patch<'a, Message, Command> {
         /// The name/type of element that will be created.
         element: &'a str,
     },
-    /// Create a keyed thing.
-    CreateKeyed(u64),
+    /// Reference a keyed thing.
+    ReferenceKey(u64),
     /// Copy and element from the old dom tree to the new dom tree.
     CopyElement(&'a mut WebItem<Message>),
     /// Move the given element from it's old position in the dom to a new position.
@@ -119,7 +119,7 @@ impl<'a, Message, Command> fmt::Debug for Patch<'a, Message, Command> where
         match self {
             Patch::RemoveElement(e) => write!(f, "RemoveElement({:?})", e),
             Patch::CreateElement { element: s } => write!(f, "CreateElement {{ element: {:?} }}", s),
-            Patch::CreateKeyed(k) => write!(f, "CreateKeyed({})", k),
+            Patch::ReferenceKey(k) => write!(f, "ReferenceKey({})", k),
             Patch::CopyElement(e) => write!(f, "CopyElement({:?})", e),
             Patch::MoveElement(k) => write!(f, "MoveElement({:?})", k),
             Patch::RemoveText(_) => write!(f, "RemoveText(_)"),
@@ -305,8 +305,7 @@ impl<'a, Message, Command> PatchSet<'a, Message, Command> {
             .all(|p| match p {
             // these patches just copy stuff into the new virtual dom tree, thus if we just keep
             // the old dom tree, the end result is the same
-            CopyElement(_) | CopyListener(_)
-            | CreateKeyed(_)
+            CopyElement(_) | CopyListener(_) | ReferenceKey(_)
             | CopyText(_) | CopyComponent(_) | Up
             => true,
             // these patches change the dom
@@ -342,7 +341,7 @@ impl<'a, Message, Command> PatchSet<'a, Message, Command> {
 
         for p in patches.into_iter() {
             match p {
-                Patch::CreateKeyed(key) => {
+                Patch::ReferenceKey(key) => {
                     let patches = keyed.remove(&key)
                         .expect("patches for given key not found");
                     let nodes = Self::process_patch_list(patches, keyed, app, storage);
@@ -846,7 +845,7 @@ mod tests {
         ]);
         let patch_set = PatchSet {
             patches: vec![
-                Patch::CreateKeyed(1),
+                Patch::ReferenceKey(1),
                 Patch::Up,
             ],
             keyed
@@ -876,7 +875,7 @@ mod tests {
 
         let patch_set = PatchSet {
             patches: vec![
-                Patch::CreateKeyed(1),
+                Patch::ReferenceKey(1),
                 Patch::Up,
             ],
             keyed

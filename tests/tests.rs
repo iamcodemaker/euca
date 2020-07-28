@@ -105,8 +105,8 @@ fn compare_patch_vecs(left: &Vec<Patch<Msg, Cmd>>, right: &Vec<Patch<Msg, Cmd>>,
 
     for (i, (l, r)) in left.iter().zip(right).enumerate() {
         match (l, r) {
-            (Patch::CreateKeyed(k1), Patch::CreateKeyed(k2)) => {
-                assert_eq!(k1, k2, "[{}] CreateKeyed keys don't match\n{}", i, dump);
+            (Patch::ReferenceKey(k1), Patch::ReferenceKey(k2)) => {
+                assert_eq!(k1, k2, "[{}] ReferenceKey keys don't match\n{}", i, dump);
             }
             (Patch::CreateElement { element: e1 }, Patch::CreateElement { element: e2 }) => {
                 assert_eq!(e1, e2, "[{}] unexpected CreateElement\n{}", i, dump);
