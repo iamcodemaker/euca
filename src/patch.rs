@@ -46,11 +46,11 @@ pub enum Patch<'a, Message, Command> {
     /// Move the given element from it's old position in the dom to a new position.
     MoveElement(&'a mut WebItem<Message>),
     /// Remove a text element.
-    RemoveText(Box<dyn FnMut() -> web_sys::Text + 'a>),
+    RemoveText(&'a mut WebItem<Message>),
     /// Replace the value of a text element.
     ReplaceText {
         /// Called once to take an existing text node from the old virtual dom.
-        take: Box<dyn FnMut() -> web_sys::Text + 'a>,
+        take: &'a mut WebItem<Message>,
         /// The replacement text for the existing text node.
         text: &'a str,
     },
@@ -60,7 +60,7 @@ pub enum Patch<'a, Message, Command> {
         text: &'a str,
     },
     /// Copy the reference we have to the text element to the new dom.
-    CopyText(Box<dyn FnMut() -> web_sys::Text + 'a>),
+    CopyText(&'a mut WebItem<Message>),
     /// Update this element by setting innerHTML.
     SetInnerHtml(&'a str),
     /// Remove all of the children of the parent of this element.
@@ -122,10 +122,10 @@ impl<'a, Message, Command> fmt::Debug for Patch<'a, Message, Command> where
             Patch::ReferenceKey(k) => write!(f, "ReferenceKey({})", k),
             Patch::CopyElement(e) => write!(f, "CopyElement({:?})", e),
             Patch::MoveElement(k) => write!(f, "MoveElement({:?})", k),
-            Patch::RemoveText(_) => write!(f, "RemoveText(_)"),
-            Patch::ReplaceText { take: _, text: t }  => write!(f, "ReplaceText {{ take: _, text: {:?} }}", t),
+            Patch::RemoveText(wt) => write!(f, "RemoveText({:?})", wt),
+            Patch::ReplaceText { take: wt, text: t }  => write!(f, "ReplaceText {{ take: {:?}, text: {:?} }}", wt, t),
             Patch::CreateText { text: t } => write!(f, "CreateText {{ text: {:?} }}", t),
-            Patch::CopyText(_) => write!(f, "CopyText(_)"),
+            Patch::CopyText(wt) => write!(f, "CopyText({:?})", wt),
             Patch::SetInnerHtml(html) => write!(f, "SetInnerHtml({:?})", html),
             Patch::UnsetInnerHtml => write!(f, "UnsetInnerHtml"),
             Patch::CreateComponent { msg, create: _ } => write!(f, "CreateComponent {{ msg: {:?}, create: _ }}", msg),
@@ -367,17 +367,25 @@ impl<'a, Message, Command> PatchSet<'a, Message, Command> {
                     node_stack.push_child(node.clone());
                     node_stack.push_parent(node);
                 }
-                Patch::RemoveText(mut take) => {
+                Patch::RemoveText(item) => {
+                    let item = item.take();
+                    let node = item.as_text()
+                        .expect("unexpected WebItem, expected text");
+
                     node_stack.last()
                         .expect("no previous node")
-                        .remove_child(&take())
+                        .remove_child(&node)
                         .expect("failed to remove child node");
                 }
-                Patch::ReplaceText { mut take, text } => {
-                    let node = take();
+                Patch::ReplaceText { take: item, text } => {
+                    let item = item.take();
+                    let node = item.as_text()
+                        .expect("unexpected WebItem, expected text")
+                        .clone();
+
                     node.set_data(&text);
 
-                    storage.push(WebItem::Text(node.clone()));
+                    storage.push(item);
                     node_stack.insert_before(Some(&node));
                     node_stack.push_parent(node);
                 }
@@ -388,10 +396,13 @@ impl<'a, Message, Command> PatchSet<'a, Message, Command> {
                     node_stack.push_child(node.clone());
                     node_stack.push_parent(node);
                 }
-                Patch::CopyText(mut take) => {
-                    let node = take();
+                Patch::CopyText(item) => {
+                    let item = item.take();
+                    let node = item.as_text()
+                        .expect("unexpected WebItem, expected text")
+                        .clone();
 
-                    storage.push(WebItem::Text(node.clone()));
+                    storage.push(item);
                     node_stack.insert_before(Some(&node));
                     node_stack.push_parent(node);
                 }

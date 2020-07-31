@@ -73,6 +73,14 @@ impl<Message> WebItem<Message> {
             _ =>  None,
         }
     }
+
+    /// Possibly get a reference to the web_sys::Text in this WebItem.
+    pub fn as_text(&self) -> Option<&web_sys::Text> {
+        match self {
+            WebItem::Text(node) => Some(node),
+            _ =>  None,
+        }
+    }
 }
 
 impl<Message> fmt::Debug for WebItem<Message> {

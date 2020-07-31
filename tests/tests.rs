@@ -38,6 +38,10 @@ fn t(text: &str) -> web_sys::Text {
         .create_text_node(text)
 }
 
+fn leaked_t<Message>(text: &str) -> &mut WebItem<Message> {
+    Box::leak(Box::new(WebItem::Text(t(text))))
+}
+
 #[derive(Default)]
 struct FakeComponent { }
 
@@ -130,13 +134,16 @@ fn compare_patch_vecs(left: &Vec<Patch<Msg, Cmd>>, right: &Vec<Patch<Msg, Cmd>>,
                 assert_eq!(n1, n2, "[{}] attribute names don't match\n{}", i, dump);
                 assert_eq!(v1, v2, "[{}] attribute values don't match\n{}", i, dump);
             }
-            (Patch::ReplaceText { take: _, text: t1 }, Patch::ReplaceText { take: _, text: t2 }) => {
+            (Patch::ReplaceText { take: WebItem::Text(wt1), text: t1 }, Patch::ReplaceText { take: WebItem::Text(wt2), text: t2 }) => {
                 assert_eq!(t1, t2, "[{}] unexpected ReplaceText\n{}", i, dump);
+                assert_eq!(wt1.data(), wt2.data(), "[{}] WebItems don't match for ReplaceText\n{}", i, dump);
             }
             (Patch::CreateText { text: t1 }, Patch::CreateText { text: t2 }) => {
                 assert_eq!(t1, t2, "[{}] unexpected CreateText\n{}", i, dump);
             }
-            (Patch::CopyText(_), Patch::CopyText(_)) => {}
+            (Patch::CopyText(WebItem::Text(wt1)), Patch::CopyText(WebItem::Text(wt2))) => {
+                assert_eq!(wt1.data(), wt2.data(), "[{}] WebItems don't match for CopyText\n{}", i, dump);
+            }
             (Patch::RemoveAttribute(a1), Patch::RemoveAttribute(a2)) => {
                 assert_eq!(a1, a2, "[{}] attribute names don't match\n{}", i, dump);
             }
@@ -151,7 +158,9 @@ fn compare_patch_vecs(left: &Vec<Patch<Msg, Cmd>>, right: &Vec<Patch<Msg, Cmd>>,
             (Patch::RemoveElement(WebItem::Element(e1)), Patch::RemoveElement(WebItem::Element(e2))) => {
                 assert_eq!(e1.tag_name(), e2.tag_name(), "[{}] unexpected RemoveElement\n{}", i, dump);
             }
-            (Patch::RemoveText(_), Patch::RemoveText(_)) => {}
+            (Patch::RemoveText(WebItem::Text(wt1)), Patch::RemoveText(WebItem::Text(wt2))) => {
+                assert_eq!(wt1.data(), wt2.data(), "[{}] WebItems don't match for RemoveText\n{}", i, dump);
+            }
             (Patch::SetInnerHtml(h1), Patch::SetInnerHtml(h2)) => {
                 assert_eq!(h1, h2, "[{}] unexpected innerHtml\n{}", i, dump);
             }
@@ -585,11 +594,11 @@ fn assorted_child_nodes() {
             Patch::CopyElement(leaked_e("div")),
             Patch::CopyElement(leaked_e("h1")),
             Patch::CopyListener(Box::new(|| Closure::wrap(Box::new(|_|{}) as Box<dyn FnMut(web_sys::Event)>))),
-            Patch::ReplaceText { take: Box::new(|| t("h1")), text: "header" },
+            Patch::ReplaceText { take: leaked_t("h1"), text: "header" },
             Patch::Up,
             Patch::Up,
             Patch::CopyElement(leaked_e("p")),
-            Patch::RemoveText(Box::new(|| t("paragraph1"))),
+            Patch::RemoveText(leaked_t("paragraph1")),
             Patch::CreateElement { element: "b".into() },
             Patch::CreateText { text: "bold" },
             Patch::Up,
@@ -797,7 +806,7 @@ fn replace_text_with_element() {
     compare!(
         patch_set,
         [
-            Patch::RemoveText(Box::new(|| t("div"))),
+            Patch::RemoveText(leaked_t("div")),
             Patch::CreateElement { element: "div".into() },
             Patch::Up,
         ]

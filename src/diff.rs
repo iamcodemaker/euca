@@ -11,15 +11,6 @@ use crate::vdom::DomItem;
 use crate::vdom::WebItem;
 use crate::component::Component;
 
-fn take_text<'a, Message>(item: &'a mut WebItem<Message>) -> Box<dyn FnMut() -> web_sys::Text + 'a> {
-    Box::new(move || {
-        match item.take() {
-            WebItem::Text(i) => i,
-            _ => panic!("storage type mismatch"),
-        }
-    })
-}
-
 fn take_closure<'a, Message>(item: &'a mut WebItem<Message>) -> Box<dyn FnMut() -> Closure<dyn FnMut(web_sys::Event)> + 'a> {
     Box::new(move || {
         match item.take() {
@@ -199,11 +190,11 @@ where
                 // if the text matches, use the web_sys::Text
                 if o_text == n_text {
                     // copy the node
-                    patch_set.push(Patch::CopyText(take_text(web_item)));
+                    patch_set.push(Patch::CopyText(web_item));
                 }
                 // text doesn't match, update it
                 else {
-                    patch_set.push(Patch::ReplaceText { take: take_text(web_item) , text: n_text });
+                    patch_set.push(Patch::ReplaceText { take: web_item, text: n_text });
                 }
 
                 (old.next(), new.next())
@@ -325,7 +316,7 @@ where
             }
             DomItem::Text(_) => {
                 let web_item = sto.next().expect("dom storage to match dom iter");
-                patch_set.push(Patch::RemoveText(take_text(web_item)));
+                patch_set.push(Patch::RemoveText(web_item));
                 self.remove_sub_tree()
             }
             DomItem::Component { .. } => {
