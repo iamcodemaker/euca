@@ -4,21 +4,11 @@ use std::fmt;
 use std::iter;
 use std::collections::HashMap;
 use std::collections::hash_map::Entry;
-use wasm_bindgen::prelude::Closure;
 use crate::patch::PatchSet;
 use crate::patch::Patch;
 use crate::vdom::DomItem;
 use crate::vdom::WebItem;
 use crate::component::Component;
-
-fn take_closure<'a, Message>(item: &'a mut WebItem<Message>) -> Box<dyn FnMut() -> Closure<dyn FnMut(web_sys::Event)> + 'a> {
-    Box::new(move || {
-        match item.take() {
-            WebItem::Closure(i) => i,
-            _ => panic!("storage type mismatch"),
-        }
-    })
-}
 
 fn take_component<'a, Message>(item: &'a mut WebItem<Message>) -> Box<dyn FnMut() -> Box<dyn Component<Message>> + 'a> {
     Box::new(move || {
@@ -266,14 +256,14 @@ where
 
                 if o_trigger != n_trigger || o_handler != n_handler {
                     // remove old listener
-                    patch_set.push(Patch::RemoveListener { trigger: o_trigger, take: take_closure(web_item) });
+                    patch_set.push(Patch::RemoveListener { trigger: o_trigger, take: web_item });
 
                     // add new listener
                     patch_set.push(Patch::AddListener { trigger: n_trigger, handler: n_handler.into() });
                 }
                 else {
                     // just copy the existing listener
-                    patch_set.push(Patch::CopyListener(take_closure(web_item)));
+                    patch_set.push(Patch::CopyListener(web_item));
                 }
 
                 (old.next(), new.next())

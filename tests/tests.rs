@@ -42,6 +42,10 @@ fn leaked_t<Message>(text: &str) -> &mut WebItem<Message> {
     Box::leak(Box::new(WebItem::Text(t(text))))
 }
 
+fn leaked_closure<Message>() -> &'static mut WebItem<Message> {
+    Box::leak(Box::new(WebItem::Closure(Closure::wrap(Box::new(|_|{}) as Box<dyn FnMut(web_sys::Event)>))))
+}
+
 #[derive(Default)]
 struct FakeComponent { }
 
@@ -593,7 +597,7 @@ fn assorted_child_nodes() {
         [
             Patch::CopyElement(leaked_e("div")),
             Patch::CopyElement(leaked_e("h1")),
-            Patch::CopyListener(Box::new(|| Closure::wrap(Box::new(|_|{}) as Box<dyn FnMut(web_sys::Event)>))),
+            Patch::CopyListener(leaked_closure()),
             Patch::ReplaceText { take: leaked_t("h1"), text: "header" },
             Patch::Up,
             Patch::Up,

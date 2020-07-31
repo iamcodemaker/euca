@@ -81,6 +81,14 @@ impl<Message> WebItem<Message> {
             _ =>  None,
         }
     }
+
+    /// Possibly get a reference to the js_sys::Closure in this WebItem.
+    pub fn as_closure(&self) -> Option<&Closure<dyn FnMut(web_sys::Event)>> {
+        match self {
+            WebItem::Closure(closure) => Some(closure),
+            _ =>  None,
+        }
+    }
 }
 
 impl<Message> fmt::Debug for WebItem<Message> {

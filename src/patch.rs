@@ -100,13 +100,13 @@ pub enum Patch<'a, Message, Command> {
         handler: EventHandler<'a, Message>,
     },
     /// Copy an event listener from the old dom tree to the new dom tree.
-    CopyListener(Box<dyn FnMut() -> Closure<dyn FnMut(web_sys::Event)> + 'a>),
+    CopyListener(&'a mut WebItem<Message>),
     /// Remove an event listener.
     RemoveListener {
         /// The trigger for the event to remove.
         trigger: &'a str,
         /// Called once to take an existing closure from the old virtual dom.
-        take: Box<dyn FnMut() -> Closure<dyn FnMut(web_sys::Event)> + 'a>,
+        take: &'a mut WebItem<Message>,
     },
     /// This marks the end of operations on the last node.
     Up,
@@ -135,8 +135,8 @@ impl<'a, Message, Command> fmt::Debug for Patch<'a, Message, Command> where
             Patch::SetAttribute { name: n, value: v } => write!(f, "SetAttribute {{ name: {:?}, value: {:?} }}", n, v),
             Patch::RemoveAttribute(s) => write!(f, "RemoveAttribute({:?})", s),
             Patch::AddListener { trigger: t, handler: h } => write!(f, "AddListener {{ trigger: {:?}, handler: {:?} }}", t, h),
-            Patch::CopyListener(_) => write!(f, "CopyListener(_)"),
-            Patch::RemoveListener { trigger: t, take: _ } => write!(f, "RemoveListener {{ trigger: {:?}), take: _ }}", t),
+            Patch::CopyListener(l) => write!(f, "CopyListener({:?})", l),
+            Patch::RemoveListener { trigger: t, take: l } => write!(f, "RemoveListener {{ trigger: {:?}), take: {:?} }}", t, l),
             Patch::Up => write!(f, "Up"),
         }
     }
@@ -550,13 +550,18 @@ impl<'a, Message, Command> PatchSet<'a, Message, Command> {
                         .expect("failed to add event listener");
                     storage.push(WebItem::Closure(closure));
                 }
-                Patch::CopyListener(mut take) => {
-                    storage.push(WebItem::Closure(take()));
+                Patch::CopyListener(item) => {
+                    storage.push(item.take());
                 }
-                Patch::RemoveListener { trigger, mut take } => {
+                Patch::RemoveListener { trigger, take: item } => {
+                    let item = item.take();
+                    let closure = item.as_closure()
+                        .expect("unexpected WebItem, expected closure")
+                        .as_ref().unchecked_ref();
+
                     let node = node_stack.last().expect("no previous node");
                     (node.as_ref() as &web_sys::EventTarget)
-                        .remove_event_listener_with_callback(&trigger, take().as_ref().unchecked_ref())
+                        .remove_event_listener_with_callback(&trigger, closure)
                         .expect("failed to remove event listener");
                 }
                 Patch::CreateComponent { msg, create } => {
