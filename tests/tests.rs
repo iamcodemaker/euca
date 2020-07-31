@@ -54,6 +54,10 @@ impl FakeComponent {
         Box::new(FakeComponent { })
     }
 
+    fn leaked<Message>() -> &'static mut WebItem<Message> {
+        Box::leak(Box::new(WebItem::Component(Self::new())))
+    }
+
     fn create(_: euca::app::dispatch::Dispatcher<Msg, Cmd>)
     -> Box<dyn Component<Msg>>
     {
@@ -1117,7 +1121,7 @@ fn diff_two_components() {
         patch_set,
         [
             Patch::CopyElement(leaked_e("div")),
-              Patch::RemoveComponent(Box::new(|| FakeComponent::new())),
+              Patch::RemoveComponent(FakeComponent::leaked()),
               Patch::CreateComponent { msg: (), create: FakeComponent::create2 },
               Patch::Up,
             Patch::Up,
@@ -1198,7 +1202,7 @@ fn diff_copy_nested_component() {
               Patch::CopyElement(leaked_e("div")),
                 Patch::CopyElement(leaked_e("div")),
                 Patch::Up,
-                Patch::CopyComponent(Box::new(|| FakeComponent::new())),
+                Patch::CopyComponent(FakeComponent::leaked()),
                 Patch::Up,
                 Patch::CopyElement(leaked_e("div")),
                 Patch::Up,
@@ -1238,7 +1242,7 @@ fn diff_remove_nested_component() {
               Patch::CopyElement(leaked_e("div")),
                 Patch::CopyElement(leaked_e("div")),
                 Patch::Up,
-                Patch::RemoveComponent(Box::new(|| FakeComponent::new())),
+                Patch::RemoveComponent(FakeComponent::leaked()),
                 Patch::CreateElement { element: "div" },
                 Patch::Up,
                 Patch::RemoveElement(leaked_e("div")),

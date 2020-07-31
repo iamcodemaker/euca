@@ -89,6 +89,14 @@ impl<Message> WebItem<Message> {
             _ =>  None,
         }
     }
+
+    /// Possibly get a reference to the Component in this WebItem.
+    pub fn as_component(&self) -> Option<&Box<dyn Component<Message>>> {
+        match self {
+            WebItem::Component(c) => Some(c),
+            _ =>  None,
+        }
+    }
 }
 
 impl<Message> fmt::Debug for WebItem<Message> {

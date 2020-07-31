@@ -73,16 +73,16 @@ pub enum Patch<'a, Message, Command> {
         create: fn(Dispatcher<Message, Command>) -> Box<dyn Component<Message>>,
     },
     /// Move a component from the old dom to the new one.
-    CopyComponent(Box<dyn FnMut() -> Box<dyn Component<Message>> + 'a>),
+    CopyComponent(&'a mut WebItem<Message>),
     /// Send a message to a component.
     UpdateComponent {
         /// Called once to take an existing component node from the old virtual dom.
-        take: Box<dyn FnMut() -> Box<dyn Component<Message>> + 'a>,
+        take: &'a mut WebItem<Message>,
         /// The message to send.
         msg: Message,
     },
     /// Remove a component.
-    RemoveComponent(Box<dyn FnMut() -> Box<dyn Component<Message>> + 'a>),
+    RemoveComponent(&'a mut WebItem<Message>),
     /// Set an attribute.
     SetAttribute {
         /// The name of the attribute to set.
@@ -129,9 +129,9 @@ impl<'a, Message, Command> fmt::Debug for Patch<'a, Message, Command> where
             Patch::SetInnerHtml(html) => write!(f, "SetInnerHtml({:?})", html),
             Patch::UnsetInnerHtml => write!(f, "UnsetInnerHtml"),
             Patch::CreateComponent { msg, create: _ } => write!(f, "CreateComponent {{ msg: {:?}, create: _ }}", msg),
-            Patch::UpdateComponent { take: _, msg } => write!(f, "CreateComponent {{ take: _, msg: {:?} }}", msg),
-            Patch::CopyComponent(_) => write!(f, "CopyComponent(_)"),
-            Patch::RemoveComponent(_) => write!(f, "RemoveComponent(_)"),
+            Patch::UpdateComponent { take: c, msg } => write!(f, "UpdateComponent {{ take: {:?}, msg: {:?} }}", c, msg),
+            Patch::CopyComponent(c) => write!(f, "CopyComponent({:?})", c),
+            Patch::RemoveComponent(c) => write!(f, "RemoveComponent({:?})", c),
             Patch::SetAttribute { name: n, value: v } => write!(f, "SetAttribute {{ name: {:?}, value: {:?} }}", n, v),
             Patch::RemoveAttribute(s) => write!(f, "RemoveAttribute({:?})", s),
             Patch::AddListener { trigger: t, handler: h } => write!(f, "AddListener {{ trigger: {:?}, handler: {:?} }}", t, h),
@@ -575,25 +575,34 @@ impl<'a, Message, Command> PatchSet<'a, Message, Command> {
                     component.dispatch(msg);
                     storage.push(WebItem::Component(component));
                 }
-                Patch::UpdateComponent { mut take, msg } => {
-                    let component = take();
+                Patch::UpdateComponent { take: item, msg } => {
+                    let item = item.take();
+                    let component = item.as_component()
+                        .expect("unexpected WebItem, expected component");
+
                     component.dispatch(msg);
 
                     let node = component.node().expect("empty component?");
-                    storage.push(WebItem::Component(component));
+                    storage.push(item);
                     node_stack.insert_before(Some(&node));
                     node_stack.push_parent(node);
                 }
-                Patch::CopyComponent(mut take) => {
-                    let component = take();
+                Patch::CopyComponent(item) => {
+                    let item = item.take();
+                    let component = item.as_component()
+                        .expect("unexpected WebItem, expected component");
+
                     let node = component.node().expect("empty component?");
 
-                    storage.push(WebItem::Component(component));
+                    storage.push(item);
                     node_stack.insert_before(Some(&node));
                     node_stack.push_parent(node);
                 }
-                Patch::RemoveComponent(mut take) => {
-                    let component = take();
+                Patch::RemoveComponent(item) => {
+                    let item = item.take();
+                    let component = item.as_component()
+                        .expect("unexpected WebItem, expected component");
+
                     component.detach();
                 }
                 Patch::Up => {

@@ -8,16 +8,6 @@ use crate::patch::PatchSet;
 use crate::patch::Patch;
 use crate::vdom::DomItem;
 use crate::vdom::WebItem;
-use crate::component::Component;
-
-fn take_component<'a, Message>(item: &'a mut WebItem<Message>) -> Box<dyn FnMut() -> Box<dyn Component<Message>> + 'a> {
-    Box::new(move || {
-        match item.take() {
-            WebItem::Component(i) => i,
-            _ => panic!("storage type mismatch"),
-        }
-    })
-}
 
 /// Return the series of steps required to move from the given old/existing virtual dom to the
 /// given new virtual dom.
@@ -207,11 +197,11 @@ where
 
                 // message matches, copy the storage
                 if o_msg == n_msg {
-                    patch_set.push(Patch::CopyComponent(take_component(web_item)));
+                    patch_set.push(Patch::CopyComponent(web_item));
                 }
                 // message doesn't match, dispatch it to the component
                 else {
-                    patch_set.push(Patch::UpdateComponent { take: take_component(web_item), msg: n_msg });
+                    patch_set.push(Patch::UpdateComponent { take: web_item, msg: n_msg });
                 }
 
                 (old.next(), new.next())
@@ -311,7 +301,7 @@ where
             }
             DomItem::Component { .. } => {
                 let web_item = sto.next().expect("dom storage to match dom iter");
-                patch_set.push(Patch::RemoveComponent(take_component(web_item)));
+                patch_set.push(Patch::RemoveComponent(web_item));
                 self.remove_sub_tree()
             }
             DomItem::UnsafeInnerHtml(_) => {
@@ -486,7 +476,7 @@ where
                 // component: remove it from storage and the dom
                 Some(DomItem::Component { .. }) => {
                     let web_item = self.sto.next().expect("dom storage to match dom iter");
-                    self.patch_set.push(Patch::RemoveComponent(take_component(web_item)));
+                    self.patch_set.push(Patch::RemoveComponent(web_item));
                     depth += 1;
                     self.old.next()
                 }
