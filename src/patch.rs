@@ -268,19 +268,6 @@ impl<'a, Message, Command> PatchSet<'a, Message, Command> {
         self.patches.push(patch)
     }
 
-    /// Insert a keyed PatchSet.
-    pub fn insert<I>(&mut self, k: u64, v: I)
-    -> Option<Self>
-    where
-        I: IntoIterator<Item = Patch<'a, Message, Command>>,
-    {
-        self.keyed.insert(k, v.into_iter().collect())
-            .map(|p| Self {
-                patches: p,
-                keyed: HashMap::new(),
-            })
-    }
-
     /// Put the patches from the given patch set into this PatchSet.
     pub fn extend(&mut self, other: Self) {
         let Self { patches, keyed } = other;
