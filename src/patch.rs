@@ -281,14 +281,12 @@ impl<'a, Message, Command> PatchSet<'a, Message, Command> {
             })
     }
 
-    /// Put the patches from the given iter into this PatchSet.
-    pub fn extend<I>(&mut self, iter: I)
-    where
-        I: IntoIterator<Item = Patch<'a, Message, Command>>,
-    {
-        self.patches.extend(iter)
+    /// Put the patches from the given patch set into this PatchSet.
+    pub fn extend(&mut self, other: Self) {
+        let Self { patches, keyed } = other;
+        self.patches.extend(patches);
+        self.keyed.extend(keyed);
     }
-
 
     /// Return the length of the PatchSet.
     pub fn len(&self) -> usize {
