@@ -1,6 +1,9 @@
 //! Tools to get the difference between two virtual dom trees.
 
 use std::fmt;
+use std::iter;
+use std::collections::HashMap;
+use std::collections::hash_map::Entry;
 use wasm_bindgen::prelude::Closure;
 use crate::patch::PatchSet;
 use crate::patch::Patch;
@@ -63,6 +66,12 @@ where
     new: N::IntoIter,
     sto: S::IntoIter,
     patch_set: PatchSet<'a, Message, Command>,
+    /// list of old keyed DomItems (and their storage)
+    old_def: HashMap<u64, (Vec<DomItem<'a, Message, Command>>, Vec<&'a mut WebItem<Message>>)>,
+    /// list of new keyed DomItems
+    new_def: HashMap<u64, Vec<DomItem<'a, Message, Command>>>,
+    /// if true (the default), keyed items will be deferred
+    defer_keyed: bool,
 }
 
 impl<'a, Message, Command, O, N, S>
@@ -79,6 +88,21 @@ where
             new: new.into_iter(),
             sto: sto.into_iter(),
             patch_set: PatchSet::new(),
+            old_def: HashMap::new(),
+            new_def: HashMap::new(),
+            defer_keyed: true,
+        }
+    }
+
+    fn no_defer(old: O, new: N, sto: S) -> Self {
+        DiffImpl {
+            old: old.into_iter(),
+            new: new.into_iter(),
+            sto: sto.into_iter(),
+            patch_set: PatchSet::new(),
+            old_def: HashMap::new(),
+            new_def: HashMap::new(),
+            defer_keyed: false,
         }
     }
 
@@ -107,6 +131,28 @@ where
             }
         }
 
+        // now look for differences between keyed nodes
+        for (key, (old_items, storage)) in self.old_def.drain() {
+            if let Some(new_items) = self.new_def.remove(&key) {
+                // there is something to diff, store it
+                let mut ps = DiffImpl::no_defer(old_items, new_items, storage).diff();
+                ps.root_key(key);
+                self.patch_set.extend(ps);
+            }
+            else {
+                // node is being removed, append the removal to the top level patch set
+                let ps = DiffImpl::no_defer(old_items, iter::empty(), storage).diff();
+                self.patch_set.extend(ps);
+            }
+        }
+
+        // any nodes left in new need to be added
+        for (key, new_items) in self.new_def.drain() {
+            let mut ps = DiffImpl::no_defer(iter::empty(), new_items, iter::empty()).diff();
+            ps.root_key(key);
+            self.patch_set.extend(ps);
+        }
+
         self.patch_set
     }
 
@@ -125,8 +171,18 @@ where
 
         match (o_item, n_item) {
             (
-                DomItem::Element { name: o_element, .. },
-                DomItem::Element { name: n_element, .. },
+                DomItem::Element { name: o_element, key: Some(o_key) },
+                DomItem::Element { name: n_element, key: Some(n_key) },
+            ) if o_element == n_element && o_key == n_key => { // compare elements and keys
+                let web_item = sto.next().expect("dom storage to match dom iter");
+
+                // move the node
+                patch_set.push(Patch::MoveElement(web_item));
+                (old.next(), new.next())
+            }
+            (
+                DomItem::Element { name: o_element, key: None },
+                DomItem::Element { name: n_element, key: None },
             ) if o_element == n_element => { // compare elements
                 let web_item = sto.next().expect("dom storage to match dom iter");
 
@@ -258,6 +314,10 @@ where
         let old = &mut self.old;
 
         match item {
+           DomItem::Element { key: Some(_), .. }
+            if self.defer_keyed => {
+                self.defer_remove_sub_tree(item, None)
+            }
             DomItem::Element { .. } => {
                 let web_item = sto.next().expect("dom storage to match dom iter");
                 patch_set.push(Patch::RemoveElement(web_item));
@@ -292,6 +352,10 @@ where
             DomItem::Up => {
                 Some(item)
             }
+            // ignore
+            DomItem::Key(_) => {
+                old.next()
+            }
         }
     }
 
@@ -305,6 +369,10 @@ where
         let new = &mut self.new;
 
         match item {
+            DomItem::Element { key: Some(_), .. }
+            if self.defer_keyed => {
+                self.defer_add_sub_tree(item, None)
+            }
             DomItem::Element { name: element, .. } => {
                 patch_set.push(Patch::CreateElement { element });
                 self.add_sub_tree()
@@ -316,6 +384,10 @@ where
             DomItem::Component { msg, create } => {
                 patch_set.push(Patch::CreateComponent { msg, create });
                 self.add_sub_tree()
+            }
+            DomItem::Key(k) => {
+                patch_set.push(Patch::ReferenceKey(k));
+                new.next()
             }
             DomItem::UnsafeInnerHtml(html) => {
                 patch_set.push(Patch::SetInnerHtml(html));
@@ -349,6 +421,10 @@ where
         let mut item = self.new.next();
         loop {
             item = match item {
+                Some(item @ DomItem::Element { key: Some(_), .. })
+                if self.defer_keyed => {
+                    self.defer_add_sub_tree(item, None)
+                }
                 Some(DomItem::Element { name: element, .. }) => {
                     self.patch_set.push(Patch::CreateElement { element });
                     depth += 1;
@@ -362,6 +438,10 @@ where
                 Some(DomItem::Component { msg, create }) => {
                     self.patch_set.push(Patch::CreateComponent { msg, create });
                     depth += 1;
+                    self.new.next()
+                }
+                Some(DomItem::Key(k)) => {
+                    self.patch_set.push(Patch::ReferenceKey(k));
                     self.new.next()
                 }
                 Some(DomItem::UnsafeInnerHtml(html)) => {
@@ -405,6 +485,11 @@ where
         let mut item = self.old.next();
         loop {
             item = match item {
+                // keyed child element: defer
+                Some(item @ DomItem::Element { key: Some(_), .. })
+                if self.defer_keyed => {
+                    self.defer_remove_sub_tree(item, None)
+                }
                 // child element: remove from storage, track sub-tree depth
                 Some(DomItem::Element { .. }) => {
                     let _ = self.sto.next().expect("dom storage to match dom iter");
@@ -422,6 +507,10 @@ where
                     let web_item = self.sto.next().expect("dom storage to match dom iter");
                     self.patch_set.push(Patch::RemoveComponent(take_component(web_item)));
                     depth += 1;
+                    self.old.next()
+                }
+                // key reference: ignore
+                Some(DomItem::Key(_)) => {
                     self.old.next()
                 }
                 // event: remove from storage
@@ -453,4 +542,256 @@ where
         }
     }
 
+    /// Track the items in this sub tree.
+    ///
+    /// Expected to be called where `old.next()` just returned a node that may have children. This will
+    /// handle removing nodes from storage, up to the matching `DomItem::Up` entry.
+    fn defer_remove_sub_tree(
+        &mut self,
+        item: DomItem<'a, Message, Command>,
+        mut deferred: Option<(&mut Vec<DomItem<'a, Message, Command>>, &mut Vec<&'a mut WebItem<Message>>)>,
+    ) -> Option<DomItem<'a, Message, Command>>
+    {
+        let key = if let DomItem::Element { key: Some(key), .. } = item {
+            let web_item = self.sto.next().expect("dom storage to match dom iter");
+            match self.old_def.entry(key) {
+                Entry::Occupied(_) => {
+                    // XXX log the error to the debug console? warn?
+                    if let Some((ref mut deferred_items, ref mut deferred_storage)) = deferred {
+                        deferred_items.push(item);
+                        deferred_storage.push(web_item);
+                        None
+                    }
+                    else {
+                        self.patch_set.push(Patch::RemoveElement(web_item));
+                        return self.remove_sub_tree();
+                    }
+                }
+                Entry::Vacant(e) => {
+                    if let Some((ref mut deferred_items, _)) = deferred {
+                        deferred_items.push(DomItem::Key(key));
+                    }
+
+                    e.insert((vec![item], vec![web_item]));
+                    Some(key)
+                }
+            }
+        }
+        else {
+            panic!("expected keyed element");
+        };
+
+        let mut def_items = vec![];
+        let mut def_storage = vec![];
+
+        // this will copy the entire sub tree for later when we compare keyed elements
+        let mut item = self.old.next();
+        let mut depth = 0;
+        let next = loop {
+            if let Some(i) = item {
+                item = match i {
+                    // child element: remove from storage, track sub-tree depth
+                    DomItem::Element { key: Some(_), .. } => {
+                        self.defer_remove_sub_tree(i, Some((&mut def_items, &mut def_storage)))
+                    }
+                    // child element: remove from storage, track sub-tree depth
+                    DomItem::Element { .. } => {
+                        def_storage.push(self.sto.next().expect("dom storage to match dom iter"));
+                        def_items.push(i);
+                        depth += 1;
+                        self.old.next()
+                    }
+                    // child text: remove from storage, track sub-tree depth
+                    DomItem::Text(_) => {
+                        def_storage.push(self.sto.next().expect("dom storage to match dom iter"));
+                        def_items.push(i);
+                        depth += 1;
+                        self.old.next()
+                    }
+                    // component: remove it from storage and the dom
+                    DomItem::Component { .. } => {
+                        def_storage.push(self.sto.next().expect("dom storage to match dom iter"));
+                        def_items.push(i);
+                        depth += 1;
+                        self.old.next()
+                    }
+                    // key reference: defer
+                    DomItem::Key(_) => {
+                        def_items.push(i);
+                        self.old.next()
+                    }
+                    // event: remove from storage
+                    DomItem::Event { .. } => {
+                        def_storage.push(self.sto.next().expect("dom storage to match dom iter"));
+                        def_items.push(i);
+                        self.old.next()
+                    }
+                    // innerHtml: ignore
+                    DomItem::UnsafeInnerHtml(_) => {
+                        def_items.push(i);
+                        self.old.next()
+                    }
+                    // attribute: ignore
+                    DomItem::Attr { .. } => {
+                        def_items.push(i);
+                        self.old.next()
+                    }
+                    // end of child: track sub-tree depth
+                    DomItem::Up if depth > 0 => {
+                        def_items.push(i);
+                        depth -= 1;
+                        self.old.next()
+                    }
+                    // end of node: stop processing
+                    DomItem::Up => {
+                        def_items.push(i);
+                        break self.old.next();
+                    }
+                };
+            }
+            else {
+                break None;
+            }
+        };
+
+        // if this sub tree has a unique key, add the deferred items to the sub tree for that key
+        if let Some(key) = key {
+            let (
+                ref mut items,
+                ref mut storage
+            ) = self.old_def.get_mut(&key)
+                .expect("key should exist");
+
+            items.extend(def_items);
+            storage.extend(def_storage);
+        }
+        // otherwise add the defeferred items to the given vecs
+        else if let Some((deferred_items, deferred_storage)) = deferred{
+            deferred_items.extend(def_items);
+            deferred_storage.extend(def_storage);
+        }
+
+        next
+    }
+
+    /// Defer processing of this keyed sub tree.
+    ///
+    /// Expected to be called where `new.next()` just returned a node that may have children.
+    fn defer_add_sub_tree(
+        &mut self,
+        item: DomItem<'a, Message, Command>,
+        mut deferred_items: Option<&mut Vec<DomItem<'a, Message, Command>>>,
+    ) -> Option<DomItem<'a, Message, Command>>
+    {
+        let key = if let DomItem::Element { name: element, key: Some(key) } = item {
+            match self.new_def.entry(key) {
+                Entry::Occupied(_) => {
+                    // XXX log the error to the debug console? warn?
+                    if let Some(ref mut deferred_items) = deferred_items {
+                        deferred_items.push(item);
+                        None
+                    }
+                    else {
+                        self.patch_set.push(Patch::CreateElement { element });
+                        return self.add_sub_tree();
+                    }
+                }
+                Entry::Vacant(e) => {
+                    if let Some(ref mut deferred_items) = deferred_items {
+                        deferred_items.push(DomItem::Key(key));
+                    }
+                    else {
+                        self.patch_set.push(Patch::ReferenceKey(key));
+                    }
+                    e.insert(vec![item]);
+                    Some(key)
+                }
+            }
+        }
+        else {
+            panic!("expected keyed element");
+        };
+
+        let mut def = vec![];
+
+        // this will copy the entire sub tree for later when we compare keyed elements
+        let mut depth = 0;
+        let mut item = self.new.next();
+        let next = loop {
+            if let Some(i) = item {
+                item = match i {
+                    // keyed child element: defer
+                    DomItem::Element { key: Some(_), .. } => {
+                        self.defer_add_sub_tree(i, Some(&mut def))
+                    }
+                    // child element: track depth
+                    DomItem::Element { .. } => {
+                        def.push(i);
+                        depth += 1;
+                        self.new.next()
+                    }
+                    // child text: track depth
+                    DomItem::Text(_) => {
+                        def.push(i);
+                        depth += 1;
+                        self.new.next()
+                    }
+                    // component: track depth
+                    DomItem::Component { .. } => {
+                        def.push(i);
+                        depth += 1;
+                        self.new.next()
+                    }
+                    // key reference: defer
+                    DomItem::Key(_) => {
+                        def.push(i);
+                        self.new.next()
+                    }
+                    // event: ignore
+                    DomItem::Event { .. } => {
+                        def.push(i);
+                        self.new.next()
+                    }
+                    // innerHtml: ignore
+                    DomItem::UnsafeInnerHtml(_) => {
+                        def.push(i);
+                        self.new.next()
+                    }
+                    // attribute: ignore
+                    DomItem::Attr { .. } => {
+                        def.push(i);
+                        self.new.next()
+                    }
+                    // end of child: track sub-tree depth
+                    DomItem::Up if depth > 0 => {
+                        def.push(i);
+                        depth -= 1;
+                        self.new.next()
+                    }
+                    // end of node: stop processing
+                    DomItem::Up => {
+                        def.push(i);
+                        break self.new.next();
+                    }
+                };
+            }
+            else {
+                break None;
+            }
+        };
+
+        // if this sub tree has a unique key, add the deferred items to the sub tree for that key
+        if let Some(key) = key {
+            let items = self.new_def.get_mut(&key)
+                .expect("key should exist");
+
+            items.extend(def);
+        }
+        // otherwise add the defeferred items to the given vec
+        else if let Some(deferred_items) = deferred_items {
+            deferred_items.extend(def);
+        }
+
+        next
+    }
 } // end of impl DiffImpl

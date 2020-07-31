@@ -4,6 +4,8 @@
 //! structure works with other parts of this library.
 
 use std::iter;
+use std::hash::{Hash, Hasher};
+use std::collections::hash_map::DefaultHasher;
 use crate::vdom::*;
 
 /// A DOM event handler.
@@ -113,6 +115,8 @@ pub struct Dom<Message = (), Command = ()> {
     element: Node<Message, Command>,
     /// The innerHtml value for this node.
     inner_html: Option<String>,
+    /// The key for this node.
+    key: Option<u64>,
     /// Attributes on this node.
     pub attributes: Vec<Attr>,
     /// Event handlers associated with this node.
@@ -126,6 +130,7 @@ impl<Message, Command> Dom<Message, Command> {
     pub fn elem(element: &'static str) -> Self {
         Dom {
             element: Node::elem(element),
+            key: None,
             events: vec![],
             attributes: vec![],
             children: vec![],
@@ -137,6 +142,7 @@ impl<Message, Command> Dom<Message, Command> {
     pub fn text(value: impl Into<String>) -> Self {
         Dom {
             element: Node::text(value.into()),
+            key: None,
             events: vec![],
             attributes: vec![],
             children: vec![],
@@ -148,11 +154,27 @@ impl<Message, Command> Dom<Message, Command> {
     pub fn component(msg: Message, create: fn(Dispatcher<Message, Command>) -> Box<dyn Component<Message>>) -> Self {
         Dom {
             element: Node::component(msg, create),
+            key: None,
             events: vec![],
             attributes: vec![],
             children: vec![],
             inner_html: None,
         }
+    }
+
+    /// Add an key to this DOM element.
+    pub fn key<Q: ?Sized>(mut self, key: &Q) -> Self
+    where
+        Q: Hash,
+    {
+        // XXX what about collisions? Should we just store the key and pass that into the diff
+        // algo? Collisions aren't actually a problem though, it will just make the diff algo less
+        // efficient. Except for components 🤔 Yeah, we should just store the key and require it to
+        // be Eq or PartialEq or something.
+        let mut hasher = DefaultHasher::new();
+        key.hash(&mut hasher);
+        self.key = Some(hasher.finish());
+        self
     }
 
     /// Set innerHtml on this node. Use with caution as this can be used as an attack vector to
@@ -222,9 +244,9 @@ impl<Message, Command> Into<Dom<Message, Command>> for &str {
 impl<Message: Clone, Command> DomIter<Message, Command> for Dom<Message, Command> {
     fn dom_iter<'a>(&'a self) -> Box<dyn Iterator<Item = DomItem<'a, Message, Command>> + 'a>
     {
-        let iter = iter::once(&self.element)
-            .map(|node| match node {
-                Node::Elem { name } => DomItem::Element { name, key: None },
+        let iter = iter::once((&self.element, &self.key))
+            .map(|(node, key)| match node {
+                Node::Elem { name } => DomItem::Element { name, key: *key },
                 Node::Text { text } => DomItem::Text(text),
                 Node::Component { msg, create } => DomItem::Component { msg: msg.clone(), create: *create },
             })

@@ -1,6 +1,8 @@
 use std::rc::Rc;
 use std::cell::RefCell;
 use std::iter;
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 use euca::vdom::WebItem;
@@ -74,7 +76,7 @@ fn gen_storage<'a, Message, Command, Iter>(iter: Iter) -> Storage<Message> where
             match i {
                 DomItem::Element { .. } | DomItem::Text(_) | DomItem::Event { .. }
                 | DomItem::Component { .. } => true,
-                DomItem::Attr { .. } | DomItem::UnsafeInnerHtml(_)
+                DomItem::Key(_) | DomItem::Attr { .. } | DomItem::UnsafeInnerHtml(_)
                 | DomItem::Up => false,
             }
         })
@@ -92,12 +94,19 @@ fn gen_storage<'a, Message, Command, Iter>(iter: Iter) -> Storage<Message> where
                     )
                 ),
                 DomItem::Component { .. } => WebItem::Component(FakeComponent::new()),
-                DomItem::Attr { .. } | DomItem::Up | DomItem::UnsafeInnerHtml(_) => {
+                DomItem::Attr { .. } | DomItem::Key(_)
+                | DomItem::Up | DomItem::UnsafeInnerHtml(_) => {
                     unreachable!("attribute, inner html, and up nodes should have been filtered out")
                 },
             }
         })
         .collect()
+}
+
+fn hash<K: Hash + ?Sized>(key: &K) -> u64 {
+    let mut hasher = DefaultHasher::new();
+    key.hash(&mut hasher);
+    hasher.finish()
 }
 
 fn compare_patch_vecs(left: &Vec<Patch<Msg, Cmd>>, right: &Vec<Patch<Msg, Cmd>>, dump: &str) {
@@ -1225,5 +1234,227 @@ fn diff_remove_nested_component() {
               Patch::Up,
             Patch::Up,
         ]
+    );
+}
+
+#[wasm_bindgen_test]
+fn diff_keyed_element_equal() {
+    let old = Dom::elem("div")
+        .push(Dom::elem("div")
+            .key("yup")
+        );
+    let new = Dom::elem("div")
+        .push(Dom::elem("div")
+            .key("yup")
+        );
+
+    let mut storage = gen_storage(old.dom_iter());
+    let o = old.dom_iter();
+    let n = new.dom_iter();
+    let patch_set = diff::diff(o, n, &mut storage);
+
+    compare!(
+        patch_set,
+        [
+            Patch::CopyElement(leaked_e("div")),
+              Patch::MoveElement(leaked_e("div")),
+              Patch::Up,
+            Patch::Up,
+        ]
+    );
+}
+
+#[wasm_bindgen_test]
+fn diff_keyed_element_not_equal() {
+    let old = Dom::elem("div")
+        .push(Dom::elem("div")
+            .key("yup")
+        );
+    let new = Dom::elem("div")
+        .push(Dom::elem("div")
+            .key("nope")
+        );
+
+    let mut storage = gen_storage(old.dom_iter());
+    let o = old.dom_iter();
+    let n = new.dom_iter();
+    let patch_set = diff::diff(o, n, &mut storage);
+
+    compare!(
+        patch_set,
+        [
+            Patch::CopyElement(leaked_e("div")),
+              Patch::ReferenceKey(hash("nope")),
+            Patch::Up,
+            Patch::RemoveElement(leaked_e("div")),
+        ],
+        hash("nope") => [
+            Patch::CreateElement { element: "div" },
+            Patch::Up,
+        ],
+    );
+}
+
+#[wasm_bindgen_test]
+fn diff_keyed_element_move_key() {
+    let old = Dom::elem("div")
+        .push(Dom::elem("div"))
+        .push(Dom::elem("div")
+            .key("yup")
+        );
+    let new = Dom::elem("div")
+        .push(Dom::elem("div")
+            .key("yup")
+        )
+        .push(Dom::elem("div"));
+
+    let mut storage = gen_storage(old.dom_iter());
+    let o = old.dom_iter();
+    let n = new.dom_iter();
+    let patch_set = diff::diff(o, n, &mut storage);
+
+    compare!(
+        patch_set,
+        [
+            Patch::CopyElement(leaked_e("div")),
+              Patch::RemoveElement(leaked_e("div")),
+              Patch::ReferenceKey(hash("yup")),
+              Patch::CreateElement { element: "div" },
+              Patch::Up,
+            Patch::Up,
+        ],
+        hash("yup") => [
+            Patch::MoveElement(leaked_e("div")),
+            Patch::Up,
+        ],
+    );
+}
+
+#[wasm_bindgen_test]
+fn diff_keyed_from_empty() {
+    let new = Dom::elem("div")
+        .push(Dom::elem("div")
+            .key("yup")
+        );
+
+    let o = iter::empty();
+    let n = new.dom_iter();
+    let patch_set = diff::diff(o, n, iter::empty());
+
+    compare!(
+        patch_set,
+        [
+            Patch::CreateElement { element: "div" },
+              Patch::ReferenceKey(hash("yup")),
+            Patch::Up,
+        ],
+        hash("yup") => [
+            Patch::CreateElement { element: "div" },
+            Patch::Up,
+        ],
+    );
+}
+
+#[wasm_bindgen_test]
+fn diff_keyed_to_empty() {
+    let old = Dom::elem("div")
+        .push(Dom::elem("div")
+            .key("yup")
+        );
+
+    let mut storage = gen_storage(old.dom_iter());
+    let o = old.dom_iter();
+    let n = iter::empty();
+    let patch_set = diff::diff(o, n, &mut storage);
+
+    compare!(
+        patch_set,
+        [
+            Patch::RemoveElement(leaked_e("div")),
+            Patch::RemoveElement(leaked_e("div")),
+        ]
+    );
+}
+
+#[wasm_bindgen_test]
+fn diff_nested_keyed_element_swap() {
+    let old = Dom::elem("div")
+        .push(Dom::elem("div")
+            .key("yup")
+            .push(Dom::elem("span")
+                .key("yup yup")
+            )
+        );
+    let new = Dom::elem("div")
+        .push(Dom::elem("span")
+            .key("yup yup")
+            .push(Dom::elem("div")
+                .key("yup")
+            )
+        );
+
+    let mut storage = gen_storage(old.dom_iter());
+    let o = old.dom_iter();
+    let n = new.dom_iter();
+    let patch_set = diff::diff(o, n, &mut storage);
+
+    compare!(
+        patch_set,
+        [
+            Patch::CopyElement(leaked_e("div")),
+              Patch::ReferenceKey(hash("yup yup")),
+            Patch::Up,
+        ],
+        hash("yup yup") => [
+            Patch::MoveElement(leaked_e("span")),
+              Patch::ReferenceKey(hash("yup")),
+            Patch::Up,
+        ],
+        hash("yup") => [
+            Patch::MoveElement(leaked_e("div")),
+            Patch::Up,
+        ],
+    );
+}
+
+#[wasm_bindgen_test]
+fn diff_duplicate_key() {
+    let old = Dom::elem("div")
+        .push(Dom::elem("div")
+            .key("yup")
+        )
+        .push(Dom::elem("span")
+            .key("yup")
+        );
+    let new = Dom::elem("div")
+        .push(Dom::elem("div"))
+        .push(Dom::elem("div")
+            .key("yup")
+        )
+        .push(Dom::elem("span")
+            .key("yup")
+        );
+
+    let mut storage = gen_storage(old.dom_iter());
+    let o = old.dom_iter();
+    let n = new.dom_iter();
+    let patch_set = diff::diff(o, n, &mut storage);
+
+    compare!(
+        patch_set,
+        [
+            Patch::CopyElement(leaked_e("div")),
+              Patch::CreateElement { element: "div" },
+              Patch::Up,
+              Patch::RemoveElement(leaked_e("span")),
+              Patch::ReferenceKey(hash("yup")),
+              Patch::CreateElement { element: "span" },
+              Patch::Up,
+            Patch::Up,
+        ],
+        hash("yup") => [
+            Patch::MoveElement(leaked_e("div")),
+            Patch::Up,
+        ],
     );
 }

@@ -142,7 +142,9 @@ pub enum DomItem<'a, Message, Command> {
         msg: Message,
         /// A function to create the component if necessary.
         create: fn(Dispatcher<Message, Command>) -> Box<dyn Component<Message>>,
-    }
+    },
+    /// For internal use. This is a reference to a keyed item.
+    Key(u64),
 }
 
 /// This trait provides a way to iterate over a virtual dom representation.

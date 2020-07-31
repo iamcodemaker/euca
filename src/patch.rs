@@ -268,6 +268,13 @@ impl<'a, Message, Command> PatchSet<'a, Message, Command> {
         self.patches.push(patch)
     }
 
+    /// Move the top level patch set into a keyed entry.
+    pub fn root_key(&mut self, key: u64) {
+        let mut patches = vec![];
+        std::mem::swap(&mut self.patches, &mut patches);
+        self.keyed.insert(key, patches);
+    }
+
     /// Put the patches from the given patch set into this PatchSet.
     pub fn extend(&mut self, other: Self) {
         let Self { patches, keyed } = other;
