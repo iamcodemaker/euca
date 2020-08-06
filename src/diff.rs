@@ -259,6 +259,7 @@ where
                 (old.next(), new.next())
             }
             (DomItem::Up, DomItem::Up) => { // end of two items
+                let _ = sto.next().expect("dom storage to match dom iter");
                 patch_set.push(Patch::Up);
                 (old.next(), new.next())
             }
@@ -499,11 +500,13 @@ where
                 }
                 // end of child: track sub-tree depth
                 Some(DomItem::Up) if depth > 0 => {
+                    let _ = self.sto.next().expect("dom storage to match dom iter");
                     depth -= 1;
                     self.old.next()
                 }
                 // end of node: stop processing
                 Some(DomItem::Up) => {
+                    let _ = self.sto.next().expect("dom storage to match dom iter");
                     return self.old.next();
                 }
                 o @ None => {
@@ -609,12 +612,14 @@ where
                     }
                     // end of child: track sub-tree depth
                     DomItem::Up if depth > 0 => {
+                        def_storage.push(self.sto.next().expect("dom storage to match dom iter"));
                         def_items.push(i);
                         depth -= 1;
                         self.old.next()
                     }
                     // end of node: stop processing
                     DomItem::Up => {
+                        def_storage.push(self.sto.next().expect("dom storage to match dom iter"));
                         def_items.push(i);
                         break self.old.next();
                     }

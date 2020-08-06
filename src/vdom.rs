@@ -56,6 +56,11 @@ pub enum WebItem<Message> {
     Component(Box<dyn Component<Message>>),
     /// A previously occupied, now empty storage entry.
     Taken,
+    /// The end of a node.
+    ///
+    /// Used for tracking the depth in the tree. We need this so we can find the top level elements
+    /// in the storage vec.
+    Up,
 }
 
 impl<Message> WebItem<Message> {
@@ -107,6 +112,7 @@ impl<Message> fmt::Debug for WebItem<Message> {
             WebItem::Closure(_) => write!(f, "Closure(_)"),
             WebItem::Component(_) => write!(f, "Component(_)"),
             WebItem::Taken => write!(f, "Taken"),
+            WebItem::Up => write!(f, "Up"),
         }
     }
 }

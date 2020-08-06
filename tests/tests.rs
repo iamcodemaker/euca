@@ -87,9 +87,9 @@ fn gen_storage<'a, Message, Command, Iter>(iter: Iter) -> Storage<Message> where
         .filter(|i| {
             match i {
                 DomItem::Element { .. } | DomItem::Text(_) | DomItem::Event { .. }
-                | DomItem::Component { .. } => true,
+                | DomItem::Component { .. } | DomItem::Up => true,
                 DomItem::Key(_) | DomItem::Attr { .. } | DomItem::UnsafeInnerHtml(_)
-                | DomItem::Up => false,
+                => false,
             }
         })
         .map(|i| {
@@ -105,9 +105,10 @@ fn gen_storage<'a, Message, Command, Iter>(iter: Iter) -> Storage<Message> where
                         Box::new(|_|()) as Box<dyn FnMut(web_sys::Event)>
                     )
                 ),
+                DomItem::Up => WebItem::Up,
                 DomItem::Component { .. } => WebItem::Component(FakeComponent::new()),
                 DomItem::Attr { .. } | DomItem::Key(_)
-                | DomItem::Up | DomItem::UnsafeInnerHtml(_) => {
+                | DomItem::UnsafeInnerHtml(_) => {
                     unreachable!("attribute, inner html, and up nodes should have been filtered out")
                 },
             }

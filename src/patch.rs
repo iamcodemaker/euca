@@ -607,6 +607,7 @@ impl<'a, Message, Command> PatchSet<'a, Message, Command> {
                 }
                 Patch::Up => {
                     node_stack.pop();
+                    storage.push(WebItem::Up);
                 }
             }
         }
@@ -1211,7 +1212,7 @@ mod tests {
         let patch_set = diff::diff(o, n, &mut storage);
         storage = patch_set.apply(&parent, &app);
 
-        match storage[1] {
+        match storage[2] {
             WebItem::Element(ref node) => assert_eq!(node.node_name(), "P", "wrong node in storage"),
             _ => panic!("expected node to be created"),
         }
@@ -1256,7 +1257,7 @@ mod tests {
         let patch_set = diff::diff(o, n, &mut storage);
         storage = patch_set.apply(&parent, &app);
 
-        match storage[2] {
+        match storage[3] {
             WebItem::Element(ref node) => assert_eq!(node.node_name(), "P", "wrong node in storage"),
             ref e => panic!("expected node to be created instead of: {:?}", e),
         }
