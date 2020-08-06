@@ -287,7 +287,8 @@ where
 
         match item {
            DomItem::Element { key: Some(_), .. }
-            if self.defer_keyed => {
+            if self.defer_keyed
+            => {
                 self.defer_remove_sub_tree(item, None)
             }
             DomItem::Element { .. } => {
@@ -342,7 +343,8 @@ where
 
         match item {
             DomItem::Element { key: Some(_), .. }
-            if self.defer_keyed => {
+            if self.defer_keyed
+            => {
                 self.defer_add_sub_tree(item, None)
             }
             DomItem::Element { name: element, .. } => {
@@ -394,7 +396,8 @@ where
         loop {
             item = match item {
                 Some(item @ DomItem::Element { key: Some(_), .. })
-                if self.defer_keyed => {
+                if self.defer_keyed
+                => {
                     self.defer_add_sub_tree(item, None)
                 }
                 Some(DomItem::Element { name: element, .. }) => {
@@ -459,7 +462,8 @@ where
             item = match item {
                 // keyed child element: defer
                 Some(item @ DomItem::Element { key: Some(_), .. })
-                if self.defer_keyed => {
+                if self.defer_keyed
+                => {
                     self.defer_remove_sub_tree(item, None)
                 }
                 // child element: remove from storage, track sub-tree depth
