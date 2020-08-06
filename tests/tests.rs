@@ -75,6 +75,7 @@ impl<Message> Component<Message> for FakeComponent {
     fn dispatch(&self, _: Message) { }
     fn detach(&self) { }
     fn node(&self) -> Option<web_sys::Node> { None }
+    fn nodes(&self) -> Vec<web_sys::Node> { vec![] }
     fn pending(&mut self) -> Vec<web_sys::Node> { vec![] }
 }
 

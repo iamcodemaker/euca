@@ -261,6 +261,8 @@ pub trait Application<Message, Command> {
     fn push_listener(&mut self, listener: (String, Closure<dyn FnMut(web_sys::Event)>));
     /// The first node of app.
     fn node(&self) -> Option<web_sys::Node>;
+    /// Get all the top level nodes of node this app.
+    fn nodes(&self) -> Vec<web_sys::Node>;
     /// Create the dom nodes for this app.
     fn create(&mut self, app: &Dispatcher<Message, Command>) -> Vec<web_sys::Node>;
     /// Detach the app from the dom.
@@ -378,6 +380,39 @@ where
                     i => panic!("unknown item, expected something with a node in it: {:?}", i)
                 }
             })
+    }
+
+    fn nodes(&self) -> Vec<web_sys::Node> {
+        let mut nodes = vec![];
+        let mut depth = 0;
+        for item in &self.storage {
+            match item {
+                // ignore nodes that are not top level
+                WebItem::Element(_)
+                | WebItem::Text(_)
+                | WebItem::Component(_)
+                if depth > 0
+                => {
+                    depth += 1;
+                }
+                WebItem::Up => depth -= 1,
+                WebItem::Closure(_) => {}
+                WebItem::Element(ref node) => {
+                    nodes.push(node.clone().into());
+                    depth += 1;
+                }
+                WebItem::Text(ref node) => {
+                    nodes.push(node.clone().into());
+                    depth += 1;
+                }
+                WebItem::Component(component) => {
+                    nodes.extend(component.nodes());
+                    depth += 1;
+                }
+                i => panic!("unexpected item, expected something with a node in it, got : {:?}", i)
+            }
+        }
+        nodes
     }
 
     fn create(&mut self, app: &Dispatcher<Message, Command>) -> Vec<web_sys::Node> {

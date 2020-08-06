@@ -58,6 +58,7 @@ impl Application<Msg, Cmd> for App {
     }
     fn push_listener(&mut self, _listener: (String, Closure<dyn FnMut(web_sys::Event)>)) { }
     fn node(&self) -> Option<web_sys::Node> { None }
+    fn nodes(&self) -> Vec<web_sys::Node> { vec![] }
     fn create(&mut self, _app: &Dispatcher<Msg, Cmd>) -> Vec<web_sys::Node> { vec![] }
     fn detach(&mut self, _app: &Dispatcher<Msg, Cmd>) { }
 }

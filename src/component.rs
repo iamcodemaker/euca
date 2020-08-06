@@ -24,6 +24,9 @@ pub trait Component<Message> {
     /// Get the first web_sys::Node of this component (if any)
     fn node(&self) -> Option<web_sys::Node>;
 
+    /// Get the top level web_sys::Nodes of this component (if any)
+    fn nodes(&self) -> Vec<web_sys::Node>;
+
     /// Get nodes waiting to attach to the parent.
     fn pending(&mut self) -> Vec<web_sys::Node>;
 }
@@ -151,6 +154,10 @@ where
     fn node(&self) -> Option<web_sys::Node> {
         Application::node(&**self.app.borrow())
             .map(|node| node.clone())
+    }
+
+    fn nodes(&self) -> Vec<web_sys::Node> {
+        Application::nodes(&**self.app.borrow())
     }
 
     fn pending(&mut self) -> Vec<web_sys::Node> {
