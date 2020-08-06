@@ -153,7 +153,6 @@ where
 
     fn node(&self) -> Option<web_sys::Node> {
         Application::node(&**self.app.borrow())
-            .map(|node| node.clone())
     }
 
     fn nodes(&self) -> Vec<web_sys::Node> {
