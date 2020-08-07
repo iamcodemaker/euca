@@ -342,7 +342,9 @@ impl<'a, Message, Command> PatchSet<'a, Message, Command> {
                     }
                 }
                 Patch::RemoveElement(item) => {
-                    take_element(item).remove();
+                    item.take().as_element()
+                        .expect("unexpected WebItem, expected element")
+                        .remove();
                 }
                 Patch::CreateElement { element } => {
                     let node = document.create_element(&element).expect("failed to create element");
@@ -361,9 +363,12 @@ impl<'a, Message, Command> PatchSet<'a, Message, Command> {
                     node_stack.push_parent(node);
                 }
                 Patch::MoveElement(item) => {
-                    let node = take_element(item);
+                    let item = item.take();
+                    let node = item.as_element()
+                        .expect("unexpected WebItem, expected element")
+                        .clone();
 
-                    storage.push(WebItem::Element(node.clone()));
+                    storage.push(item);
                     node_stack.push_child(node.clone());
                     node_stack.push_parent(node);
                 }
@@ -809,13 +814,6 @@ impl<'a, Message, Command> IntoIterator for PatchSet<'a, Message, Command> {
 
     fn into_iter(self) -> Self::IntoIter {
         self.patches.into_iter()
-    }
-}
-
-fn take_element<Message>(item: &mut WebItem<Message>) -> web_sys::Element {
-    match item.take() {
-        WebItem::Element(i) => i,
-        _ => panic!("storage type mismatch"),
     }
 }
 
