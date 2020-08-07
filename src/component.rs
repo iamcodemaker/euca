@@ -70,7 +70,7 @@ impl<Message, Command, ParentMessage> ComponentBuilder<Message, Command, ParentM
         ParentMessage: fmt::Debug + Clone + PartialEq + 'static,
         ParentCommand: SideEffect<ParentMessage> + 'static,
         Message: fmt::Debug + Clone + PartialEq + 'static,
-        Command: SideEffect<Message> + Clone + 'static,
+        Command: SideEffect<Message> + fmt::Debug + Clone + 'static,
         Model: Update<Message, Command> + Render<DomTree> + 'static,
         DomTree: DomIter<Message, Command> + 'static,
     {

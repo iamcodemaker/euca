@@ -687,7 +687,7 @@ impl<'a, Message, Command> PatchSet<'a, Message, Command> {
     /// [`Dispatch`]: ../app/trait.Dispatch.html
     pub fn prepare(self, app: &Dispatcher<Message, Command>) -> (Storage<Message>, Vec<web_sys::Node>) where
         Message: Clone + PartialEq + fmt::Debug + 'static,
-        Command: SideEffect<Message> + 'static,
+        Command: SideEffect<Message> + fmt::Debug + 'static,
         EventHandler<'a, Message>: Clone,
     {
         let mut storage = vec![];
@@ -703,7 +703,7 @@ impl<'a, Message, Command> PatchSet<'a, Message, Command> {
     /// [`Dispatch`]: ../app/trait.Dispatch.html
     pub fn apply(self, parent: &web_sys::Element, app: &Dispatcher<Message, Command>) -> Storage<Message> where
         Message: Clone + PartialEq + fmt::Debug + 'static,
-        Command: SideEffect<Message> + 'static,
+        Command: SideEffect<Message> + fmt::Debug + 'static,
         EventHandler<'a, Message>: Clone,
     {
         let (storage, pending) = self.prepare(app);

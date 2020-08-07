@@ -138,7 +138,7 @@ where
         Model: Update<Message, Command> + Render<DomTree> + 'static,
         DomTree: DomIter<Message, Command> + 'static,
         Message: fmt::Debug + Clone + PartialEq + 'static,
-        Command: SideEffect<Message> + 'static,
+        Command: SideEffect<Message> + fmt::Debug + 'static,
     {
         let AppBuilder {
             router,
@@ -219,7 +219,7 @@ where
         Model: Update<Message, Command> + Render<DomTree> + 'static,
         DomTree: DomIter<Message, Command> + 'static,
         Message: fmt::Debug + Clone + PartialEq + 'static,
-        Command: SideEffect<Message> + 'static,
+        Command: SideEffect<Message> + fmt::Debug + 'static,
     {
         if self.clear_parent {
             // remove all children of our parent element
@@ -273,7 +273,7 @@ impl<Model, DomTree, Processor, Message, Command> Application<Message, Command>
 for App<Model, DomTree, Processor, Message, Command>
 where
     Model: Update<Message, Command> + Render<DomTree> + 'static,
-    Command: SideEffect<Message> + 'static,
+    Command: SideEffect<Message> + fmt::Debug + 'static,
     Processor: side_effect::Processor<Message, Command> + 'static,
     Message: fmt::Debug + Clone + PartialEq + 'static,
     DomTree: DomIter<Message, Command> + 'static,
@@ -516,7 +516,7 @@ where
         Model: Update<Message, Command> + Render<DomTree> + 'static,
         DomTree: DomIter<Message, Command> + 'static,
         Message: fmt::Debug + Clone + PartialEq + 'static,
-        Command: SideEffect<Message> + 'static,
+        Command: SideEffect<Message> + fmt::Debug + 'static,
     {
 
         // render our initial model
