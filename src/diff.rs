@@ -190,8 +190,27 @@ where
                 (old.next(), new.next())
             }
             (
-                DomItem::Component { msg: o_msg, create: o_create },
-                DomItem::Component { msg: n_msg, create: n_create }
+                DomItem::Component { msg: o_msg, create: o_create, key: Some(o_key) },
+                DomItem::Component { msg: n_msg, create: n_create, key: Some(n_key) }
+            )
+            if o_create == n_create && o_key == n_key
+            => { // compare keyed components
+                let web_item = sto.next().expect("dom storage to match dom iter");
+
+                // message matches, copy the storage
+                if o_msg == n_msg {
+                    patch_set.push(Patch::MoveComponent(web_item));
+                }
+                // message doesn't match, dispatch it to the component
+                else {
+                    patch_set.push(Patch::MupdateComponent { take: web_item, msg: n_msg });
+                }
+
+                (old.next(), new.next())
+            }
+            (
+                DomItem::Component { msg: o_msg, create: o_create, key: None },
+                DomItem::Component { msg: n_msg, create: n_create, key: None }
             ) if o_create == n_create => { // compare components
                 let web_item = sto.next().expect("dom storage to match dom iter");
 
@@ -301,6 +320,11 @@ where
                 patch_set.push(Patch::RemoveText(web_item));
                 self.remove_sub_tree()
             }
+            DomItem::Component { key: Some(_), .. }
+            if self.defer_keyed
+            => {
+                self.defer_remove_sub_tree(item, None)
+            }
             DomItem::Component { .. } => {
                 let web_item = sto.next().expect("dom storage to match dom iter");
                 patch_set.push(Patch::RemoveComponent(web_item));
@@ -355,7 +379,12 @@ where
                 patch_set.push(Patch::CreateText { text });
                 self.add_sub_tree()
             }
-            DomItem::Component { msg, create } => {
+            DomItem::Component { key: Some(_), .. }
+            if self.defer_keyed
+            => {
+                self.defer_add_sub_tree(item, None)
+            }
+            DomItem::Component { msg, create, .. } => {
                 patch_set.push(Patch::CreateComponent { msg, create });
                 self.add_sub_tree()
             }
@@ -410,7 +439,11 @@ where
                     depth += 1;
                     self.new.next()
                 }
-                Some(DomItem::Component { msg, create }) => {
+                Some(item @ DomItem::Component { key: Some(_), .. })
+                if self.defer_keyed => {
+                    self.defer_add_sub_tree(item, None)
+                }
+                Some(DomItem::Component { msg, create, .. }) => {
                     self.patch_set.push(Patch::CreateComponent { msg, create });
                     depth += 1;
                     self.new.next()
@@ -478,6 +511,12 @@ where
                     depth += 1;
                     self.old.next()
                 }
+                // keyed component: defer
+                Some(item @ DomItem::Component { key: Some(_), .. })
+                if self.defer_keyed
+                => {
+                    self.defer_remove_sub_tree(item, None)
+                }
                 // component: remove it from storage and the dom
                 Some(DomItem::Component { .. }) => {
                     let web_item = self.sto.next().expect("dom storage to match dom iter");
@@ -530,33 +569,60 @@ where
         mut deferred: Option<(&mut Vec<DomItem<'a, Message, Command>>, &mut Vec<&'a mut WebItem<Message>>)>,
     ) -> Option<DomItem<'a, Message, Command>>
     {
-        let key = if let DomItem::Element { key: Some(key), .. } = item {
-            let web_item = self.sto.next().expect("dom storage to match dom iter");
-            match self.old_def.entry(key) {
-                Entry::Occupied(_) => {
-                    // XXX log the error to the debug console? warn?
-                    if let Some((ref mut deferred_items, ref mut deferred_storage)) = deferred {
-                        deferred_items.push(item);
-                        deferred_storage.push(web_item);
-                        None
+        let key = match item {
+            DomItem::Element { key: Some(key), .. } => {
+                let web_item = self.sto.next().expect("dom storage to match dom iter");
+                match self.old_def.entry(key) {
+                    Entry::Occupied(_) => {
+                        // XXX log the error to the debug console? warn?
+                        if let Some((ref mut deferred_items, ref mut deferred_storage)) = deferred {
+                            deferred_items.push(item);
+                            deferred_storage.push(web_item);
+                            None
+                        }
+                        else {
+                            self.patch_set.push(Patch::RemoveElement(web_item));
+                            return self.remove_sub_tree();
+                        }
                     }
-                    else {
-                        self.patch_set.push(Patch::RemoveElement(web_item));
-                        return self.remove_sub_tree();
-                    }
-                }
-                Entry::Vacant(e) => {
-                    if let Some((ref mut deferred_items, _)) = deferred {
-                        deferred_items.push(DomItem::Key(key));
-                    }
+                    Entry::Vacant(e) => {
+                        if let Some((ref mut deferred_items, _)) = deferred {
+                            deferred_items.push(DomItem::Key(key));
+                        }
 
-                    e.insert((vec![item], vec![web_item]));
-                    Some(key)
+                        e.insert((vec![item], vec![web_item]));
+                        Some(key)
+                    }
                 }
             }
-        }
-        else {
-            panic!("expected keyed element");
+            DomItem::Component { key: Some(key), .. } => {
+                let web_item = self.sto.next().expect("dom storage to match dom iter");
+                match self.old_def.entry(key) {
+                    Entry::Occupied(_) => {
+                        // XXX log the error to the debug console? warn?
+                        if let Some((ref mut deferred_items, ref mut deferred_storage)) = deferred {
+                            deferred_items.push(item);
+                            deferred_storage.push(web_item);
+                            None
+                        }
+                        else {
+                            self.patch_set.push(Patch::RemoveComponent(web_item));
+                            return self.remove_sub_tree();
+                        }
+                    }
+                    Entry::Vacant(e) => {
+                        if let Some((ref mut deferred_items, _)) = deferred {
+                            deferred_items.push(DomItem::Key(key));
+                        }
+
+                        e.insert((vec![item], vec![web_item]));
+                        Some(key)
+                    }
+                }
+            }
+            _ => {
+                panic!("expected keyed element or component");
+            }
         };
 
         let mut def_items = vec![];
@@ -585,6 +651,10 @@ where
                         def_items.push(i);
                         depth += 1;
                         self.old.next()
+                    }
+                    // keyed component: defer
+                    DomItem::Component { key: Some(_), .. } => {
+                        self.defer_remove_sub_tree(i, Some((&mut def_items, &mut def_storage)))
                     }
                     // component: remove it from storage and the dom
                     DomItem::Component { .. } => {
@@ -663,33 +733,60 @@ where
         mut deferred_items: Option<&mut Vec<DomItem<'a, Message, Command>>>,
     ) -> Option<DomItem<'a, Message, Command>>
     {
-        let key = if let DomItem::Element { name: element, key: Some(key) } = item {
-            match self.new_def.entry(key) {
-                Entry::Occupied(_) => {
-                    // XXX log the error to the debug console? warn?
-                    if let Some(ref mut deferred_items) = deferred_items {
-                        deferred_items.push(item);
-                        None
+        let key = match item {
+            DomItem::Element { name: element, key: Some(key) } => {
+                match self.new_def.entry(key) {
+                    Entry::Occupied(_) => {
+                        // XXX log the error to the debug console? warn?
+                        if let Some(ref mut deferred_items) = deferred_items {
+                            deferred_items.push(item);
+                            None
+                        }
+                        else {
+                            self.patch_set.push(Patch::CreateElement { element });
+                            return self.add_sub_tree();
+                        }
                     }
-                    else {
-                        self.patch_set.push(Patch::CreateElement { element });
-                        return self.add_sub_tree();
+                    Entry::Vacant(e) => {
+                        if let Some(ref mut deferred_items) = deferred_items {
+                            deferred_items.push(DomItem::Key(key));
+                        }
+                        else {
+                            self.patch_set.push(Patch::ReferenceKey(key));
+                        }
+                        e.insert(vec![item]);
+                        Some(key)
                     }
-                }
-                Entry::Vacant(e) => {
-                    if let Some(ref mut deferred_items) = deferred_items {
-                        deferred_items.push(DomItem::Key(key));
-                    }
-                    else {
-                        self.patch_set.push(Patch::ReferenceKey(key));
-                    }
-                    e.insert(vec![item]);
-                    Some(key)
                 }
             }
-        }
-        else {
-            panic!("expected keyed element");
+            DomItem::Component { ref msg, create, key: Some(key) } => {
+                match self.new_def.entry(key) {
+                    Entry::Occupied(_) => {
+                        // XXX log the error to the debug console? warn?
+                        if let Some(ref mut deferred_items) = deferred_items {
+                            deferred_items.push(item);
+                            None
+                        }
+                        else {
+                            self.patch_set.push(Patch::CreateComponent { msg: msg.clone(), create });
+                            return self.add_sub_tree();
+                        }
+                    }
+                    Entry::Vacant(e) => {
+                        if let Some(ref mut deferred_items) = deferred_items {
+                            deferred_items.push(DomItem::Key(key));
+                        }
+                        else {
+                            self.patch_set.push(Patch::ReferenceKey(key));
+                        }
+                        e.insert(vec![item]);
+                        Some(key)
+                    }
+                }
+            }
+            _ => {
+                panic!("expected keyed element or component");
+            }
         };
 
         let mut def = vec![];
@@ -715,6 +812,10 @@ where
                         def.push(i);
                         depth += 1;
                         self.new.next()
+                    }
+                    // keyed component: defer
+                    DomItem::Component { key: Some(_), .. } => {
+                        self.defer_add_sub_tree(i, Some(&mut def))
                     }
                     // component: track depth
                     DomItem::Component { .. } => {

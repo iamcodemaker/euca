@@ -248,7 +248,7 @@ impl<Message: Clone, Command> DomIter<Message, Command> for Dom<Message, Command
             .map(|(node, key)| match node {
                 Node::Elem { name } => DomItem::Element { name, key: *key },
                 Node::Text { text } => DomItem::Text(text),
-                Node::Component { msg, create } => DomItem::Component { msg: msg.clone(), create: *create },
+                Node::Component { msg, create } => DomItem::Component { msg: msg.clone(), create: *create, key: *key },
             })
             .chain(self.attributes.iter()
                 .map(|attr| DomItem::Attr {

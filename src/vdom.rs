@@ -167,6 +167,11 @@ pub enum DomItem<'a, Message, Command> {
     Up,
     /// A component.
     Component {
+        /// An optional key for this component.
+        ///
+        /// This is necessary if a component has internal state that must be maintained between dom
+        /// updates.
+        key: Option<u64>,
         /// A message to send to the component.
         // XXX msg: &'a Message,
         msg: Message,

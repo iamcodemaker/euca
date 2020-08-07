@@ -72,11 +72,20 @@ pub enum Patch<'a, Message, Command> {
         /// The function used to create the component.
         create: fn(Dispatcher<Message, Command>) -> Box<dyn Component<Message>>,
     },
-    /// Move a component from the old dom to the new one.
+    /// Copy a component from the old dom to the new one.
     CopyComponent(&'a mut WebItem<Message>),
+    /// Move a component from the old dom to the new one.
+    MoveComponent(&'a mut WebItem<Message>),
     /// Send a message to a component.
     UpdateComponent {
         /// Called once to take an existing component node from the old virtual dom.
+        take: &'a mut WebItem<Message>,
+        /// The message to send.
+        msg: Message,
+    },
+    /// Move a component and Send a message to it.
+    MupdateComponent {
+        /// The storage for this component.
         take: &'a mut WebItem<Message>,
         /// The message to send.
         msg: Message,
@@ -131,6 +140,8 @@ impl<'a, Message, Command> fmt::Debug for Patch<'a, Message, Command> where
             Patch::CreateComponent { msg, create: _ } => write!(f, "CreateComponent {{ msg: {:?}, create: _ }}", msg),
             Patch::UpdateComponent { take: c, msg } => write!(f, "UpdateComponent {{ take: {:?}, msg: {:?} }}", c, msg),
             Patch::CopyComponent(c) => write!(f, "CopyComponent({:?})", c),
+            Patch::MoveComponent(c) => write!(f, "MoveComponent({:?})", c),
+            Patch::MupdateComponent { take: c, msg } => write!(f, "MupdateComponent {{ take: {:?}, msg: {:?} }}", c, msg),
             Patch::RemoveComponent(c) => write!(f, "RemoveComponent({:?})", c),
             Patch::SetAttribute { name: n, value: v } => write!(f, "SetAttribute {{ name: {:?}, value: {:?} }}", n, v),
             Patch::RemoveAttribute(s) => write!(f, "RemoveAttribute({:?})", s),
@@ -304,6 +315,7 @@ impl<'a, Message, Command> PatchSet<'a, Message, Command> {
             RemoveElement(_) | CreateElement { .. }
             | MoveElement(_)
             | CreateComponent { .. } | UpdateComponent { .. }
+            | MoveComponent { .. } | MupdateComponent { .. }
             | RemoveComponent(_)
             | SetInnerHtml(_) | UnsetInnerHtml
             | RemoveListener { .. } | AddListener { .. }
@@ -592,6 +604,20 @@ impl<'a, Message, Command> PatchSet<'a, Message, Command> {
                     node_stack.insert_before(Some(&node));
                     node_stack.push_parent(node);
                 }
+                Patch::MupdateComponent { take: item, msg } => {
+                    let item = item.take();
+                    let component = item.as_component()
+                        .expect("unexpected WebItem, expected component");
+
+                    component.dispatch(msg);
+
+                    for n in component.nodes().into_iter() {
+                        node_stack.push_child(n);
+                    }
+                    let node = component.node().expect("empty component?");
+                    node_stack.push_parent(node);
+                    storage.push(item);
+                }
                 Patch::CopyComponent(item) => {
                     let item = item.take();
                     let component = item.as_component()
@@ -602,6 +628,18 @@ impl<'a, Message, Command> PatchSet<'a, Message, Command> {
                     storage.push(item);
                     node_stack.insert_before(Some(&node));
                     node_stack.push_parent(node);
+                }
+                Patch::MoveComponent(item) => {
+                    let item = item.take();
+                    let component = item.as_component()
+                        .expect("unexpected WebItem, expected component");
+
+                    for n in component.nodes().into_iter() {
+                        node_stack.push_child(n);
+                    }
+                    let node = component.node().expect("empty component?");
+                    node_stack.push_parent(node);
+                    storage.push(item);
                 }
                 Patch::RemoveComponent(item) => {
                     let item = item.take();
