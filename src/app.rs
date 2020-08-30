@@ -25,6 +25,7 @@ use wasm_bindgen::JsCast;
 use std::rc::Rc;
 use std::cell::RefCell;
 use std::fmt;
+use std::hash::Hash;
 use crate::diff;
 use crate::vdom::DomIter;
 use crate::vdom::Storage;
@@ -132,13 +133,14 @@ where
     /// Initialize everything, but don't actually attach the app to the dom. Instead return all of
     /// the top level nodes.
     #[must_use]
-    pub(crate) fn create<Model, DomTree>(self, mut model: Model)
+    pub(crate) fn create<Model, DomTree, Key>(self, mut model: Model)
     -> (Rc<RefCell<Box<dyn Application<Message, Command>>>>, Vec<web_sys::Node>)
     where
         Model: Update<Message, Command> + Render<DomTree> + 'static,
-        DomTree: DomIter<Message, Command> + 'static,
+        DomTree: DomIter<Message, Command, Key> + 'static,
         Message: fmt::Debug + Clone + PartialEq + 'static,
         Command: SideEffect<Message> + fmt::Debug + 'static,
+        Key: Eq + Hash + 'static,
     {
         let AppBuilder {
             router,
@@ -213,13 +215,14 @@ where
     /// The app will be attached at the given parent node and initialized with the given model.
     /// Event handlers will be registered as necessary.
     #[must_use]
-    pub fn attach<Model, DomTree>(self, parent: web_sys::Element, model: Model)
+    pub fn attach<Model, DomTree, Key>(self, parent: web_sys::Element, model: Model)
     -> Rc<RefCell<Box<dyn Application<Message, Command>>>>
     where
         Model: Update<Message, Command> + Render<DomTree> + 'static,
-        DomTree: DomIter<Message, Command> + 'static,
+        DomTree: DomIter<Message, Command, Key> + 'static,
         Message: fmt::Debug + Clone + PartialEq + 'static,
         Command: SideEffect<Message> + fmt::Debug + 'static,
+        Key: Eq + Hash + 'static,
     {
         if self.clear_parent {
             // remove all children of our parent element
@@ -269,14 +272,16 @@ pub trait Application<Message, Command> {
     fn detach(&mut self, app: &Dispatcher<Message, Command>);
 }
 
-impl<Model, DomTree, Processor, Message, Command> Application<Message, Command>
-for App<Model, DomTree, Processor, Message, Command>
+impl<Model, DomTree, Processor, Message, Command, Key>
+Application<Message, Command>
+for App<Model, DomTree, Processor, Message, Command, Key>
 where
     Model: Update<Message, Command> + Render<DomTree> + 'static,
     Command: SideEffect<Message> + fmt::Debug + 'static,
     Processor: side_effect::Processor<Message, Command> + 'static,
     Message: fmt::Debug + Clone + PartialEq + 'static,
-    DomTree: DomIter<Message, Command> + 'static,
+    DomTree: DomIter<Message, Command, Key> + 'static,
+    Key: Eq + Hash + 'static,
 {
     fn update(&mut self, msg: Message) -> Commands<Command> {
         // update the model
@@ -436,7 +441,7 @@ where
 
 /// A wasm application consisting of a model, a virtual dom representation, and the parent element
 /// where this app lives in the dom.
-struct App<Model, DomTree, Processor, Message, Command>
+struct App<Model, DomTree, Processor, Message, Command, Key>
 where
     Command: SideEffect<Message>,
     Processor: side_effect::Processor<Message, Command>,
@@ -448,6 +453,7 @@ where
     animation_frame_handle: Option<ScheduledRender<Command>>,
     processor: Processor,
     command: std::marker::PhantomData<Command>,
+    key: std::marker::PhantomData<Key>,
 }
 
 impl<Message, Command> Dispatch<Message> for Rc<RefCell<Box<dyn Application<Message, Command>>>>
@@ -500,8 +506,8 @@ where
     }
 }
 
-impl<Model, DomTree, Processor, Message, Command>
-App<Model, DomTree, Processor, Message, Command>
+impl<Model, DomTree, Processor, Message, Command, Key>
+App<Model, DomTree, Processor, Message, Command, Key>
 where
     Command: SideEffect<Message>,
     Processor: side_effect::Processor<Message, Command> + 'static,
@@ -514,9 +520,10 @@ where
     -> (Rc<RefCell<Box<dyn Application<Message, Command>>>>, Vec<web_sys::Node>)
     where
         Model: Update<Message, Command> + Render<DomTree> + 'static,
-        DomTree: DomIter<Message, Command> + 'static,
+        DomTree: DomIter<Message, Command, Key> + 'static,
         Message: fmt::Debug + Clone + PartialEq + 'static,
         Command: SideEffect<Message> + fmt::Debug + 'static,
+        Key: Eq + Hash + 'static,
     {
 
         // render our initial model
@@ -529,6 +536,7 @@ where
             animation_frame_handle: None,
             processor: processor,
             command: std::marker::PhantomData,
+            key: std::marker::PhantomData,
         };
 
         // we use a RefCell here because we need the dispatch callback to be able to mutate our

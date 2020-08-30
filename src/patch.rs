@@ -11,6 +11,7 @@
 
 use std::fmt;
 use std::collections::hash_map::HashMap;
+use std::hash::Hash;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 use crate::vdom::EventHandler;
@@ -31,7 +32,7 @@ use log::warn;
 /// [`web_sys::Element`]: https://rustwasm.github.io/wasm-bindgen/api/web_sys/struct.Element.html
 /// [`web_sys::Text`]: https://rustwasm.github.io/wasm-bindgen/api/web_sys/struct.Text.html
 /// [`Closure`]: https://rustwasm.github.io/wasm-bindgen/api/wasm_bindgen/closure/struct.Closure.html
-pub enum Patch<'a, Message, Command> {
+pub enum Patch<'a, Message, Command, K> {
     /// Remove an element.
     RemoveElement(&'a mut WebItem<Message>),
     /// Create an element of the given type.
@@ -40,7 +41,7 @@ pub enum Patch<'a, Message, Command> {
         element: &'a str,
     },
     /// Reference a keyed thing.
-    ReferenceKey(u64),
+    ReferenceKey(&'a K),
     /// Copy and element from the old dom tree to the new dom tree.
     CopyElement(&'a mut WebItem<Message>),
     /// Move the given element from it's old position in the dom to a new position.
@@ -121,14 +122,14 @@ pub enum Patch<'a, Message, Command> {
     Up,
 }
 
-impl<'a, Message, Command> fmt::Debug for Patch<'a, Message, Command> where
+impl<'a, Message, Command, K: fmt::Debug> fmt::Debug for Patch<'a, Message, Command, K> where
     Message: fmt::Debug
 {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Patch::RemoveElement(e) => write!(f, "RemoveElement({:?})", e),
             Patch::CreateElement { element: s } => write!(f, "CreateElement {{ element: {:?} }}", s),
-            Patch::ReferenceKey(k) => write!(f, "ReferenceKey({})", k),
+            Patch::ReferenceKey(k) => write!(f, "ReferenceKey({:?})", k),
             Patch::CopyElement(e) => write!(f, "CopyElement({:?})", e),
             Patch::MoveElement(k) => write!(f, "MoveElement({:?})", k),
             Patch::RemoveText(wt) => write!(f, "RemoveText({:?})", wt),
@@ -258,14 +259,14 @@ macro_rules! attribute_unsetter {
 ///
 /// [`Patch`]: enum.Patch.html
 #[derive(Default, Debug)]
-pub struct PatchSet<'a, Message, Command> {
+pub struct PatchSet<'a, Message, Command, K: Eq + Hash> {
     /// The patches in this patch set.
-    pub patches: Vec<Patch<'a, Message, Command>>,
+    pub patches: Vec<Patch<'a, Message, Command, K>>,
     /// Mini patch sets for keyed nodes.
-    pub keyed: HashMap<u64, Vec<Patch<'a, Message, Command>>>,
+    pub keyed: HashMap<&'a K, Vec<Patch<'a, Message, Command, K>>>,
 }
 
-impl<'a, Message, Command> PatchSet<'a, Message, Command> {
+impl<'a, Message, Command, K: Eq + Hash> PatchSet<'a, Message, Command, K> {
     /// Create an empty PatchSet.
     pub fn new() -> Self {
         PatchSet {
@@ -275,12 +276,12 @@ impl<'a, Message, Command> PatchSet<'a, Message, Command> {
     }
 
     /// Push a patch on to the end of the PatchSet.
-    pub fn push(&mut self, patch: Patch<'a, Message, Command>) {
+    pub fn push(&mut self, patch: Patch<'a, Message, Command, K>) {
         self.patches.push(patch)
     }
 
     /// Move the top level patch set into a keyed entry.
-    pub fn root_key(&mut self, key: u64) {
+    pub fn root_key(&mut self, key: &'a K) {
         let mut patches = vec![];
         std::mem::swap(&mut self.patches, &mut patches);
         self.keyed.insert(key, patches);
@@ -326,8 +327,8 @@ impl<'a, Message, Command> PatchSet<'a, Message, Command> {
     }
 
     fn process_patch_list(
-        patches: Vec<Patch<'a, Message, Command>>,
-        keyed: &mut HashMap<u64, Vec<Patch<'a, Message, Command>>>,
+        patches: Vec<Patch<'a, Message, Command, K>>,
+        keyed: &mut HashMap<&'a K, Vec<Patch<'a, Message, Command, K>>>,
         app: &Dispatcher<Message, Command>,
         storage: &mut Storage<Message>,
     )
@@ -837,8 +838,8 @@ impl NodeStack {
     }
 }
 
-impl<'a, Message, Command> From<Vec<Patch<'a, Message, Command>>> for PatchSet<'a, Message, Command> {
-    fn from(v: Vec<Patch<'a, Message, Command>>) -> Self {
+impl<'a, Message, Command, K: Eq + Hash> From<Vec<Patch<'a, Message, Command, K>>> for PatchSet<'a, Message, Command, K> {
+    fn from(v: Vec<Patch<'a, Message, Command, K>>) -> Self {
         PatchSet {
             patches: v,
             keyed: HashMap::new(),
@@ -846,9 +847,9 @@ impl<'a, Message, Command> From<Vec<Patch<'a, Message, Command>>> for PatchSet<'
     }
 }
 
-impl<'a, Message, Command> IntoIterator for PatchSet<'a, Message, Command> {
-    type Item = Patch<'a, Message, Command>;
-    type IntoIter = ::std::vec::IntoIter<Patch<'a, Message, Command>>;
+impl<'a, Message, Command, K: Eq + Hash> IntoIterator for PatchSet<'a, Message, Command, K> {
+    type Item = Patch<'a, Message, Command, K>;
+    type IntoIter = ::std::vec::IntoIter<Patch<'a, Message, Command, K>>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.patches.into_iter()

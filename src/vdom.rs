@@ -132,7 +132,7 @@ pub type Storage<Message> = Vec<WebItem<Message>>;
 /// things seen if we were to walk the DOM tree depth first going through all nodes and their
 /// various attributes and events.
 #[derive(Debug, PartialEq)]
-pub enum DomItem<'a, Message, Command> {
+pub enum DomItem<'a, Message, Command, K> {
     /// An element in the tree.
     Element {
         /// The element name.
@@ -142,7 +142,7 @@ pub enum DomItem<'a, Message, Command> {
         ///
         /// [`Hash`]: https://doc.rust-lang.org/std/hash/trait.Hash.html
         /// [`Hasher`]: https://doc.rust-lang.org/std/hash/trait.Hasher.html
-        key: Option<u64>,
+        key: Option<&'a K>,
     },
     /// A text node in the tree.
     Text(&'a str),
@@ -171,7 +171,7 @@ pub enum DomItem<'a, Message, Command> {
         ///
         /// This is necessary if a component has internal state that must be maintained between dom
         /// updates.
-        key: Option<u64>,
+        key: Option<&'a K>,
         /// A message to send to the component.
         // XXX msg: &'a Message,
         msg: Message,
@@ -179,11 +179,11 @@ pub enum DomItem<'a, Message, Command> {
         create: fn(Dispatcher<Message, Command>) -> Box<dyn Component<Message>>,
     },
     /// For internal use. This is a reference to a keyed item.
-    Key(u64),
+    Key(&'a K),
 }
 
 /// This trait provides a way to iterate over a virtual dom representation.
-pub trait DomIter<Message: Clone, Command> {
+pub trait DomIter<Message: Clone, Command, K> {
     /// Return an iterator over the virtual dom.
-    fn dom_iter<'a>(&'a self) -> Box<dyn Iterator<Item = DomItem<'a, Message, Command>> + 'a>;
+    fn dom_iter<'a>(&'a self) -> Box<dyn Iterator<Item = DomItem<'a, Message, Command, K>> + 'a>;
 }

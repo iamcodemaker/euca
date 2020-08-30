@@ -4,6 +4,7 @@ use std::fmt;
 use std::iter;
 use std::collections::HashMap;
 use std::collections::hash_map::Entry;
+use std::hash::Hash;
 use crate::patch::PatchSet;
 use crate::patch::Patch;
 use crate::vdom::DomItem;
@@ -11,47 +12,50 @@ use crate::vdom::WebItem;
 
 /// Return the series of steps required to move from the given old/existing virtual dom to the
 /// given new virtual dom.
-pub fn diff<'a, Message, Command, O, N, S>(
+pub fn diff<'a, Message, Command, O, N, S, K>(
     old: O,
     new: N,
     storage: S,
 )
--> PatchSet<'a, Message, Command>
+-> PatchSet<'a, Message, Command, K>
 where
     Message: 'a + PartialEq + Clone + fmt::Debug,
-    O: IntoIterator<Item = DomItem<'a, Message, Command>>,
-    N: IntoIterator<Item = DomItem<'a, Message, Command>>,
+    O: IntoIterator<Item = DomItem<'a, Message, Command, K>>,
+    N: IntoIterator<Item = DomItem<'a, Message, Command, K>>,
     S: IntoIterator<Item = &'a mut WebItem<Message>>,
+    K: Eq + Hash,
 {
     DiffImpl::new(old, new, storage).diff()
 }
 
-struct DiffImpl<'a, Message, Command, O, N, S>
+struct DiffImpl<'a, Message, Command, O, N, S, K>
 where
     Message: 'a + PartialEq + Clone + fmt::Debug,
-    O: IntoIterator<Item = DomItem<'a, Message, Command>>,
-    N: IntoIterator<Item = DomItem<'a, Message, Command>>,
+    O: IntoIterator<Item = DomItem<'a, Message, Command, K>>,
+    N: IntoIterator<Item = DomItem<'a, Message, Command, K>>,
     S: IntoIterator<Item = &'a mut WebItem<Message>>,
+    K: Eq + Hash,
 {
     old: O::IntoIter,
     new: N::IntoIter,
     sto: S::IntoIter,
-    patch_set: PatchSet<'a, Message, Command>,
+    patch_set: PatchSet<'a, Message, Command, K>,
     /// list of old keyed DomItems (and their storage)
-    old_def: HashMap<u64, (Vec<DomItem<'a, Message, Command>>, Vec<&'a mut WebItem<Message>>)>,
+    old_def: HashMap<&'a K, (Vec<DomItem<'a, Message, Command, K>>, Vec<&'a mut WebItem<Message>>)>,
     /// list of new keyed DomItems
-    new_def: HashMap<u64, Vec<DomItem<'a, Message, Command>>>,
+    new_def: HashMap<&'a K, Vec<DomItem<'a, Message, Command, K>>>,
     /// if true (the default), keyed items will be deferred
     defer_keyed: bool,
 }
 
-impl<'a, Message, Command, O, N, S>
-DiffImpl<'a, Message, Command, O, N, S>
+impl<'a, Message, Command, O, N, S, K>
+DiffImpl<'a, Message, Command, O, N, S, K>
 where
     Message: 'a + PartialEq + Clone + fmt::Debug,
-    O: IntoIterator<Item = DomItem<'a, Message, Command>>,
-    N: IntoIterator<Item = DomItem<'a, Message, Command>>,
+    O: IntoIterator<Item = DomItem<'a, Message, Command, K>>,
+    N: IntoIterator<Item = DomItem<'a, Message, Command, K>>,
     S: IntoIterator<Item = &'a mut WebItem<Message>>,
+    K: Eq + Hash,
 {
     fn new(old: O, new: N, sto: S) -> Self {
         DiffImpl {
@@ -79,7 +83,7 @@ where
 
     /// Return the series of steps required to move from the given old/existing virtual dom to the
     /// given new virtual dom.
-    pub fn diff(mut self) -> PatchSet<'a, Message, Command> {
+    pub fn diff(mut self) -> PatchSet<'a, Message, Command, K> {
         let mut o_item = self.old.next();
         let mut n_item = self.new.next();
 
@@ -131,9 +135,9 @@ where
     /// Compare two items.
     fn compare(
         &mut self,
-        o_item: DomItem<'a, Message, Command>,
-        n_item: DomItem<'a, Message, Command>,
-    ) -> (Option<DomItem<'a, Message, Command>>, Option<DomItem<'a, Message, Command>>)
+        o_item: DomItem<'a, Message, Command, K>,
+        n_item: DomItem<'a, Message, Command, K>,
+    ) -> (Option<DomItem<'a, Message, Command, K>>, Option<DomItem<'a, Message, Command, K>>)
     {
         let patch_set = &mut self.patch_set;
         let sto = &mut self.sto;
@@ -297,8 +301,8 @@ where
     /// Add patches to remove this item.
     fn remove(
         &mut self,
-        item: DomItem<'a, Message, Command>,
-    ) -> Option<DomItem<'a, Message, Command>>
+        item: DomItem<'a, Message, Command, K>,
+    ) -> Option<DomItem<'a, Message, Command, K>>
     {
         let patch_set = &mut self.patch_set;
         let sto = &mut self.sto;
@@ -359,8 +363,8 @@ where
     /// Add patches to add this item.
     fn add(
         &mut self,
-        item: DomItem<'a, Message, Command>,
-    ) -> Option<DomItem<'a, Message, Command>>
+        item: DomItem<'a, Message, Command, K>,
+    ) -> Option<DomItem<'a, Message, Command, K>>
     {
         let patch_set = &mut self.patch_set;
         let new = &mut self.new;
@@ -418,7 +422,7 @@ where
     /// Expected to be called where `new.next()` just returned a node that may have children. This will
     /// handle creating all of the nodes up to the matching `DomItem::Up` entry.
     fn add_sub_tree(&mut self)
-    -> Option<DomItem<'a, Message, Command>>
+    -> Option<DomItem<'a, Message, Command, K>>
     {
         let mut depth = 0;
         let mut item = self.new.next();
@@ -485,7 +489,7 @@ where
     /// Expected to be called where `old.next()` just returned a node that may have children. This will
     /// handle removing nodes from storage, up to the matching `DomItem::Up` entry.
     fn remove_sub_tree(&mut self)
-    -> Option<DomItem<'a, Message, Command>>
+    -> Option<DomItem<'a, Message, Command, K>>
     {
         // skip the rest of the items in the old tree for this element, this
         // will cause attributes and such to be created on the new element
@@ -565,9 +569,9 @@ where
     /// handle removing nodes from storage, up to the matching `DomItem::Up` entry.
     fn defer_remove_sub_tree(
         &mut self,
-        item: DomItem<'a, Message, Command>,
-        mut deferred: Option<(&mut Vec<DomItem<'a, Message, Command>>, &mut Vec<&'a mut WebItem<Message>>)>,
-    ) -> Option<DomItem<'a, Message, Command>>
+        item: DomItem<'a, Message, Command, K>,
+        mut deferred: Option<(&mut Vec<DomItem<'a, Message, Command, K>>, &mut Vec<&'a mut WebItem<Message>>)>,
+    ) -> Option<DomItem<'a, Message, Command, K>>
     {
         let key = match item {
             DomItem::Element { key: Some(key), .. } => {
@@ -729,9 +733,9 @@ where
     /// Expected to be called where `new.next()` just returned a node that may have children.
     fn defer_add_sub_tree(
         &mut self,
-        item: DomItem<'a, Message, Command>,
-        mut deferred_items: Option<&mut Vec<DomItem<'a, Message, Command>>>,
-    ) -> Option<DomItem<'a, Message, Command>>
+        item: DomItem<'a, Message, Command, K>,
+        mut deferred_items: Option<&mut Vec<DomItem<'a, Message, Command, K>>>,
+    ) -> Option<DomItem<'a, Message, Command, K>>
     {
         let key = match item {
             DomItem::Element { name: element, key: Some(key) } => {

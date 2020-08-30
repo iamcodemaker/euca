@@ -4,8 +4,6 @@
 //! structure works with other parts of this library.
 
 use std::iter;
-use std::hash::{Hash, Hasher};
-use std::collections::hash_map::DefaultHasher;
 use crate::vdom::*;
 
 /// A DOM event handler.
@@ -110,22 +108,22 @@ impl From<(&'static str, String)> for Attr {
 
 /// A node in the DOM.
 #[derive(Debug)]
-pub struct Dom<Message = (), Command = ()> {
+pub struct Dom<Message = (), Command = (), Key = ()> {
     /// The element for this node.
     element: Node<Message, Command>,
     /// The innerHtml value for this node.
     inner_html: Option<String>,
     /// The key for this node.
-    key: Option<u64>,
+    key: Option<Key>,
     /// Attributes on this node.
     pub attributes: Vec<Attr>,
     /// Event handlers associated with this node.
     pub events: Vec<Event<Message>>,
     /// Children of this node.
-    pub children: Vec<Dom<Message, Command>>,
+    pub children: Vec<Dom<Message, Command, Key>>,
 }
 
-impl<Message, Command> Dom<Message, Command> {
+impl<Message, Command, Key> Dom<Message, Command, Key> {
     /// Create a new DOM element node.
     pub fn elem(element: &'static str) -> Self {
         Dom {
@@ -163,17 +161,9 @@ impl<Message, Command> Dom<Message, Command> {
     }
 
     /// Add an key to this DOM element.
-    pub fn key<Q: ?Sized>(mut self, key: &Q) -> Self
-    where
-        Q: Hash,
+    pub fn key(mut self, key: impl Into<Key>) -> Self
     {
-        // XXX what about collisions? Should we just store the key and pass that into the diff
-        // algo? Collisions aren't actually a problem though, it will just make the diff algo less
-        // efficient. Except for components 🤔 Yeah, we should just store the key and require it to
-        // be Eq or PartialEq or something.
-        let mut hasher = DefaultHasher::new();
-        key.hash(&mut hasher);
-        self.key = Some(hasher.finish());
+        self.key = Some(key.into());
         self
     }
 
@@ -217,38 +207,38 @@ impl<Message, Command> Dom<Message, Command> {
     }
 
     /// Append the given element as a child on this DOM element.
-    pub fn push(mut self, child: impl Into<Dom<Message, Command>>) -> Self {
+    pub fn push(mut self, child: impl Into<Dom<Message, Command, Key>>) -> Self {
         self.children.push(child.into());
         self
     }
 
     /// Append the elements returned by the given iterator as children on this DOM element.
-    pub fn extend(mut self, iter: impl IntoIterator<Item = Dom<Message, Command>>) -> Self {
+    pub fn extend(mut self, iter: impl IntoIterator<Item = Dom<Message, Command, Key>>) -> Self {
         self.children.extend(iter);
         self
     }
 }
 
-impl<Message, Command> Into<Dom<Message, Command>> for String {
-    fn into(self) -> Dom<Message, Command> {
+impl<Message, Command, K> Into<Dom<Message, Command, K>> for String {
+    fn into(self) -> Dom<Message, Command, K> {
         Dom::text(self)
     }
 }
 
-impl<Message, Command> Into<Dom<Message, Command>> for &str {
-    fn into(self) -> Dom<Message, Command> {
+impl<Message, Command, K> Into<Dom<Message, Command, K>> for &str {
+    fn into(self) -> Dom<Message, Command, K> {
         Dom::text(self)
     }
 }
 
-impl<Message: Clone, Command> DomIter<Message, Command> for Dom<Message, Command> {
-    fn dom_iter<'a>(&'a self) -> Box<dyn Iterator<Item = DomItem<'a, Message, Command>> + 'a>
+impl<Message: Clone, Command, K> DomIter<Message, Command, K> for Dom<Message, Command, K> {
+    fn dom_iter<'a>(&'a self) -> Box<dyn Iterator<Item = DomItem<'a, Message, Command, K>> + 'a>
     {
         let iter = iter::once((&self.element, &self.key))
             .map(|(node, key)| match node {
-                Node::Elem { name } => DomItem::Element { name, key: *key },
+                Node::Elem { name } => DomItem::Element { name, key: key.as_ref() },
                 Node::Text { text } => DomItem::Text(text),
-                Node::Component { msg, create } => DomItem::Component { msg: msg.clone(), create: *create, key: *key },
+                Node::Component { msg, create } => DomItem::Component { msg: msg.clone(), create: *create, key: key.as_ref() },
             })
             .chain(self.attributes.iter()
                 .map(|attr| DomItem::Attr {
@@ -287,31 +277,34 @@ impl<Message: Clone, Command> DomIter<Message, Command> for Dom<Message, Command
 /// This structure allows a top level sequence of DOM entries to be represented without requiring a
 /// containing DOM element.
 #[derive(Debug)]
-pub struct DomVec<Message = (), Command = ()>(Vec<Dom<Message, Command>>);
+pub struct DomVec<Message = (), Command = (), Key = ()>(Vec<Dom<Message, Command, Key>>);
 
-impl<Message, Command> DomIter<Message, Command> for DomVec<Message, Command> where
+impl<Message, Command, Key>
+DomIter<Message, Command, Key>
+for DomVec<Message, Command, Key>
+where
     Message: Clone + PartialEq,
 {
-    fn dom_iter<'a>(&'a self) -> Box<dyn Iterator<Item = DomItem<'a, Message, Command>> + 'a> {
+    fn dom_iter<'a>(&'a self) -> Box<dyn Iterator<Item = DomItem<'a, Message, Command, Key>> + 'a> {
         Box::new(self.0.iter().flat_map(|i| i.dom_iter()))
     }
 }
 
-impl<Message, Command> From<Vec<Dom<Message, Command>>> for DomVec<Message, Command> {
-    fn from(v: Vec<Dom<Message, Command>>) -> Self {
+impl<Message, Command, K> From<Vec<Dom<Message, Command, K>>> for DomVec<Message, Command, K> {
+    fn from(v: Vec<Dom<Message, Command, K>>) -> Self {
         DomVec(v)
     }
 }
 
-impl<Message, Command> Into<Vec<Dom<Message, Command>>> for DomVec<Message, Command> {
-    fn into(self) -> Vec<Dom<Message, Command>> {
+impl<Message, Command, K> Into<Vec<Dom<Message, Command, K>>> for DomVec<Message, Command, K> {
+    fn into(self) -> Vec<Dom<Message, Command, K>> {
         self.0
     }
 }
 
-impl<Message, Command> IntoIterator for DomVec<Message, Command> {
-    type Item = Dom<Message, Command>;
-    type IntoIter = ::std::vec::IntoIter<Dom<Message, Command>>;
+impl<Message, Command, K> IntoIterator for DomVec<Message, Command, K> {
+    type Item = Dom<Message, Command, K>;
+    type IntoIter = ::std::vec::IntoIter<Dom<Message, Command, K>>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.0.into_iter()

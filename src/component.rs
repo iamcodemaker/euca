@@ -3,6 +3,7 @@
 use std::rc::Rc;
 use std::cell::RefCell;
 use std::fmt;
+use std::hash::Hash;
 use crate::app::Dispatch;
 use crate::app::Dispatcher;
 use crate::app::Detach;
@@ -64,7 +65,7 @@ impl<Message, Command, ParentMessage> ComponentBuilder<Message, Command, ParentM
 
     /// Create a component from the given app, and it's parent.
     #[must_use]
-    pub fn create<ParentCommand, Model, DomTree>(self, model: Model, parent_app: Dispatcher<ParentMessage, ParentCommand>)
+    pub fn create<ParentCommand, Model, DomTree, K>(self, model: Model, parent_app: Dispatcher<ParentMessage, ParentCommand>)
     -> Box<dyn Component<ParentMessage>>
     where
         ParentMessage: fmt::Debug + Clone + PartialEq + 'static,
@@ -72,7 +73,8 @@ impl<Message, Command, ParentMessage> ComponentBuilder<Message, Command, ParentM
         Message: fmt::Debug + Clone + PartialEq + 'static,
         Command: SideEffect<Message> + fmt::Debug + Clone + 'static,
         Model: Update<Message, Command> + Render<DomTree> + 'static,
-        DomTree: DomIter<Message, Command> + 'static,
+        DomTree: DomIter<Message, Command, K> + 'static,
+        K: Eq + Hash + 'static,
     {
         let ComponentBuilder {
             map,
