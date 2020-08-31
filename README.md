@@ -4,6 +4,22 @@ Euca is an experimental front end web development library designed to be modular
 diffing, patching, and main application code all interact with each other via a set
 of traits that allow alternative implementations to be substituted as desired.
 
+## Motivation
+
+There are [many web development frameworks written in Rust]. Most of them
+experimental and in the early stages, and they all represent the virtual DOM in a
+unique way. I had the thought that the representation of the DOM isn't important for
+users of libraries. Users should be able to represent the DOM in the way that is most
+comfortable to them. If that's a declarative, JSX
+[macro](https://github.com/bodil/typed-html) style or a function oriented elm style,
+the framework should accept anything as an input.  Similarly, each framework
+implements it's own vDOM diffing and patching algorithms, this is redundant. Why
+don't all the frameworks just reuse the best algorithms?
+
+I thought, why do we have frameworks at all? What if we could break out each part,
+vDOM representation, diffing, patching and compose them as we saw fit. Euca an
+experiment to explore this space.
+
 ## Design
 
 The user facing portions of the library mostly follow [The Elm Architecture] design,
@@ -12,7 +28,7 @@ events and updates the model, and a view function (we call it render) which rend
 the model into a virtual dom. In Elm, everything is immutable, so the update function
 accepts a model and returns changes to that model as a new model. In Rust, we don't
 need this limitation so our update function here directly mutates the model. This is
-more ergonomic and intuitive for those not accustom to function programming. 
+more ergonomic and intuitive for those not accustomed to functional programming. 
 
 Internally, the vDOM is represented by an iterator facade which is utilized by the
 diffing algorithm to traverse the vDOM. The diff operation results in a series of
@@ -41,26 +57,10 @@ isolated to commands returned from the update function. This way users can verif
 function produces the correct side effects, with out actually executing the side
 effects.
 
-## Motivation
-
-There are [many web development frameworks written in Rust]. Most of them
-experimental and in the early stages, and they all represent the virtual DOM in a
-unique way. I had the thought that the representation of the DOM isn't important for
-users of libraries. Users should be able to represent the DOM in the way that is most
-comfortable to them. If that's a declarative, JSX
-[macro](https://github.com/bodil/typed-html) style or a function oriented elm style,
-the framework should accept anything as an input.  Similarly, each framework
-implements it's own vDOM diffing and patching algorithms, this is redundant. Why
-don't all the frameworks just reuse the best algorithms?
-
-I thought, why do we have frameworks at all? What if we could break out each part,
-vDOM representation, diffing, patching and compose them as we saw fit. Euca an
-experiment to explore this space.
-
 ## Inspiration
 
 This library was heavily inspired by [Elm] and [Willow] with additional inspiration
-from [Draco] and [Seed].
+from [Draco] and [Seed] and [React].
 
 ## Limitations
 
@@ -74,12 +74,17 @@ but most other web frameworks in Rust support closures, so integrating Euca with
 those libraries isn't possible without significant modification. This is a major
 limitation, as the whole idea was to integrate with existing libraries.
 
+Recently, keyed updates have been added to Euca. In theory, it would be
+possible to use keyed event handlers to support closures with some set of data
+the closure captures being used as the key. This isn't currently supported, but
+should be possible.
+
 ### Unoptimized
 
 The diff algorithm is completely unoptimized. My intention was to demonstrate that
 building a modular framework was possible, not to implement the fastest algorithm.
 
-### Composition
+## Composition
 
 Composition is supported in two ways: via functions ([like Elm](https://guide.elm-lang.org/webapps/structure.html))
 and via modular self contained components ([like React](https://reactjs.org/docs/components-and-props.html)).
@@ -105,4 +110,5 @@ css [selectors](https://docs.rs/selectors/0.21.0/selectors/)).
 [Willow]: https://github.com/sindreij/willow
 [Draco]: https://github.com/utkarshkukreti/draco
 [Seed]: https://github.com/David-OConnor/seed
+[React]: https://reactjs.org
 [`PartialEq`]: https://doc.rust-lang.org/std/cmp/trait.PartialEq.html
