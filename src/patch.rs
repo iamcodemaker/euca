@@ -864,7 +864,7 @@ mod tests {
     use wasm_bindgen_test::wasm_bindgen_test_configure;
     wasm_bindgen_test_configure!(run_in_browser);
 
-    use crate::test::{App, Msg, Cmd};
+    use crate::test::{App, Msg, Cmd, Key};
 
     fn elem(name: &str) -> web_sys::Element {
         web_sys::window().expect("expected window")
@@ -878,12 +878,12 @@ mod tests {
 
     #[test]
     fn empty_patch_set_is_noop() {
-        assert!(PatchSet::<Msg, Cmd>::new().is_noop());
+        assert!(PatchSet::<Msg, Cmd, Key>::new().is_noop());
     }
 
     #[wasm_bindgen_test]
     fn noop_patch_set_is_noop() {
-        let patch_set: PatchSet<Msg, Cmd> = vec![
+        let patch_set: PatchSet<Msg, Cmd, Key> = vec![
             Patch::CopyElement(leaked_elem("test")),
             Patch::Up,
         ].into();
@@ -893,14 +893,14 @@ mod tests {
 
     #[wasm_bindgen_test]
     fn keyed_noop_patch_set_is_noop() {
-        let mut keyed: HashMap<_, Vec<Patch<Msg, Cmd>>> = HashMap::new();
-        keyed.insert(1, vec![
+        let mut keyed: HashMap<_, Vec<Patch<Msg, Cmd, _>>> = HashMap::new();
+        keyed.insert(&1, vec![
             Patch::CopyElement(leaked_elem("test")),
             Patch::Up,
         ]);
         let patch_set = PatchSet {
             patches: vec![
-                Patch::ReferenceKey(1),
+                Patch::ReferenceKey(&1),
                 Patch::Up,
             ],
             keyed
@@ -911,7 +911,7 @@ mod tests {
 
     #[test]
     fn not_noop() {
-        let patch_set: PatchSet<Msg, Cmd> = vec![
+        let patch_set: PatchSet<Msg, Cmd, Key> = vec![
             Patch::CreateElement {
                 element: "",
             },
@@ -922,15 +922,15 @@ mod tests {
 
     #[test]
     fn keyed_not_noop() {
-        let mut keyed: HashMap<_, Vec<Patch<Msg, Cmd>>> = HashMap::new();
-        keyed.insert(1, vec![
+        let mut keyed: HashMap<_, Vec<Patch<Msg, Cmd, _>>> = HashMap::new();
+        keyed.insert(&1, vec![
             Patch::CreateElement { element: "" },
             Patch::Up,
         ]);
 
         let patch_set = PatchSet {
             patches: vec![
-                Patch::ReferenceKey(1),
+                Patch::ReferenceKey(&1),
                 Patch::Up,
             ],
             keyed
@@ -941,7 +941,7 @@ mod tests {
 
     #[wasm_bindgen_test]
     fn copy_element() {
-        let patch_set: PatchSet<Msg, Cmd> = vec![
+        let patch_set: PatchSet<Msg, Cmd, Key> = vec![
             Patch::CopyElement(leaked_elem("test")),
             Patch::Up,
         ].into();
@@ -964,7 +964,7 @@ mod tests {
             e
         });
 
-        let patch_set: PatchSet<Msg, Cmd> = vec![
+        let patch_set: PatchSet<Msg, Cmd, Key> = vec![
             CopyElement(&mut e),
             SetAttribute { name: "name", value: "value" },
             Up,
@@ -986,7 +986,7 @@ mod tests {
     fn add_attribute_checked() {
         use Patch::*;
 
-        let patch_set: PatchSet<Msg, Cmd> = vec![
+        let patch_set: PatchSet<Msg, Cmd, Key> = vec![
             CreateElement {
                 element: "input",
             },
@@ -1011,7 +1011,7 @@ mod tests {
     fn add_attribute_disabled() {
         use Patch::*;
 
-        let patch_set: PatchSet<Msg, Cmd> = vec![
+        let patch_set: PatchSet<Msg, Cmd, Key> = vec![
             CreateElement {
                 element: "input",
             },
@@ -1042,7 +1042,7 @@ mod tests {
             e
         });
 
-        let patch_set: PatchSet<Msg, Cmd> = vec![
+        let patch_set: PatchSet<Msg, Cmd, Key> = vec![
             CopyElement(&mut e),
             RemoveAttribute("name"),
             Up,
@@ -1069,7 +1069,7 @@ mod tests {
             e
         });
 
-        let patch_set: PatchSet<Msg, Cmd> = vec![
+        let patch_set: PatchSet<Msg, Cmd, Key> = vec![
             CopyElement(&mut e),
             RemoveAttribute("checked"),
             Up,
@@ -1098,7 +1098,7 @@ mod tests {
             e
         });
 
-        let patch_set: PatchSet<Msg, Cmd> = vec![
+        let patch_set: PatchSet<Msg, Cmd, Key> = vec![
             CopyElement(&mut e),
             RemoveAttribute("disabled"),
             Up,
@@ -1121,7 +1121,7 @@ mod tests {
     fn set_attribute_checked_false() {
         use Patch::*;
 
-        let patch_set: PatchSet<Msg, Cmd> = vec![
+        let patch_set: PatchSet<Msg, Cmd, Key> = vec![
             CreateElement {
                 element: "input",
             },
@@ -1146,7 +1146,7 @@ mod tests {
     fn set_attribute_disabled_false() {
         use Patch::*;
 
-        let patch_set: PatchSet<Msg, Cmd> = vec![
+        let patch_set: PatchSet<Msg, Cmd, Key> = vec![
             CreateElement {
                 element: "input",
             },
@@ -1171,7 +1171,7 @@ mod tests {
     fn set_attribute_autofocus_false() {
         use Patch::*;
 
-        let patch_set: PatchSet<Msg, Cmd> = vec![
+        let patch_set: PatchSet<Msg, Cmd, Key> = vec![
             CreateElement {
                 element: "input",
             },
@@ -1196,7 +1196,7 @@ mod tests {
     fn set_attribute_selected_false() {
         use Patch::*;
 
-        let patch_set: PatchSet<Msg, Cmd> = vec![
+        let patch_set: PatchSet<Msg, Cmd, Key> = vec![
             CreateElement {
                 element: "option",
             },
@@ -1271,7 +1271,7 @@ mod tests {
         use crate::diff;
         use std::iter;
 
-        let gen1 = Dom::elem("div")
+        let gen1 = Dom::<Msg, Cmd, Key>::elem("div")
             .push(Dom::elem("a"))
             .push(Dom::elem("b"))
             .push(Dom::elem("i"));

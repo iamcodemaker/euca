@@ -1,8 +1,7 @@
 use std::rc::Rc;
 use std::cell::RefCell;
 use std::iter;
-use std::collections::hash_map::DefaultHasher;
-use std::hash::{Hash, Hasher};
+use std::fmt;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 use euca::vdom::WebItem;
@@ -79,9 +78,10 @@ impl<Message> Component<Message> for FakeComponent {
     fn pending(&mut self) -> Vec<web_sys::Node> { vec![] }
 }
 
-fn gen_storage<'a, Message, Command, Iter>(iter: Iter) -> Storage<Message> where
+fn gen_storage<'a, Message, Command, Key, Iter>(iter: Iter) -> Storage<Message> where
     Message: 'a,
-    Iter: Iterator<Item = DomItem<'a, Message, Command>>,
+    Key: 'a,
+    Iter: Iterator<Item = DomItem<'a, Message, Command, Key>>,
 {
     iter
         // filter items that do not have storage
@@ -117,13 +117,7 @@ fn gen_storage<'a, Message, Command, Iter>(iter: Iter) -> Storage<Message> where
         .collect()
 }
 
-fn hash<K: Hash + ?Sized>(key: &K) -> u64 {
-    let mut hasher = DefaultHasher::new();
-    key.hash(&mut hasher);
-    hasher.finish()
-}
-
-fn compare_patch_vecs(left: &Vec<Patch<Msg, Cmd>>, right: &Vec<Patch<Msg, Cmd>>, dump: &str) {
+fn compare_patch_vecs<K: fmt::Debug + Eq + ?Sized>(left: &Vec<Patch<Msg, Cmd, &K>>, right: &Vec<Patch<Msg, Cmd, &K>>, dump: &str) {
     assert_eq!(left.len(), right.len(), "lengths don't match\n{}", dump);
 
     for (i, (l, r)) in left.iter().zip(right).enumerate() {
@@ -192,14 +186,14 @@ macro_rules! compare {
         compare!($patch_set, [ $($x),* ]);
     };
     ( $patch_set:ident, [ $( $x:expr),* ] ) => {
-        let cmp: PatchSet<Msg, Cmd> = vec!($($x),*).into();
+        let cmp: PatchSet<Msg, Cmd, &_> = vec!($($x),*).into();
         compare!($patch_set, cmp)
     };
     ( $patch_set:ident, [ $( $x:expr ,)* ], $( $k:expr => [ $( $v:expr ,)* ], )* ) => {
         compare!($patch_set, [ $($x),* ], $( $k => [ $($v),* ] ),*)
     };
     ( $patch_set:ident, [ $( $x:expr),* ], $( $k:expr => [ $( $v:expr),* ] ),* ) => {
-        let mut cmp: PatchSet<Msg, Cmd> = vec!($($x),*).into();
+        let mut cmp: PatchSet<Msg, Cmd, &_> = vec!($($x),*).into();
         $(
             cmp.keyed.insert($k, vec!($($v),*));
         )*
@@ -215,11 +209,11 @@ macro_rules! compare {
         let mut patch_set = $patch_set;
         let mut cmp_set = $cmp_set;
         for (key, cmp) in cmp_set.keyed.drain() {
-            if let Some(patches) = patch_set.keyed.remove(&key) {
+            if let Some(patches) = patch_set.keyed.remove(key) {
                 compare_patch_vecs(&patches, &cmp, &dump);
             }
             else {
-                panic!("failed to find expected key '{}' in patch set\n{}", key, dump);
+                panic!("failed to find expected key '{:?}' in patch set\n{}", key, dump);
             }
         }
 
@@ -234,7 +228,7 @@ fn basic_diff() {
     let old = iter::empty();
     let mut storage = vec![];
 
-    let new = Dom::<_, Cmd>::elem("span");
+    let new = Dom::<_, _, &()>::elem("span");
 
     let o = old.into_iter();
     let n = new.dom_iter();
@@ -254,7 +248,7 @@ fn diff_add_text() {
     let old = iter::empty();
     let mut storage = vec![];
 
-    let new = Dom::<_, Cmd>::elem("div")
+    let new = Dom::<_, _, &()>::elem("div")
         .push(Dom::text("text"))
     ;
 
@@ -275,8 +269,8 @@ fn diff_add_text() {
 
 #[wasm_bindgen_test]
 fn new_child_nodes() {
-    let old = Dom::<_, Cmd>::elem("div");
-    let new = Dom::<_, Cmd>::elem("div")
+    let old = Dom::<_, _, &()>::elem("div");
+    let new = Dom::elem("div")
         .push(Dom::elem("b")
             .attr("class", "item")
             .attr("id", "id1")
@@ -315,7 +309,7 @@ fn new_child_nodes() {
 
 #[wasm_bindgen_test]
 fn from_empty() {
-    let new = Dom::<_, Cmd>::elem("div")
+    let new = Dom::<_, _, &()>::elem("div")
         .push(Dom::elem("b")
             .attr("class", "item")
             .attr("id", "id1")
@@ -353,7 +347,7 @@ fn from_empty() {
 
 #[wasm_bindgen_test]
 fn to_empty() {
-    let old = Dom::<_, Cmd>::elem("div")
+    let old = Dom::<_, _, &()>::elem("div")
         .push(Dom::elem("b")
             .attr("class", "item")
             .attr("id", "id1")
@@ -380,7 +374,7 @@ fn to_empty() {
 
 #[wasm_bindgen_test]
 fn to_empty_vec() {
-    let old: DomVec<_, Cmd> = vec![
+    let old: DomVec<_, _, &()> = vec![
         Dom::elem("b")
             .attr("class", "item")
             .attr("id", "id1")
@@ -406,8 +400,8 @@ fn to_empty_vec() {
 
 #[wasm_bindgen_test]
 fn no_difference() {
-    let old = Dom::<_, Cmd>::elem("div");
-    let new = Dom::<_, Cmd>::elem("div");
+    let old = Dom::<_, _, &()>::elem("div");
+    let new = Dom::elem("div");
 
     let mut storage = gen_storage(old.dom_iter());
     let o = old.dom_iter();
@@ -425,8 +419,8 @@ fn no_difference() {
 
 #[wasm_bindgen_test]
 fn basic_diff_with_element() {
-    let old = Dom::<_, Cmd>::elem("div");
-    let new = Dom::<_, Cmd>::elem("span");
+    let old = Dom::<_, _, &()>::elem("div");
+    let new = Dom::elem("span");
 
     let mut storage = gen_storage(old.dom_iter());
     let o = old.dom_iter();
@@ -445,8 +439,8 @@ fn basic_diff_with_element() {
 
 #[wasm_bindgen_test]
 fn diff_attributes() {
-    let old = Dom::<_, Cmd>::elem("div").attr("name", "value");
-    let new = Dom::<_, Cmd>::elem("div").attr("name", "new value");
+    let old = Dom::<_, _, &()>::elem("div").attr("name", "value");
+    let new = Dom::elem("div").attr("name", "new value");
 
     let mut storage = gen_storage(old.dom_iter());
     let o = old.dom_iter();
@@ -465,8 +459,8 @@ fn diff_attributes() {
 
 #[wasm_bindgen_test]
 fn diff_checked() {
-    let old = Dom::<_, Cmd>::elem("input").attr("checked", "false");
-    let new = Dom::<_, Cmd>::elem("input").attr("checked", "false");
+    let old = Dom::<_, _, &()>::elem("input").attr("checked", "false");
+    let new = Dom::elem("input").attr("checked", "false");
 
     let mut storage = gen_storage(old.dom_iter());
     let o = old.dom_iter();
@@ -485,7 +479,7 @@ fn diff_checked() {
 
 #[wasm_bindgen_test]
 fn old_child_nodes_with_element() {
-    let old = Dom::<_, Cmd>::elem("div")
+    let old = Dom::<_, _, &()>::elem("div")
         .push(Dom::elem("b")
             .attr("class", "item")
             .attr("id", "id")
@@ -498,7 +492,7 @@ fn old_child_nodes_with_element() {
         )
     ;
 
-    let new = Dom::<_, Cmd>::elem("div");
+    let new = Dom::elem("div");
 
     let mut storage = gen_storage(old.dom_iter());
     let o = old.dom_iter();
@@ -518,7 +512,7 @@ fn old_child_nodes_with_element() {
 
 #[wasm_bindgen_test]
 fn old_child_nodes_with_element_and_child() {
-    let old = Dom::<_, Cmd>::elem("div")
+    let old = Dom::<_, _, &()>::elem("div")
         .push(Dom::elem("b")
             .attr("class", "item")
             .attr("id", "id")
@@ -555,7 +549,7 @@ fn old_child_nodes_with_element_and_child() {
 
 #[wasm_bindgen_test]
 fn assorted_child_nodes() {
-    let old = Dom::<_, Cmd>::elem("div")
+    let old = Dom::<_, _, &()>::elem("div")
         .push(Dom::elem("h1")
             .attr("id", "id")
             .event("onclick", ())
@@ -630,7 +624,7 @@ fn assorted_child_nodes() {
 
 #[wasm_bindgen_test]
 fn diff_old_child_nodes_with_new_element() {
-    let old = Dom::<_, Cmd>::elem("span")
+    let old = Dom::<_, _, &()>::elem("span")
         .push(Dom::elem("b")
             .attr("class", "item")
             .attr("id", "id")
@@ -716,7 +710,7 @@ fn basic_patch_with_element() {
 #[wasm_bindgen_test]
 fn basic_event_test() {
     let gen1 = iter::empty();
-    let gen2 = Dom::elem("button").event("click", ());
+    let gen2 = Dom::<_, _, &()>::elem("button").event("click", ());
 
     let parent = e("div");
     let messages = Rc::new(RefCell::new(vec![]));
@@ -743,7 +737,7 @@ fn basic_event_test() {
 #[wasm_bindgen_test]
 fn listener_copy() {
     let gen1 = iter::empty();
-    let gen2 = Dom::elem("button").event("click", ());
+    let gen2 = Dom::<_, _, &()>::elem("button").event("click", ());
 
     let parent = e("div");
     let messages = Rc::new(RefCell::new(vec![]));
@@ -785,7 +779,7 @@ fn listener_copy() {
 
 #[wasm_bindgen_test]
 fn replace_element_with_text() {
-    let old = Dom::<_, Cmd>::elem("div");
+    let old = Dom::<_, _, &()>::elem("div");
     let new = Dom::text("div");
 
     let mut storage = gen_storage(old.dom_iter());
@@ -805,7 +799,7 @@ fn replace_element_with_text() {
 
 #[wasm_bindgen_test]
 fn replace_text_with_element() {
-    let old = Dom::<_, Cmd>::text("div");
+    let old = Dom::<_, _, &()>::text("div");
     let new = Dom::elem("div");
 
     let mut storage = gen_storage(old.dom_iter());
@@ -828,7 +822,7 @@ fn inner_html_noop() {
     let old;
     let new;
     unsafe {
-        old = Dom::<_, Cmd>::elem("div")
+        old = Dom::<_, _, &()>::elem("div")
             .inner_html("html");
         new = Dom::elem("div")
             .inner_html("html");
@@ -850,7 +844,7 @@ fn inner_html_noop() {
 
 #[wasm_bindgen_test]
 fn inner_html_add() {
-    let old = Dom::<_, Cmd>::elem("div");
+    let old = Dom::<_, _, &()>::elem("div");
     let new;
     unsafe {
         new = Dom::elem("div")
@@ -877,7 +871,7 @@ fn inner_html_change() {
     let old;
     let new;
     unsafe {
-        old = Dom::<_, Cmd>::elem("div")
+        old = Dom::<_, _, &()>::elem("div")
             .inner_html("toml");
         new = Dom::elem("div")
             .inner_html("html");
@@ -902,7 +896,7 @@ fn inner_html_change() {
 fn inner_html_remove() {
     let old;
     unsafe {
-        old = Dom::<_, Cmd>::elem("div")
+        old = Dom::<_, _, &()>::elem("div")
             .inner_html("html");
     }
     let new = Dom::elem("div");
@@ -926,7 +920,7 @@ fn inner_html_remove() {
 fn inner_html_replace() {
     let old;
     unsafe {
-        old = Dom::<_, Cmd>::elem("div")
+        old = Dom::<_, _, &()>::elem("div")
             .inner_html("html");
     }
     let new = Dom::elem("div")
@@ -954,7 +948,7 @@ fn inner_html_replace_with_children() {
     let old;
     let new;
     unsafe {
-        old = Dom::<_, Cmd>::elem("div")
+        old = Dom::<_, _, &()>::elem("div")
             .inner_html("html");
         new = Dom::elem("div")
             .push(Dom::elem("div")
@@ -986,7 +980,7 @@ fn inner_html_replace_children() {
     let old;
     let new;
     unsafe {
-        old = Dom::<_, Cmd>::elem("div")
+        old = Dom::<_, _, &()>::elem("div")
             .push(Dom::elem("div")
                 .inner_html("html")
             )
@@ -1068,7 +1062,7 @@ fn diff_empty_create_component() {
     let old = iter::empty();
     let mut storage = vec![];
 
-    let new = Dom::component((), FakeComponent::create);
+    let new = Dom::<_, _, &()>::component((), FakeComponent::create);
 
     let o = old.into_iter();
     let n = new.dom_iter();
@@ -1086,7 +1080,7 @@ fn diff_empty_create_component() {
 #[wasm_bindgen_test]
 fn diff_basic_component() {
 
-    let old = Dom::elem("div");
+    let old = Dom::<_, _, &()>::elem("div");
     let new = Dom::elem("div")
         .push(Dom::component((), FakeComponent::create));
 
@@ -1109,7 +1103,7 @@ fn diff_basic_component() {
 #[wasm_bindgen_test]
 fn diff_two_components() {
 
-    let old = Dom::elem("div")
+    let old = Dom::<_, _, &()>::elem("div")
         .push(Dom::component((), FakeComponent::create));
     let new = Dom::elem("div")
         .push(Dom::component((), FakeComponent::create2));
@@ -1133,7 +1127,7 @@ fn diff_two_components() {
 
 #[wasm_bindgen_test]
 fn diff_add_nested_component() {
-    let old = Dom::elem("div")
+    let old = Dom::<_, _, &()>::elem("div")
         .push(Dom::elem("div")
             .push(Dom::elem("div"))
             .push(Dom::elem("div"))
@@ -1177,7 +1171,7 @@ fn diff_add_nested_component() {
 
 #[wasm_bindgen_test]
 fn diff_copy_nested_component() {
-    let old = Dom::elem("div")
+    let old = Dom::<_, _, &()>::elem("div")
         .push(Dom::elem("div")
             .push(Dom::elem("div"))
             .push(Dom::component((), FakeComponent::create))
@@ -1218,7 +1212,7 @@ fn diff_copy_nested_component() {
 
 #[wasm_bindgen_test]
 fn diff_remove_nested_component() {
-    let old = Dom::elem("div")
+    let old = Dom::<_, _, &()>::elem("div")
         .push(Dom::elem("div")
             .push(Dom::elem("div"))
             .push(Dom::component((), FakeComponent::create))
@@ -1303,11 +1297,11 @@ fn diff_keyed_element_not_equal() {
         patch_set,
         [
             Patch::CopyElement(leaked_e("div")),
-              Patch::ReferenceKey(hash("nope")),
+              Patch::ReferenceKey(&"nope"),
             Patch::Up,
             Patch::RemoveElement(leaked_e("div")),
         ],
-        hash("nope") => [
+        &"nope" => [
             Patch::CreateElement { element: "div" },
             Patch::Up,
         ],
@@ -1337,12 +1331,12 @@ fn diff_keyed_element_move_key() {
         [
             Patch::CopyElement(leaked_e("div")),
               Patch::RemoveElement(leaked_e("div")),
-              Patch::ReferenceKey(hash("yup")),
+              Patch::ReferenceKey(&"yup"),
               Patch::CreateElement { element: "div" },
               Patch::Up,
             Patch::Up,
         ],
-        hash("yup") => [
+        &"yup" => [
             Patch::MoveElement(leaked_e("div")),
             Patch::Up,
         ],
@@ -1364,10 +1358,10 @@ fn diff_keyed_from_empty() {
         patch_set,
         [
             Patch::CreateElement { element: "div" },
-              Patch::ReferenceKey(hash("yup")),
+              Patch::ReferenceKey(&"yup"),
             Patch::Up,
         ],
-        hash("yup") => [
+        &"yup" => [
             Patch::CreateElement { element: "div" },
             Patch::Up,
         ],
@@ -1421,15 +1415,15 @@ fn diff_nested_keyed_element_swap() {
         patch_set,
         [
             Patch::CopyElement(leaked_e("div")),
-              Patch::ReferenceKey(hash("yup yup")),
+              Patch::ReferenceKey(&"yup yup"),
             Patch::Up,
         ],
-        hash("yup yup") => [
+        &"yup yup" => [
             Patch::MoveElement(leaked_e("span")),
-              Patch::ReferenceKey(hash("yup")),
+              Patch::ReferenceKey(&"yup"),
             Patch::Up,
         ],
-        hash("yup") => [
+        &"yup" => [
             Patch::MoveElement(leaked_e("div")),
             Patch::Up,
         ],
@@ -1466,12 +1460,12 @@ fn diff_duplicate_key() {
               Patch::CreateElement { element: "div" },
               Patch::Up,
               Patch::RemoveElement(leaked_e("span")),
-              Patch::ReferenceKey(hash("yup")),
+              Patch::ReferenceKey(&"yup"),
               Patch::CreateElement { element: "span" },
               Patch::Up,
             Patch::Up,
         ],
-        hash("yup") => [
+        &"yup" => [
             Patch::MoveElement(leaked_e("div")),
             Patch::Up,
         ],

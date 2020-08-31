@@ -14,6 +14,8 @@ use std::cell::RefCell;
 pub type Msg = ();
 /// Test command.
 pub type Cmd = ();
+/// Test key.
+pub type Key = ();
 
 /// Test app.
 pub struct App {
