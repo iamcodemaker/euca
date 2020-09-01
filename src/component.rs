@@ -4,7 +4,6 @@ use std::rc::Rc;
 use std::cell::RefCell;
 use std::fmt;
 use std::hash::Hash;
-use crate::app::Dispatch;
 use crate::app::Dispatcher;
 use crate::app::Detach;
 use crate::app::Application;
@@ -122,8 +121,8 @@ where
 {
     fn process(&self, cmd: Command, app: &Dispatcher<Message, Command>) {
         cmd.clone().process(app);
-        if let Some(cmd) = (self.unmap)(cmd) {
-            Dispatch::dispatch(&self.parent, cmd);
+        if let Some(msg) = (self.unmap)(cmd) {
+            self.parent.dispatch(msg);
         }
     }
 }

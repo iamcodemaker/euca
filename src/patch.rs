@@ -17,7 +17,7 @@ use wasm_bindgen::JsCast;
 use crate::vdom::EventHandler;
 use crate::vdom::WebItem;
 use crate::vdom::Storage;
-use crate::app::{Dispatch, Dispatcher, SideEffect};
+use crate::app::{Dispatcher, SideEffect};
 use crate::component::Component;
 use log::warn;
 
@@ -502,7 +502,7 @@ impl<'a, Message, Command, K: Eq + Hash> PatchSet<'a, Message, Command, K> {
                             let msg = msg.clone();
                             Closure::wrap(
                                 Box::new(move |_| {
-                                    Dispatch::dispatch(&app, msg.clone())
+                                    app.dispatch(msg.clone());
                                 }) as Box<dyn FnMut(web_sys::Event)>
                             )
                         }
@@ -510,7 +510,7 @@ impl<'a, Message, Command, K: Eq + Hash> PatchSet<'a, Message, Command, K> {
                             Closure::wrap(
                                 Box::new(move |event| {
                                     if let Some(msg) = fun(event) {
-                                        Dispatch::dispatch(&app, msg);
+                                        app.dispatch(msg);
                                     }
                                 }) as Box<dyn FnMut(web_sys::Event)>
                             )
@@ -520,7 +520,7 @@ impl<'a, Message, Command, K: Eq + Hash> PatchSet<'a, Message, Command, K> {
                             Closure::wrap(
                                 Box::new(move |event| {
                                     if let Some(msg) = fun(msg.clone(), event) {
-                                        Dispatch::dispatch(&app, msg);
+                                        app.dispatch(msg);
                                     }
                                 }) as Box<dyn FnMut(web_sys::Event)>
                             )
@@ -546,7 +546,7 @@ impl<'a, Message, Command, K: Eq + Hash> PatchSet<'a, Message, Command, K> {
                                         }
                                     };
                                     if let Some(msg) = fun(value) {
-                                        Dispatch::dispatch(&app, msg);
+                                        app.dispatch(msg);
                                     }
                                 }) as Box<dyn FnMut(web_sys::Event)>
                             )
@@ -556,7 +556,7 @@ impl<'a, Message, Command, K: Eq + Hash> PatchSet<'a, Message, Command, K> {
                                 Box::new(move |event: web_sys::Event| {
                                     let event = event.dyn_into::<web_sys::InputEvent>().expect_throw("expected web_sys::InputEvent");
                                     if let Some(msg) = fun(event) {
-                                        Dispatch::dispatch(&app, msg);
+                                        app.dispatch(msg);
                                     }
                                 }) as Box<dyn FnMut(web_sys::Event)>
                             )

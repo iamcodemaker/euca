@@ -16,7 +16,7 @@ pub mod side_effect;
 
 pub use crate::app::detach::Detach;
 pub use crate::app::model::{Update, Render};
-pub use crate::app::dispatch::{Dispatch, Dispatcher};
+pub use crate::app::dispatch::Dispatcher;
 pub use crate::app::side_effect::{SideEffect, Processor, Commands};
 
 use web_sys;

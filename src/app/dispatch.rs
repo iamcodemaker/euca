@@ -46,18 +46,13 @@ impl<Message, Command> From<&Rc<RefCell<Box<dyn Application<Message, Command>>>>
     }
 }
 
-/// Dispatch a message from an event handler.
-pub trait Dispatch<Message> {
-    /// Dispatch the given message to the given app.
-    fn dispatch(&self, msg: Message);
-}
-
-impl<Message, Command> Dispatch<Message> for Dispatcher<Message, Command>
+impl<Message, Command> Dispatcher<Message, Command>
 where
     Command: SideEffect<Message> + 'static,
     Message: fmt::Debug + Clone + PartialEq + 'static,
 {
-    fn dispatch(&self, msg: Message) {
+    /// Dispatch a message to the associated app.
+    pub fn dispatch(&self, msg: Message) {
         // queue the message
         self.pending.borrow_mut().push(msg);
 
