@@ -145,7 +145,7 @@ where
 {
     fn dispatch(&self, msg: ParentMessage) {
         if let Some(msg) = (self.map)(msg) {
-            Dispatch::dispatch(&self.app, msg);
+            Dispatcher::from(&self.app).dispatch(msg);
         }
     }
 

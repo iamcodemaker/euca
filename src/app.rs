@@ -166,6 +166,7 @@ where
 
         // create the app
         let (app_rc, nodes) = App::create(model, processor);
+        let dispatcher = Dispatcher::from(&app_rc);
 
         if let Some(ref router) = router {
             let window = web_sys::window()
@@ -176,7 +177,7 @@ where
 
             // register event handlers
             for event in ["popstate", "hashchange"].iter() {
-                let app = Rc::clone(&app_rc);
+                let dispatcher = dispatcher.clone();
                 let document = document.clone();
                 let router = router.clone();
                 let closure = Closure::wrap(
@@ -185,7 +186,7 @@ where
                             .expect_throw("couldn't get document url");
 
                         if let Some(msg) = router.route(&url) {
-                            Dispatch::dispatch(&app, msg);
+                            dispatcher.dispatch(msg);
                         }
                     }) as Box<dyn FnMut(web_sys::Event)>
                 );
@@ -198,7 +199,6 @@ where
             }
 
             // execute side effects
-            let dispatcher = Dispatcher::from(&app_rc);
             for cmd in commands.immediate {
                 app_rc.borrow().process(cmd, &dispatcher);
             }
@@ -454,56 +454,6 @@ where
     processor: Processor,
     command: std::marker::PhantomData<Command>,
     key: std::marker::PhantomData<Key>,
-}
-
-impl<Message, Command> Dispatch<Message> for Rc<RefCell<Box<dyn Application<Message, Command>>>>
-where
-    Command: SideEffect<Message> + 'static,
-    Message: fmt::Debug + Clone + PartialEq + 'static,
-{
-    fn dispatch(&self, msg: Message) {
-        // update the model
-        let mut app = self.borrow_mut();
-        let commands = Application::update(&mut **app, msg);
-
-        let Commands {
-            immediate,
-            post_render,
-        } = commands;
-
-        // request an animation frame for rendering if we don't already have a request out
-        if let Some((ref mut cmds, _, _)) = Application::get_scheduled_render(&mut **app) {
-            cmds.extend(post_render);
-        }
-        else {
-            let app_rc = Rc::clone(self);
-
-            let window = web_sys::window()
-                .expect_throw("couldn't get window handle");
-
-            let closure = Closure::wrap(
-                Box::new(move |_| {
-                    let mut app = app_rc.borrow_mut();
-                    let dispatcher = Dispatcher::from(&app_rc);
-                    let commands = Application::render(&mut **app, &dispatcher);
-                    for cmd in commands {
-                        Application::process(&**app, cmd, &dispatcher);
-                    }
-                }) as Box<dyn FnMut(f64)>
-            );
-
-            let handle = window.request_animation_frame(closure.as_ref().unchecked_ref())
-                .expect_throw("error with requestion_animation_frame");
-
-            Application::set_scheduled_render(&mut **app, (post_render, handle, closure));
-        }
-
-        // execute side effects
-        let dispatcher = self.into();
-        for cmd in immediate {
-            Application::process(&**app, cmd, &dispatcher);
-        }
-    }
 }
 
 impl<Model, DomTree, Processor, Message, Command, Key>
