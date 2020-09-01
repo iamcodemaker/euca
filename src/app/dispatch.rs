@@ -19,8 +19,6 @@ pub struct Dispatcher<Message, Command> {
     pending: Rc<RefCell<Vec<Message>>>,
 }
 
-//impl<Message, Command> Dispatcher<Message, Command> { }
-
 impl<Message, Command> Clone for Dispatcher<Message, Command> {
     fn clone(&self) -> Self {
         Dispatcher {
