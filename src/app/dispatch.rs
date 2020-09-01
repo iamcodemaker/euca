@@ -83,7 +83,6 @@ where
                 cmds.extend(post_render);
             }
             else {
-                let app_rc = Rc::clone(&self.app);
                 let dispatcher = self.clone();
 
                 let window = web_sys::window()
@@ -91,7 +90,7 @@ where
 
                 let closure = Closure::wrap(
                     Box::new(move |_| {
-                        let mut app = app_rc.borrow_mut();
+                        let mut app = dispatcher.app.borrow_mut();
                         let commands = Application::render(&mut **app, &dispatcher);
                         for cmd in commands {
                             Application::process(&**app, cmd, &dispatcher);
