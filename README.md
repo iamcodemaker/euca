@@ -34,7 +34,7 @@ Internally, the vDOM is represented by an iterator facade which is utilized by t
 diffing algorithm to traverse the vDOM. The diff operation results in a series of
 patches that describe the changes to make to the DOM and the patching algorithm
 applies these changes to the browser's DOM. All of these operations are loosely
-coupled and can be modified and replaced independently.
+coupled and can mostly be modified and replaced independently.
 
 ### Testing
 
@@ -81,8 +81,10 @@ should be possible.
 
 ### Unoptimized
 
-The diff algorithm is completely unoptimized. My intention was to demonstrate that
-building a modular framework was possible, not to implement the fastest algorithm.
+The diff algorithm is completely unoptimized. My intention was to demonstrate
+that building a modular framework was possible, not to implement the fastest
+algorithm. In the applications I have developed using Euca, it performs
+reasonably, but I have no idea how fast or slow it is. I didn't test this.
 
 ## Composition
 
@@ -103,6 +105,10 @@ the child and parent message and command types.
 - Targeted DOM matching for testing. When testing the render function, it would
   be useful to compare just a small subsection of the DOM for validation (maybe using
 css [selectors](https://docs.rs/selectors/0.21.0/selectors/)).
+- Snapshot testing for render functions. In short, the DOM would be rendered
+  and manually checked. A known good snapshot of this would be captured and
+  used to detect changes during future test runs. These changes would then be
+  manually evaluated to determine if this was the expected behavior or not.
 
 [The Elm Architecture]: https://guide.elm-lang.org/architecture/
 [many web development frameworks written in Rust]: https://github.com/flosse/rust-web-framework-comparison#frontend-frameworks-wasm
