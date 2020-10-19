@@ -7,7 +7,7 @@ authors = ["Matthew Nicholson <matt@matt-land.com>"]
 edition = "2018"
 license = "MIT/Apache-2.0"
 readme = "README.md"
-categories = ["wasm"]
+categories = ["wasm", "web"]
 documentation = "https://docs.rs/euca"
 
 
