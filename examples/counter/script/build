@@ -1,0 +1,10 @@
+#!/bin/bash
+# vim: set sw=2:
+set -euo pipefail
+
+dev_flag=
+if [ "${NODE_ENV:-production}" = "development" ]; then
+  dev_flag="--dev"
+fi
+
+wasm-pack build --target web --no-typescript $dev_flag

@@ -1,0 +1,15 @@
+#!/bin/bash
+# vim: set sw=2:
+set -euo pipefail
+
+trap 'trap - SIGTERM && kill -- -$$' SIGINT SIGTERM EXIT
+
+NODE_ENV=${NODE_ENV:-development}
+export NODE_ENV
+
+npx live-server ./ --host=localhost --watch=pkg/,index.html --no-browser &
+fd --exclude node_modules \
+  --exclude target \
+  --exclude pkg \
+  --type f \
+  '(\.toml|\.rs|\.css|\.html|\.js|build)$' . | entr ./script/build

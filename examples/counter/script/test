@@ -1,0 +1,6 @@
+#!/bin/bash
+# vim: set sw=2:
+set -euo pipefail
+
+cargo test
+wasm-pack test --headless --firefox
