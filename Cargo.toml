@@ -5,6 +5,11 @@ repository = "https://github.com/iamcodemaker/euca"
 version = "0.1.0"
 authors = ["Matthew Nicholson <matt@matt-land.com>"]
 edition = "2018"
+license = "MIT/Apache-2.0"
+readme = "README.md"
+categories = ["wasm"]
+documentation = "https://docs.rs/euca"
+
 
 [lib]
 crate-type = ["cdylib", "rlib"]
