@@ -1471,3 +1471,55 @@ fn diff_duplicate_key() {
         ],
     );
 }
+
+#[wasm_bindgen_test]
+fn diff_remove_attr() {
+    let old = Dom::<_, _, &()>::elem("div")
+        .attr("name", "value")
+        .push("text");
+    let new = Dom::elem("div")
+        .push("text");
+
+    let mut storage = gen_storage(old.dom_iter());
+    let o = old.dom_iter();
+    let n = new.dom_iter();
+    let patch_set = diff::diff(o, n, &mut storage);
+
+    compare!(
+        patch_set,
+        [
+            Patch::CopyElement(leaked_e("div")),
+              Patch::RemoveAttribute("name"),
+              Patch::CreateText { text: "text".into() },
+              Patch::Up,
+              Patch::RemoveText(leaked_t("text")),
+            Patch::Up,
+        ]
+    );
+}
+
+#[wasm_bindgen_test]
+fn diff_remove_event_handler() {
+    let old = Dom::<_, _, &()>::elem("div")
+        .event("onclick", ())
+        .push("text");
+    let new = Dom::elem("div")
+        .push("text");
+
+    let mut storage = gen_storage(old.dom_iter());
+    let o = old.dom_iter();
+    let n = new.dom_iter();
+    let patch_set = diff::diff(o, n, &mut storage);
+
+    compare!(
+        patch_set,
+        [
+            Patch::CopyElement(leaked_e("div")),
+              Patch::RemoveListener { trigger: "onclick", take: leaked_closure() },
+              Patch::CreateText { text: "text".into() },
+              Patch::Up,
+              Patch::RemoveText(leaked_t("text")),
+            Patch::Up,
+        ]
+    );
+}

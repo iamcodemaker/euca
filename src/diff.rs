@@ -338,12 +338,13 @@ where
                 patch_set.push(Patch::UnsetInnerHtml);
                 old.next()
             }
-            DomItem::Event { .. } => {
-                let _ = sto.next().expect("dom storage to match dom iter");
+            DomItem::Event { trigger, .. } => {
+                let web_item = sto.next().expect("dom storage to match dom iter");
+                patch_set.push(Patch::RemoveListener { trigger, take: web_item });
                 old.next()
             }
-            // ignore attributes
-            DomItem::Attr { .. } => {
+            DomItem::Attr { name, .. } => {
+                patch_set.push(Patch::RemoveAttribute(name));
                 old.next()
             }
             // this should only be possible when comparing two nodes, and in that case we expect this
