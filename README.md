@@ -1,4 +1,4 @@
-# Euca
+# Euca [![Crates.io](https://img.shields.io/crates/v/euca.svg)](https://crates.io/crates/euca)
 
 Euca is an experimental front end web development library designed to be modular. The
 diffing, patching, and main application code all interact with each other via a set
