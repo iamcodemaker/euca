@@ -216,7 +216,6 @@ where
     ///
     /// The app will be attached at the given parent node and initialized with the given model.
     /// Event handlers will be registered as necessary.
-    #[must_use]
     pub fn attach<Model, DomTree, Key>(self, parent: web_sys::Element, model: Model)
     -> Rc<RefCell<Box<dyn Application<Message, Command>>>>
     where
